@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+/* Enable dark mode via .dark class */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------- Theme Tokens ---------- */
+@theme {
+  /* Light: warm neutral, not white */
+  --color-bg-light: #f2f1ed;     /* soft sand */
+  --color-bg-light-2: #e6e4df;   /* gradient stop */
+  --color-card-light: #ffffff;   /* cards */
+  --color-text-light: #1a1c1d;   /* almost black */
+  --color-muted-light: #6c6f72;  /* subtle text */
+
+  /* Dark: obsidian cinematic */
+  --color-bg-dark: #0c0d10;      /* deep black/gray */
+  --color-bg-dark-2: #11131a;    /* secondary stop */
+  --color-card-dark: #161920;    /* surfaces */
+  --color-text-dark: #e5e7eb;    /* bright neutral */
+  --color-muted-dark: #9ca3af;   /* subtle gray */
+
+  /* Accent: emerald/teal for premium feel */
+  --color-accent: #10b981;       /* emerald-500 */
+  --color-accent-strong: #059669;
+  --color-accent-dark: #34d399;  /* lighter emerald for dark mode */
+}
+
+/* ---------- Base Styles ---------- */
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+@layer base {
+  body {
+    @apply antialiased;
+    background: linear-gradient(135deg, var(--color-bg-light) 0%, var(--color-bg-light-2) 100%);
+    color: var(--color-text-light);
+  }
+
+  .dark body {
+    background: radial-gradient(circle at top left, var(--color-bg-dark-2), var(--color-bg-dark) 80%);
+    color: var(--color-text-dark);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold tracking-tight;
+    color: inherit;
+  }
+
+  p, span, li, div {
+    color: inherit;
+  }
+
+  * {
+    @apply transition-colors duration-300 ease-in-out;
+  }
+}
+
+/* ---------- Components ---------- */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3
+           font-semibold transition-all duration-200 ease-in-out
+           focus:outline-none active:scale-[0.98]
+           bg-[--color-accent] text-white hover:bg-[--color-accent-strong]
+           focus:ring-2 focus:ring-[--color-accent]/60
+           dark:bg-[--color-accent-dark] dark:hover:bg-[--color-accent]
+           dark:focus:ring-[--color-accent-dark]/50;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3
+           font-semibold transition-all duration-200 ease-in-out border
+           border-slate-300 bg-[--color-card-light] text-[--color-text-light]
+           hover:bg-slate-100 focus:ring-2 focus:ring-slate-400/50
+           dark:border-slate-700 dark:bg-[--color-card-dark] dark:text-[--color-text-dark]
+           dark:hover:bg-slate-800 dark:focus:ring-slate-600/50;
+  }
+
+  .card {
+    @apply rounded-2xl p-6
+           bg-[--color-card-light] dark:bg-[--color-card-dark]
+           ring-1 ring-slate-200/70 dark:ring-slate-700/70
+           shadow-[0_2px_8px_rgba(0,0,0,0.06)]
+           dark:shadow-[0_2px_18px_rgba(0,0,0,0.6)]
+           text-[--color-text-light] dark:text-[--color-text-dark]
+           transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl;
+  }
+
+  .label {
+    @apply block text-sm font-medium mb-1;
+    color: inherit;
+  }
+
+  .input,
+  .textarea {
+    @apply w-full rounded-xl border px-3 py-2
+           focus:outline-none focus:ring-2
+           bg-[--color-card-light] border-slate-300
+           focus:ring-[--color-accent]/40
+           dark:border-slate-700 dark:bg-[--color-bg-dark] dark:text-[--color-text-dark]
+           dark:focus:ring-[--color-accent-dark]/40 transition-all duration-200;
+  }
+
+  .textarea { @apply min-h-[100px]; }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
+           bg-[--color-accent]/10 text-[--color-accent] ring-1 ring-inset ring-[--color-accent]/20
+           dark:bg-[--color-accent-dark]/15 dark:text-[--color-accent-dark]
+           dark:ring-[--color-accent-dark]/30;
+  }
+}
+
+/* ---------- Animations ---------- */
+@layer utilities {
+  @keyframes gradient-shift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  .animate-gradient { background-size: 300% 300%; animation: gradient-shift 14s ease infinite; }
+
+  .reveal-in { transform: none !important; opacity: 1 !important; }
+  .reveal-fade-up { transform: translateY(16px); opacity: 0; transition: all .7s ease; }
+  .reveal-fade-in { opacity: 0; transition: opacity .7s ease; }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-12px) scale(1.08); }
+  }
+  .animate-float { animation: float 7s ease-in-out infinite; }
+}
