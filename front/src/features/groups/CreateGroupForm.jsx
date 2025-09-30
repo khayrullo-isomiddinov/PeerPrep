@@ -9,35 +9,36 @@ export default function CreateGroupForm({ addGroup }) {
     exam: "",
     description: "",
   })
-
   const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
 
   function handleChange(e) {
     const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: value }))
+    setForm(prev => ({ ...prev, [name]: value }))
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.name.trim()) {
-      return setError("Group name is required.")
-    }
-    if (!form.field.trim()) {
-      return setError("Field of study is required.")
-    }
 
-    // Mock "members" property so GroupCard can display a count
-    const newGroup = {
-      id: crypto.randomUUID(),
-      ...form,
-      members: Math.floor(Math.random() * 20) + 1,
-    }
+    if (!form.name.trim()) return setError("Group name is required.")
+    if (!form.field.trim()) return setError("Field of study is required.")
 
-    addGroup(newGroup)
-
-    // Reset form
-    setForm({ name: "", field: "", exam: "", description: "" })
     setError("")
+    setLoading(true)
+
+    try {
+      await addGroup({
+        name: form.name.trim(),
+        field: form.field.trim(),
+        exam: form.exam.trim(),
+        description: form.description.trim(),
+      })
+      setForm({ name: "", field: "", exam: "", description: "" })
+    } catch (err) {
+      setError(err?.response?.data?.message || "Failed to create group")
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -78,7 +79,9 @@ export default function CreateGroupForm({ addGroup }) {
           onChange={handleChange}
         />
 
-        <Button type="submit">Save Group</Button>
+        <Button type="submit" disabled={loading}>
+          {loading ? "Saving..." : "Save Group"}
+        </Button>
       </form>
     </Card>
   )
