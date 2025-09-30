@@ -1,7 +1,8 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom"
+import { Routes, Route } from "react-router-dom"
 import { useEffect, useState } from "react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faMoon, faSun } from "@fortawesome/free-solid-svg-icons"
+import { initParallax } from "./utils/parallax"
 import ScrollProgressBar from "./components/ScrollProgressBar"
 import Navbar from "./components/Navbar"
 import Footer from "./components/Footer"
@@ -41,8 +42,8 @@ function DarkModeToggle() {
                   h-12 w-12 rounded-full shadow-lg active:scale-95
                   transition-all duration-300 ease-in-out
                   ${dark
-                    ? "bg-slate-700 hover:bg-slate-600 text-yellow-300" // dark mode colors
-                    : "bg-indigo-500 hover:bg-indigo-600 text-white"    // light mode colors
+                    ? "bg-slate-700 hover:bg-slate-600 text-yellow-300"
+                    : "bg-indigo-500 hover:bg-indigo-600 text-white"
                   }`}
       title={dark ? "Switch to light" : "Switch to dark"}
     >
@@ -51,10 +52,13 @@ function DarkModeToggle() {
   )
 }
 
+export default function App() {
+  useEffect(() => {
+    try { initParallax() } catch (e) { console.error(e) }
+  }, [])
 
-function App() {
   return (
-    <BrowserRouter>
+    <>
       <Navbar />
       <ScrollProgressBar />
       <main className="max-w-6xl mx-auto px-4 py-8">
@@ -66,11 +70,7 @@ function App() {
         </Routes>
       </main>
       <Footer />
-
-      {/* Floating dark mode button */}
       <DarkModeToggle />
-    </BrowserRouter>
+    </>
   )
 }
-
-export default App
