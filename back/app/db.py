@@ -5,7 +5,7 @@ connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith(
 engine = create_engine(settings.DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)
 
 def init_db() -> None:
-    SQLModel.metadata.create_all(engine)
+    pass
 
 def get_session():
     with Session(engine) as session:
