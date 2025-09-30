@@ -1,0 +1,8 @@
+*.db
+.env
+.env.*
+__pycache__/
+front/node_modules/
+back/node_modules/
+dist/
+front/dist/
