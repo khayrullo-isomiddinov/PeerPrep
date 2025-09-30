@@ -5,3 +5,4 @@ pydantic-settings==2.6.1
 python-multipart==0.0.9
 sqlmodel==0.0.22
 SQLAlchemy==2.0.34
+psycopg2-binary==2.9.9
