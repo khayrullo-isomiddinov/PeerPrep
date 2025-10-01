@@ -10,7 +10,10 @@ import Home from "./pages/Home"
 import Groups from "./pages/Groups"
 import Events from "./pages/Events"
 import Profile from "./pages/Profile"
+import RegisterForm from "./features/auth/RegisterForm"
+import LoginForm from "./features/auth/LoginForm"
 
+/*
 function DarkModeToggle() {
   const [dark, setDark] = useState(
     typeof window !== "undefined" &&
@@ -51,7 +54,7 @@ function DarkModeToggle() {
     </button>
   )
 }
-
+*/
 export default function App() {
   useEffect(() => {
     try { initParallax() } catch (e) { console.error(e) }
@@ -67,10 +70,12 @@ export default function App() {
           <Route path="/groups" element={<Groups />} />
           <Route path="/events" element={<Events />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/register" element={<RegisterForm />} />
+          <Route path="/login" element={<LoginForm />} />
         </Routes>
       </main>
       <Footer />
-      <DarkModeToggle />
+{/*    <DarkModeToggle /> */ }  
     </>
   )
 }
