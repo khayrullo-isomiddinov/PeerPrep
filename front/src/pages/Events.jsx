@@ -3,20 +3,24 @@ import CreateEventForm from "../features/events/CreateEventForm"
 import EventList from "../features/events/EventList"
 import { listEvents } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
+import PillTabs from "../components/PillTabs"
 
 export default function Events() {
   const { isAuthenticated } = useAuth()
   const [events, setEvents] = useState([])
   const [refreshKey, setRefreshKey] = useState(0)
+  const [kind, setKind] = useState("all")
 
   async function load() {
-    const data = await listEvents()
+    const params = {}
+    if (kind !== "all") params.kind = kind
+    const data = await listEvents(params)
     setEvents(data)
   }
 
   useEffect(() => {
     load()
-  }, [refreshKey])
+  }, [refreshKey, kind])
 
   function onCreated() {
     setRefreshKey(k => k + 1)
@@ -47,7 +51,18 @@ export default function Events() {
       </section>
 
       <section className="max-w-7xl mx-auto px-6">
-        <h2 className="text-2xl font-semibold mb-6">Upcoming Events</h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-semibold">Upcoming Events</h2>
+          <PillTabs
+            tabs={[
+              { label: "All", value: "all" },
+              { label: "One-off", value: "one_off" },
+              { label: "Group", value: "group" },
+            ]}
+            value={kind}
+            onChange={setKind}
+          />
+        </div>
         <EventList events={events} onChanged={onChanged} />
       </section>
     </div>

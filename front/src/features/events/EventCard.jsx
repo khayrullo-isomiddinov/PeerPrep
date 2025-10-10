@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import Button from "../../components/Button"
 import Card from "../../components/Card"
 import { deleteEvent, getAttendees, joinEvent, leaveEvent, updateEvent } from "../../utils/api"
 import { useAuth } from "../auth/AuthContext"
 
 export default function EventCard({ event, onChanged }) {
-  const { user } = useAuth()
+  const { user, isAuthenticated } = useAuth()
+  const navigate = useNavigate()
   const currentId = user ? Number(user.id ?? user?.user?.id) : null
   const creatorId = event.created_by != null ? Number(event.created_by) : null
   const mine = currentId != null && creatorId === currentId
@@ -28,7 +30,12 @@ export default function EventCard({ event, onChanged }) {
   async function loadAttendees() {
     try {
       const ids = await getAttendees(event.id)
-      setCount(Array.isArray(ids) ? ids.length : 0)
+      const safeIds = Array.isArray(ids) ? ids : []
+      setCount(safeIds.length)
+      // reflect whether current user already joined on mount/refresh
+      if (!mine && currentId != null) {
+        setJoined(safeIds.includes(currentId))
+      }
     } catch {
       setCount(0)
     }
@@ -136,8 +143,14 @@ export default function EventCard({ event, onChanged }) {
             <p className="mt-1 text-slate-600 dark:text-slate-300">Capacity {count}/{event.capacity}</p>
           </div>
           <div className="flex gap-2">
-            {!mine && !joined && !full && <Button disabled={busyJoin} onClick={onJoin}>{busyJoin ? "..." : "Join"}</Button>}
-            {!mine && joined && <Button variant="secondary" disabled={busyLeave} onClick={onLeave}>{busyLeave ? "..." : "Leave"}</Button>}
+            {!mine && !joined && !full && (
+              isAuthenticated
+                ? <Button disabled={busyJoin} onClick={onJoin}>{busyJoin ? "..." : "Join"}</Button>
+                : <Button variant="secondary" onClick={() => navigate("/login")}>Login to join</Button>
+            )}
+            {!mine && joined && isAuthenticated && (
+              <Button variant="secondary" disabled={busyLeave} onClick={onLeave}>{busyLeave ? "..." : "Leave"}</Button>
+            )}
             {mine && <Button variant="secondary" onClick={() => setEditing(true)}>Edit</Button>}
             {mine && <Button variant="secondary" disabled={busyDelete} onClick={onDelete}>{busyDelete ? "..." : "Delete"}</Button>}
           </div>

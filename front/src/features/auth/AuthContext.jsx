@@ -4,19 +4,21 @@ import { setAuthHeader } from "../../utils/api"
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(null)
-  const [user, setUser] = useState(null)
+  const [token, setToken] = useState(() => {
+    try { return localStorage.getItem("access_token") } catch { return null }
+  })
+  const [user, setUser] = useState(() => {
+    try {
+      const u = localStorage.getItem("user")
+      return u ? JSON.parse(u) : null
+    } catch { return null }
+  })
   const isAuthenticated = !!token
 
+  // keep axios auth header in sync immediately on mount and when token changes
   useEffect(() => {
-    const t = localStorage.getItem("access_token")
-    const u = localStorage.getItem("user")
-    if (t) {
-      setToken(t)
-      setAuthHeader(t)
-    }
-    if (u) setUser(JSON.parse(u))
-  }, [])
+    setAuthHeader(token)
+  }, [token])
 
   function login({ access_token, user }) {
     localStorage.setItem("access_token", access_token)

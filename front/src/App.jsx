@@ -58,6 +58,8 @@ function DarkModeToggle() {
 export default function App() {
   useEffect(() => {
     try { initParallax() } catch (e) { console.error(e) }
+    // mount toast container
+    import("./utils/toast.jsx").then(m => m.ensureToastContainer()).catch(() => {})
   }, [])
 
   return (

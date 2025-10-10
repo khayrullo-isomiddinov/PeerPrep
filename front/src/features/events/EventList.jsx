@@ -3,8 +3,9 @@ import EventCard from "./EventCard"
 export default function EventList({ events, onChanged }) {
   if (events.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed p-6 text-center text-slate-500 dark:text-slate-400">
-        No events yet. Create one to get started!
+      <div className="surface p-8 text-center">
+        <div className="text-lg font-semibold">No events yet</div>
+        <div className="mt-1 text-sm text-muted">Create one to get started!</div>
       </div>
     )
   }

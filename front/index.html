@@ -1,10 +1,27 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>front</title>
+    <style>
+      /* Prevent light flash before CSS loads */
+      html { color-scheme: dark; }
+      body { background: #0f1420; color: #e6e8eb; }
+    </style>
+    <script>
+      // Ensure theme is applied before React/Tailwind mount
+      try {
+        const saved = localStorage.getItem('theme')
+        const dark = saved ? saved === 'dark' : true
+        document.documentElement.classList.toggle('dark', dark)
+        if (dark) {
+          document.body.style.background = '#0f1420'
+          document.body.style.color = '#e6e8eb'
+        }
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
