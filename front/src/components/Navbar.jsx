@@ -38,7 +38,7 @@ export default function Navbar() {
 
                 <Link to="/" className="font-extrabold text-base leading-none flex items-center gap-2">
                   <span className="inline-block h-5 w-5 rounded-md" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand-soft))" }} />
-                  StudyHub
+                  PeerPrep
                 </Link>
 
                 <ul className="hidden lg:flex items-center gap-2 ml-4">
