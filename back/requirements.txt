@@ -5,12 +5,8 @@ pydantic-settings==2.6.1
 python-multipart==0.0.9
 sqlmodel==0.0.22
 SQLAlchemy==2.0.34
-psycopg[binary]==3.2.10
-alembic
 passlib[bcrypt]
 python-jose[cryptography]
 email-validator
-python-multipart
 argon2-cffi
 httpx
-

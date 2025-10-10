@@ -1,23 +1,33 @@
 import { useEffect, useState } from "react"
 import CreateEventForm from "../features/events/CreateEventForm"
 import EventList from "../features/events/EventList"
-import { api } from "../utils/api"
+import { listEvents } from "../utils/api"
+import { useAuth } from "../features/auth/AuthContext"
 
 export default function Events() {
+  const { isAuthenticated } = useAuth()
   const [events, setEvents] = useState([])
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  useEffect(() => {
-    api.get("/events").then(r => setEvents(r.data)).catch(() => setEvents([]))
-  }, [])
-
-  async function addEvent(newEvent) {
-    const { data } = await api.post("/events", newEvent)
-    setEvents([data, ...events])
+  async function load() {
+    const data = await listEvents()
+    setEvents(data)
   }
 
-  async function removeEvent(id) {
-    await api.delete(`/events/${id}`)
-    setEvents(events.filter(e => e.id !== id))
+  useEffect(() => {
+    load()
+  }, [refreshKey])
+
+  function onCreated() {
+    setRefreshKey(k => k + 1)
+  }
+
+  function onChanged(updated) {
+    if (!updated) {
+      load()
+      return
+    }
+    setEvents(prev => prev.map(e => e.id === updated.id ? updated : e))
   }
 
   return (
@@ -33,12 +43,12 @@ export default function Events() {
 
       <section className="max-w-4xl mx-auto px-6">
         <h2 className="text-2xl font-semibold mb-6">Create an Event</h2>
-        <CreateEventForm addEvent={addEvent} />
+        {isAuthenticated ? <CreateEventForm onCreated={onCreated} /> : <div className="rounded-xl border p-4">Login to create and join events</div>}
       </section>
 
       <section className="max-w-7xl mx-auto px-6">
         <h2 className="text-2xl font-semibold mb-6">Upcoming Events</h2>
-        <EventList events={events} setEvents={(xs)=>setEvents(xs)} />
+        <EventList events={events} onChanged={onChanged} />
       </section>
     </div>
   )

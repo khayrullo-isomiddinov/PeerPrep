@@ -1,13 +1,30 @@
-from pydantic import BaseModel, Field
 from typing import Optional
+from sqlmodel import SQLModel
+from datetime import datetime
+from app.models import EventKind
 
-class EventCreate(BaseModel):
+class EventBase(SQLModel):
     title: str
-    date: str
-    time: Optional[str] = None
-    location: Optional[str] = None
+    starts_at: datetime
+    location: str
+    capacity: int = 10
     description: Optional[str] = None
-    tag: Optional[str] = None
+    group_id: Optional[int] = None
+    kind: EventKind = EventKind.one_off
 
-class Event(EventCreate):
-    id: str = Field(...)
+class EventCreate(EventBase):
+    pass
+
+class EventRead(EventBase):
+    id: int
+    created_by: int
+    starts_at: datetime
+
+class EventUpdate(SQLModel):
+    title: Optional[str] = None
+    starts_at: Optional[datetime] = None
+    location: Optional[str] = None
+    capacity: Optional[int] = None
+    description: Optional[str] = None
+    group_id: Optional[int] = None
+    kind: Optional[EventKind] = None

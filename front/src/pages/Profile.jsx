@@ -1,51 +1,57 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import Card from "../components/Card"
 import Button from "../components/Button"
+import { useAuth } from "../features/auth/AuthContext"
 
 export default function Profile() {
-  const [user, setUser] = useState({
-    name: "Jane Doe",
-    email: "jane@example.com",
-    bio: "CS student passionate about AI & algorithms. Always looking for peers to study with.",
-    joinedGroups: ["Algorithms Study Group", "React Learners"],
-    upcomingEvents: ["DP Workshop", "Midterm Review Session"],
-  })
+  const { user, isAuthenticated, setUser } = useAuth()
+  const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
-  const [form, setForm] = useState(user)
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    bio: "",
+    joinedGroups: [],
+    upcomingEvents: []
+  })
+
+  useEffect(() => {
+    if (!isAuthenticated) navigate("/login", { replace: true })
+  }, [isAuthenticated, navigate])
+
+  useEffect(() => {
+    if (user) {
+      setForm({
+        name: user.name || (user.email ? user.email.split("@")[0] : ""),
+        email: user.email || "",
+        bio: user.bio || "",
+        joinedGroups: user.joinedGroups || [],
+        upcomingEvents: user.upcomingEvents || []
+      })
+    }
+  }, [user])
 
   function handleChange(e) {
     const { name, value } = e.target
     setForm(prev => ({ ...prev, [name]: value }))
   }
+
   function handleSave() {
-    setUser(form)
+    setUser(prev => ({ ...prev, ...form }))
     setEditing(false)
   }
 
+  if (!isAuthenticated) return null
+
   return (
     <div className="space-y-20">
-      <section
-        className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-pink-400 via-rose-400 to-red-400 dark:from-pink-800 dark:via-rose-900 dark:to-red-900 py-16 px-6 text-center shadow-xl"
-        style={{ animationDuration: "20s" }}
-      >
-        <div
-          data-parallax="0.10"
-          className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-pink-300/40 blur-3xl dark:bg-pink-500/20"
-          style={{ animationDuration: "8s" }}
-        />
-        <div
-          data-parallax="0.22"
-          className="absolute -bottom-32 -left-32 w-96 h-96 rounded-full bg-rose-300/40 blur-3xl dark:bg-rose-600/20"
-          style={{ animationDuration: "8s" }}
-        />
-
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-pink-400 via-rose-400 to-red-400 dark:from-pink-800 dark:via-rose-900 dark:to-red-900 py-16 px-6 text-center shadow-xl">
+        <div data-parallax="0.10" className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-pink-300/40 blur-3xl dark:bg-pink-500/20" />
+        <div data-parallax="0.22" className="absolute -bottom-32 -left-32 w-96 h-96 rounded-full bg-rose-300/40 blur-3xl dark:bg-rose-600/20" />
         <div className="relative z-10 max-w-3xl mx-auto">
-          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white drop-shadow-[0_6px_18px_rgba(0,0,0,0.6)]">
-            My <span className="text-yellow-200">Profile</span>
-          </h1>
-          <p className="mt-4 text-lg text-white/90 leading-relaxed">
-            Manage your personal info, groups, and events all in one place.
-          </p>
+          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white">My <span className="text-yellow-200">Profile</span></h1>
+          <p className="mt-4 text-lg text-white/90 leading-relaxed">Manage your personal info, groups, and events all in one place.</p>
         </div>
       </section>
 
@@ -54,10 +60,10 @@ export default function Profile() {
           {!editing ? (
             <div className="space-y-4">
               <div>
-                <h2 className="text-2xl font-semibold">{user.name}</h2>
-                <p className="text-[--color-text-light]/80 dark:text-[--color-text-dark]/80">{user.email}</p>
+                <h2 className="text-2xl font-semibold">{form.name || "New User"}</h2>
+                <p className="text-slate-500 dark:text-slate-400">{form.email}</p>
               </div>
-              <p>{user.bio}</p>
+              <p className="min-h-6">{form.bio || "Add a short bio to let others know you."}</p>
               <Button variant="secondary" onClick={() => setEditing(true)}>Edit Profile</Button>
             </div>
           ) : (
@@ -97,14 +103,12 @@ export default function Profile() {
         <h2 className="text-2xl font-semibold mb-6">Joined Groups</h2>
         <div className="card bg-base-200/40 shadow-xl border border-white/10">
           <div className="card-body">
-            {user.joinedGroups.length === 0 ? (
-              <p className="text-muted">No groups yet.</p>
+            {form.joinedGroups.length === 0 ? (
+              <p className="text-slate-500 dark:text-slate-400">No groups yet.</p>
             ) : (
               <div className="flex flex-wrap gap-2">
-                {user.joinedGroups.map((g, i) => (
-                  <span key={i} className="badge badge-outline badge-lg">
-                    {g}
-                  </span>
+                {form.joinedGroups.map((g, i) => (
+                  <span key={i} className="badge badge-outline badge-lg">{g}</span>
                 ))}
               </div>
             )}
@@ -116,11 +120,11 @@ export default function Profile() {
         <h2 className="text-2xl font-semibold mb-6">Upcoming Events</h2>
         <div className="card bg-base-200/40 shadow-xl border border-white/10">
           <div className="card-body">
-            {user.upcomingEvents.length === 0 ? (
-              <p className="text-muted">No events yet.</p>
+            {form.upcomingEvents.length === 0 ? (
+              <p className="text-slate-500 dark:text-slate-400">No events yet.</p>
             ) : (
               <ul className="menu bg-transparent gap-1 p-0">
-                {user.upcomingEvents.map((e, i) => (
+                {form.upcomingEvents.map((e, i) => (
                   <li key={i} className="rounded-lg">
                     <a className="justify-between rounded-lg hover:bg-base-300/60">
                       <span>{e}</span>
