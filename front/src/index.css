@@ -285,15 +285,33 @@ html {
   .input, .textarea {
     width: 100%;
     border-radius: var(--radius-md);
-    border: 1px solid rgba(255,255,255,.14);
-    padding: .75rem .9rem;
-    background: rgba(23,28,43,.9);
-    color: var(--ink-dark);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.02);
-    transition: box-shadow .2s ease, border-color .2s ease;
+    border: 1px solid rgba(0,0,0,.12);
+    padding: .6rem .8rem; /* compact */
+    background: #ffffff; /* light surface */
+    color: #0f172a; /* slate-900 for readability */
+    box-shadow: inset 0 1px 0 rgba(0,0,0,.02);
+    transition: box-shadow .2s ease, border-color .2s ease, background-color .2s ease, color .2s ease;
   }
 
   .input:focus, .textarea:focus { box-shadow: var(--ring-strong); border-color: transparent; }
+
+  /* Smaller variant and placeholder contrast */
+  .input, .textarea { font-size: .95rem; }
+  .input::placeholder, .textarea::placeholder { color: rgba(15,23,42,.45); }
+  .textarea { min-height: 2.5rem; }
+
+  /* Dark mode overrides: inputs become dark with light text */
+  :where(.dark) .input,
+  :where(.dark) .textarea {
+    background: rgba(20,26,42,.92);
+    border-color: rgba(255,255,255,.10);
+    color: var(--ink-dark);
+  }
+  :where(.dark) .input::placeholder,
+  :where(.dark) .textarea::placeholder { color: rgba(230,232,235,.55); }
+
+  /* Stable height and alignment */
+  .field-row { display: flex; flex-direction: column; gap: .35rem; }
 
   .badge {
     display: inline-flex;
