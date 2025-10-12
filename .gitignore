@@ -18,3 +18,4 @@ Thumbs.db
 peerprep.db
 peerprep.db-*
 instance/
+*.db
