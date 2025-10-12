@@ -34,7 +34,7 @@ app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=["*"],  # Temporarily allow all origins for debugging
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -43,4 +43,4 @@ app.add_middleware(
 app.include_router(health_router.router, prefix=settings.API_PREFIX)
 app.include_router(auth_router.router, prefix=settings.API_PREFIX)
 app.include_router(events_router.router, prefix=settings.API_PREFIX)
-app.include_router(groups_router.router, prefix=f"{settings.API_PREFIX}/groups")
+app.include_router(groups_router.router, prefix=settings.API_PREFIX)

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react"
-import { setAuthHeader } from "../../utils/api"
+import { setAuthHeader, api } from "../../utils/api"
 
 const AuthContext = createContext(null)
 
@@ -13,12 +13,38 @@ export function AuthProvider({ children }) {
       return u ? JSON.parse(u) : null
     } catch { return null }
   })
-  const isAuthenticated = !!token
+  const [isLoading, setIsLoading] = useState(!!token) // Show loading while validating token
+  const isAuthenticated = !!token && !isLoading
 
-  // keep axios auth header in sync immediately on mount and when token changes
+  // Validate token on startup
   useEffect(() => {
-    setAuthHeader(token)
-  }, [token])
+    const validateToken = async () => {
+      if (!token) {
+        setIsLoading(false)
+        return
+      }
+      
+      try {
+        setAuthHeader(token)
+        const response = await api.get("/auth/me")
+        setUser(response.data)
+        setIsLoading(false)
+      } catch (error) {
+        // Token is invalid, clear it
+        logout()
+        setIsLoading(false)
+      }
+    }
+
+    validateToken()
+  }, []) // Only run on mount
+
+  // keep axios auth header in sync when token changes
+  useEffect(() => {
+    if (token && !isLoading) {
+      setAuthHeader(token)
+    }
+  }, [token, isLoading])
 
   function login({ access_token, user }) {
     localStorage.setItem("access_token", access_token)
@@ -36,7 +62,7 @@ export function AuthProvider({ children }) {
     setAuthHeader(null)
   }
 
-  const value = useMemo(() => ({ token, user, isAuthenticated, login, logout, setUser }), [token, user, isAuthenticated])
+  const value = useMemo(() => ({ token, user, isAuthenticated, isLoading, login, logout, setUser }), [token, user, isAuthenticated, isLoading])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

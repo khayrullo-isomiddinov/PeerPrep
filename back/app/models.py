@@ -1,5 +1,5 @@
-from typing import Optional
-from sqlmodel import SQLModel, Field
+from typing import Optional, List
+from sqlmodel import SQLModel, Field, Relationship
 from datetime import datetime
 import enum
 
@@ -21,6 +21,11 @@ class Event(EventBase, table=True):
     created_by: int = Field(index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+class MissionStatus(str, enum.Enum):
+    active = "active"
+    completed = "completed"
+    cancelled = "cancelled"
+
 class GroupBase(SQLModel):
     name: str
     field: str
@@ -30,6 +35,17 @@ class GroupBase(SQLModel):
 class Group(GroupBase, table=True):
     id: Optional[str] = Field(default=None, primary_key=True, index=True)
     members: int = 0
+    created_by: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Mission fields
+    mission_title: Optional[str] = None
+    mission_description: Optional[str] = None
+    mission_deadline: Optional[datetime] = None
+    mission_capacity: int = 10
+    mission_status: MissionStatus = MissionStatus.active
+    mission_badge_name: Optional[str] = None
+    mission_badge_description: Optional[str] = None
 
 class GroupCreate(GroupBase):
     pass
@@ -48,3 +64,32 @@ class EventAttendee(SQLModel, table=True):
     event_id: int = Field(index=True, foreign_key="event.id")
     user_id: int = Field(index=True, foreign_key="user.id")
     joined_at: datetime = Field(default_factory=datetime.utcnow)
+
+class GroupMember(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    group_id: str = Field(index=True, foreign_key="group.id")
+    user_id: int = Field(index=True, foreign_key="user.id")
+    joined_at: datetime = Field(default_factory=datetime.utcnow)
+    is_leader: bool = False
+
+class MissionSubmission(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    group_id: str = Field(index=True, foreign_key="group.id")
+    user_id: int = Field(index=True, foreign_key="user.id")
+    submission_url: str  # URL to video/proof
+    submission_text: Optional[str] = None
+    submitted_at: datetime = Field(default_factory=datetime.utcnow)
+    is_approved: bool = False
+    approved_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    approved_at: Optional[datetime] = None
+    score: Optional[int] = None  # For leaderboard ranking
+    feedback: Optional[str] = None
+
+class Badge(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, foreign_key="user.id")
+    group_id: str = Field(index=True, foreign_key="group.id")
+    badge_name: str
+    badge_description: Optional[str] = None
+    earned_at: datetime = Field(default_factory=datetime.utcnow)
+    mission_title: Optional[str] = None

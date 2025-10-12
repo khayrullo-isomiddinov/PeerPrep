@@ -61,3 +61,44 @@ export async function getAttendees(id) {
   const { data } = await api.get(`events/${id}/attendees`)
   return data
 }
+
+// Group API functions
+export async function listGroups(params = {}) {
+  const { data } = await api.get("groups", { params })
+  return data
+}
+
+export async function createGroup(payload) {
+  const { data } = await api.post("groups", payload)
+  return data
+}
+
+export async function getGroup(id) {
+  const { data } = await api.get(`groups/${id}`)
+  return data
+}
+
+export async function updateGroup(id, payload) {
+  const { data } = await api.put(`groups/${id}`, payload)
+  return data
+}
+
+export async function joinGroup(id) {
+  const { data } = await api.post(`groups/${id}/join`)
+  return data
+}
+
+export async function leaveGroup(id) {
+  const { data } = await api.delete(`groups/${id}/leave`)
+  return data
+}
+
+export async function getGroupMembers(id) {
+  const { data } = await api.get(`groups/${id}/members`)
+  return data
+}
+
+export async function getGroupLeaderboard(id) {
+  const { data } = await api.get(`groups/${id}/leaderboard`)
+  return data
+}
