@@ -9,6 +9,7 @@ export default function LoginForm() {
   const [password, setPassword] = useState("")
   const [msg, setMsg] = useState("")
   const [success, setSuccess] = useState(false)
+  const [loading, setLoading] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
   const auth = useAuth()
@@ -27,15 +28,22 @@ export default function LoginForm() {
 
   async function submit(e) {
     e.preventDefault()
+    setLoading(true)
     try {
       const data = await loginUser({ email, password })
       auth.login({ access_token: data.access_token, user: data.user })
       setMsg(`Welcome back, ${data.user.email}`)
       setSuccess(true)
-      navigate("/profile", { replace: true })
+      
+      // Small delay to show success message before navigation
+      setTimeout(() => {
+        navigate("/groups", { replace: true })
+      }, 500)
     } catch (err) {
       setMsg(err?.response?.data?.detail || "Login failed")
       setSuccess(false)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -50,8 +58,12 @@ export default function LoginForm() {
           <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Password</label>
           <input type="password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full block rounded-xl border border-slate-300/60 dark:border-white/10 bg-white/90 dark:bg-white/5 px-4 py-3 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:border-indigo-500/60" placeholder="••••••••" required />
         </div>
-        <button type="submit" className="w-full rounded-xl px-4 py-3 font-semibold shadow-sm bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-indigo-500/60">
-          Sign In
+        <button 
+          type="submit" 
+          disabled={loading}
+          className="w-full rounded-xl px-4 py-3 font-semibold shadow-sm bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-indigo-500/60 disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {loading ? "Signing in..." : "Sign In"}
         </button>
       </form>
       {msg && <p className={`mt-5 text-center text-sm ${success ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>{msg}</p>}

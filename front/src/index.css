@@ -578,6 +578,23 @@ html {
   box-shadow: 0 8px 20px rgba(52, 211, 153, 0.4);
 }
 
+/* Smooth page transitions */
+.page-transition {
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.page-transition.loaded {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Smooth route transitions */
+.route-transition {
+  transition: opacity 0.2s ease-in-out;
+}
+
 .premium-btn:active {
   transform: translateY(0);
   box-shadow: 0 2px 8px rgba(52, 211, 153, 0.3);

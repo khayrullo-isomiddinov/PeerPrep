@@ -7,6 +7,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons"
 import Button from "../../components/Button"
 import Card from "../../components/Card"
+import { useAuth } from "../auth/AuthContext"
 
 export default function CreateGroupForm({ addGroup }) {
   const [form, setForm] = useState({
@@ -27,6 +28,7 @@ export default function CreateGroupForm({ addGroup }) {
   const [loading, setLoading] = useState(false)
   const [hasMission, setHasMission] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  const { isAuthenticated } = useAuth()
 
   // Common field options
   const fieldOptions = [
@@ -109,6 +111,11 @@ export default function CreateGroupForm({ addGroup }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
+
+    if (!isAuthenticated) {
+      setErrors({ submit: "You must be logged in to create groups" })
+      return
+    }
 
     if (!validateForm()) {
       return
@@ -280,7 +287,7 @@ export default function CreateGroupForm({ addGroup }) {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-12">
+        <form onSubmit={handleSubmit} className="space-y-12" style={{ opacity: isAuthenticated ? 1 : 0.6 }}>
           {/* Basic Group Information */}
           <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden">
             <div className="bg-gradient-to-r from-blue-500/80 via-purple-600/80 to-indigo-600/80 backdrop-blur-sm px-10 py-8">
@@ -747,13 +754,18 @@ export default function CreateGroupForm({ addGroup }) {
                   
                   <button
                     type="submit"
-                    disabled={loading}
+                    disabled={loading || !isAuthenticated}
                     className="px-12 py-5 bg-gradient-to-r from-blue-500 via-purple-600 to-pink-600 text-white rounded-2xl font-bold text-xl hover:from-blue-600 hover:via-purple-700 hover:to-pink-700 transform hover:scale-105 transition-all duration-300 shadow-2xl disabled:opacity-50 disabled:transform-none"
                   >
                     {loading ? (
                       <span className="flex items-center">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mr-4"></div>
                         Creating Group...
+                      </span>
+                    ) : !isAuthenticated ? (
+                      <span className="flex items-center">
+                        <FontAwesomeIcon icon={faExclamationTriangle} className="mr-3" />
+                        Login Required
                       </span>
                     ) : (
                       <span className="flex items-center">

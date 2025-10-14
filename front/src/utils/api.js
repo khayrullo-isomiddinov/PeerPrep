@@ -102,3 +102,8 @@ export async function getGroupLeaderboard(id) {
   const { data } = await api.get(`groups/${id}/leaderboard`)
   return data
 }
+
+export async function deleteGroup(id) {
+  const { data } = await api.delete(`groups/${id}`)
+  return data
+}

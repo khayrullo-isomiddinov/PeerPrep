@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react"
+import { Link } from "react-router-dom"
 import CreateGroupForm from "../features/groups/CreateGroupForm"
 import GroupList from "../features/groups/GroupList"
-import { listGroups, createGroup } from "../utils/api"
+import EditGroupForm from "../features/groups/EditGroupForm"
+import { listGroups, createGroup, updateGroup } from "../utils/api"
+import { useAuth } from "../features/auth/AuthContext"
 
 export default function Groups() {
   const [groups, setGroups] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [editingGroup, setEditingGroup] = useState(null)
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
 
   useEffect(() => {
     loadGroups()
@@ -34,6 +39,18 @@ export default function Groups() {
       return data
     } catch (err) {
       console.error("Failed to create group:", err)
+      throw err // Re-throw so the form can handle the error
+    }
+  }
+
+  async function handleUpdateGroup(groupId, updatedData) {
+    try {
+      const data = await updateGroup(groupId, updatedData)
+      setGroups(groups.map(group => group.id === groupId ? data : group))
+      setEditingGroup(null)
+      return data
+    } catch (err) {
+      console.error("Failed to update group:", err)
       throw err // Re-throw so the form can handle the error
     }
   }
@@ -88,18 +105,62 @@ export default function Groups() {
           </div>
         ) : (
           <div className="space-y-8">
-            {/* Create Group Section */}
-            <section>
-              <CreateGroupForm addGroup={addGroup} />
-            </section>
+            {/* Create Group Section - Only show if authenticated */}
+            {isAuthenticated && (
+              <section>
+                <CreateGroupForm addGroup={addGroup} />
+              </section>
+            )}
 
             {/* Groups List Section */}
             <section>
-              <GroupList groups={groups} setGroups={setGroups} />
+              <GroupList groups={groups} setGroups={setGroups} onEdit={setEditingGroup} />
             </section>
+
+            {/* Login prompt for non-authenticated users */}
+            {!isAuthenticated && !authLoading && (
+              <section>
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-2xl p-8 text-center">
+                  <div className="max-w-md mx-auto">
+                    <div className="flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full mb-6 mx-auto">
+                      <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-2xl font-bold text-gray-900 mb-4">Want to Join or Create Groups?</h3>
+                    <p className="text-gray-600 mb-6">
+                      Sign up or log in to join study groups, create your own, and connect with other learners!
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                      <Link 
+                        to="/login" 
+                        className="px-6 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors font-semibold text-center"
+                      >
+                        Log In
+                      </Link>
+                      <Link 
+                        to="/register" 
+                        className="px-6 py-3 bg-purple-500 text-white rounded-xl hover:bg-purple-600 transition-colors font-semibold text-center"
+                      >
+                        Sign Up
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
           </div>
         )}
       </div>
+
+      {/* Edit Group Modal */}
+      {editingGroup && (
+        <EditGroupForm
+          group={editingGroup}
+          onUpdate={handleUpdateGroup}
+          onCancel={() => setEditingGroup(null)}
+        />
+      )}
     </div>
   )
 }

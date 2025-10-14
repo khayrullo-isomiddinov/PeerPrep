@@ -51,6 +51,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem("user", JSON.stringify(user))
     setToken(access_token)
     setUser(user)
+    setIsLoading(false) // Ensure loading state is cleared
     setAuthHeader(access_token)
   }
 

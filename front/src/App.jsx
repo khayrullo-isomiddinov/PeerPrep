@@ -81,7 +81,7 @@ export default function App() {
   }
 
   return (
-    <>
+    <div className="route-transition">
       <Navbar />
       <ScrollProgressBar />
       <main className="max-w-6xl mx-auto px-4 py-8">
@@ -96,6 +96,6 @@ export default function App() {
       </main>
       <Footer />
 {/*    <DarkModeToggle /> */ }  
-    </>
+    </div>
   )
 }

@@ -5,13 +5,17 @@ import {
   faSort, faSortUp, faSortDown, faEye, faEyeSlash
 } from "@fortawesome/free-solid-svg-icons"
 import GroupCard from "./GroupCard"
+import { deleteGroup } from "../../utils/api"
+import { useAuth } from "../auth/AuthContext"
 
-export default function GroupList({ groups, setGroups }) {
+export default function GroupList({ groups, setGroups, onEdit }) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedField, setSelectedField] = useState("")
   const [showMissionsOnly, setShowMissionsOnly] = useState(false)
   const [sortBy, setSortBy] = useState("name")
   const [sortOrder, setSortOrder] = useState("asc")
+  const [deletingGroups, setDeletingGroups] = useState(new Set())
+  const { user, isAuthenticated } = useAuth()
 
   // Get unique fields for filter
   const fields = useMemo(() => {
@@ -81,6 +85,34 @@ export default function GroupList({ groups, setGroups }) {
   const getSortIcon = (field) => {
     if (sortBy !== field) return faSort
     return sortOrder === "asc" ? faSortUp : faSortDown
+  }
+
+  const handleDeleteGroup = async (groupId) => {
+    if (!user) {
+      alert("You must be logged in to delete groups")
+      return
+    }
+
+    if (!confirm("Are you sure you want to delete this group? This action cannot be undone.")) {
+      return
+    }
+
+    setDeletingGroups(prev => new Set(prev).add(groupId))
+    
+    try {
+      await deleteGroup(groupId)
+      setGroups(groups.filter(group => group.id !== groupId))
+    } catch (error) {
+      console.error("Failed to delete group:", error)
+      const errorMessage = error?.response?.data?.detail || "Failed to delete group"
+      alert(errorMessage)
+    } finally {
+      setDeletingGroups(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(groupId)
+        return newSet
+      })
+    }
   }
 
   if (groups.length === 0) {
@@ -249,7 +281,11 @@ export default function GroupList({ groups, setGroups }) {
             <GroupCard
               key={group.id}
               group={group}
-              onDelete={() => setGroups(groups.filter((x) => x.id !== group.id))}
+              onDelete={() => handleDeleteGroup(group.id)}
+              isDeleting={deletingGroups.has(group.id)}
+              canDelete={user && group.created_by === user.id}
+              isAuthenticated={isAuthenticated}
+              onEdit={onEdit}
             />
           ))}
         </div>

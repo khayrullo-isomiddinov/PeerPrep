@@ -1,15 +1,18 @@
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { 
   faUsers, faCalendar, faTrophy, faAward, faClock, 
   faChevronRight, faUserPlus, faUserMinus, faTrash,
-  faGraduationCap, faBook, faBullseye, faStar
+  faGraduationCap, faBook, faBullseye, faStar, faEdit
 } from "@fortawesome/free-solid-svg-icons"
-import Button from "../../components/Button"
 
-export default function GroupCard({ group, onDelete }) {
+export default function GroupCard({ group, onDelete, isDeleting = false, canDelete = false, isAuthenticated = false, onEdit }) {
   const [joined, setJoined] = useState(false)
   const [showDetails, setShowDetails] = useState(false)
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false)
+  const [isClosing, setIsClosing] = useState(false)
+  const navigate = useNavigate()
 
   // Calculate days until mission deadline
   const getDaysUntilDeadline = () => {
@@ -23,6 +26,15 @@ export default function GroupCard({ group, onDelete }) {
 
   const daysUntilDeadline = getDaysUntilDeadline()
   const memberCount = group.members || Math.floor(Math.random() * 50) + 5
+
+  const handleModalClose = (callback) => {
+    setIsClosing(true)
+    setTimeout(() => {
+      setShowLoginPrompt(false)
+      setIsClosing(false)
+      if (callback) callback()
+    }, 200)
+  }
 
   return (
     <div className="group relative bg-white rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 overflow-hidden">
@@ -113,22 +125,51 @@ export default function GroupCard({ group, onDelete }) {
           </button>
 
           <div className="flex items-center space-x-2">
-            <Button
-              variant={joined ? "secondary" : "primary"}
-              onClick={() => setJoined(!joined)}
-              className="flex items-center space-x-2"
-            >
-              <FontAwesomeIcon icon={joined ? faUserMinus : faUserPlus} />
-              <span>{joined ? "Leave" : "Join"}</span>
-            </Button>
-            <Button 
-              variant="secondary" 
-              onClick={onDelete}
-              className="flex items-center space-x-2 text-red-600 hover:text-red-700 hover:border-red-300"
-            >
-              <FontAwesomeIcon icon={faTrash} />
-              <span>Delete</span>
-            </Button>
+            {/* Only show join button if user is not the creator */}
+            {!canDelete && (
+              <button
+                onClick={() => {
+                  if (!isAuthenticated) {
+                    setShowLoginPrompt(true)
+                  } else {
+                    setJoined(!joined)
+                  }
+                }}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-semibold transition-all duration-200 ${
+                  joined 
+                    ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 border border-gray-300' 
+                    : 'bg-blue-500 text-white hover:bg-blue-600 border border-blue-500 hover:border-blue-600'
+                }`}
+              >
+                <FontAwesomeIcon icon={joined ? faUserMinus : faUserPlus} />
+                <span>{joined ? "Leave" : "Join"}</span>
+              </button>
+            )}
+            
+            {/* Show admin badge for creators */}
+            {canDelete && (
+              <div className="flex items-center space-x-2">
+                <div className="px-3 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg text-sm font-medium flex items-center space-x-1">
+                  <FontAwesomeIcon icon={faStar} className="text-xs" />
+                  <span>Admin</span>
+                </div>
+                <button
+                  onClick={() => onEdit && onEdit(group)}
+                  className="flex items-center space-x-2 px-4 py-2 rounded-xl font-semibold transition-all duration-200 bg-blue-500 text-white hover:bg-blue-600 border border-blue-500 hover:border-blue-600"
+                >
+                  <FontAwesomeIcon icon={faEdit} />
+                  <span>Edit</span>
+                </button>
+                <button
+                  onClick={onDelete}
+                  disabled={isDeleting}
+                  className="flex items-center space-x-2 px-4 py-2 rounded-xl font-semibold transition-all duration-200 bg-red-500 text-white hover:bg-red-600 border border-red-500 hover:border-red-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-red-500"
+                >
+                  <FontAwesomeIcon icon={faTrash} />
+                  <span>{isDeleting ? "Deleting..." : "Delete"}</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -153,6 +194,12 @@ export default function GroupCard({ group, onDelete }) {
                     <FontAwesomeIcon icon={faUsers} className="text-green-500" />
                     <span>Members: {memberCount}</span>
                   </div>
+                  {canDelete && (
+                    <div className="flex items-center space-x-2">
+                      <FontAwesomeIcon icon={faStar} className="text-purple-500" />
+                      <span className="text-purple-600 font-medium">You are the admin</span>
+                    </div>
+                  )}
                 </div>
               </div>
               
@@ -202,6 +249,45 @@ export default function GroupCard({ group, onDelete }) {
           </div>
         )}
       </div>
+
+      {/* Login Prompt Modal */}
+      {(showLoginPrompt || isClosing) && (
+        <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-200 ${isClosing ? 'opacity-0' : 'opacity-100'}`}>
+          <div className={`bg-white rounded-2xl p-8 max-w-md mx-4 shadow-2xl transform transition-all duration-200 ${isClosing ? 'scale-95 opacity-0' : 'scale-100 opacity-100'}`}>
+            <div className="text-center">
+              <div className="flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full mb-6 mx-auto">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-4">Login Required</h3>
+              <p className="text-gray-600 mb-6">
+                You need to be logged in to join study groups. Sign up or log in to get started!
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <button 
+                  onClick={() => handleModalClose(() => navigate("/login"))}
+                  className="px-6 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors font-semibold text-center"
+                >
+                  Log In
+                </button>
+                <button 
+                  onClick={() => handleModalClose(() => navigate("/register"))}
+                  className="px-6 py-3 bg-purple-500 text-white rounded-xl hover:bg-purple-600 transition-colors font-semibold text-center"
+                >
+                  Sign Up
+                </button>
+              </div>
+              <button
+                onClick={() => handleModalClose()}
+                className="mt-4 text-gray-500 hover:text-gray-700 text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

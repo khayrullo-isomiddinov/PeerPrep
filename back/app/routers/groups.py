@@ -267,6 +267,51 @@ def leave_group(
     
     return {"message": "Successfully left group"}
 
+@router.delete("/{group_id}")
+def delete_group(
+    group_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(_get_user_from_token)
+):
+    """Delete a group (only by group creator)"""
+    
+    group = session.exec(select(Group).where(Group.id == group_id)).first()
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Group not found"
+        )
+    
+    # Check if user is the group creator
+    if group.created_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the group creator can delete the group"
+        )
+    
+    # Delete all related records first (due to foreign key constraints)
+    # Delete group members
+    session.exec(select(GroupMember).where(GroupMember.group_id == group_id))
+    members = session.exec(select(GroupMember).where(GroupMember.group_id == group_id)).all()
+    for member in members:
+        session.delete(member)
+    
+    # Delete mission submissions
+    submissions = session.exec(select(MissionSubmission).where(MissionSubmission.group_id == group_id)).all()
+    for submission in submissions:
+        session.delete(submission)
+    
+    # Delete badges associated with this group
+    badges = session.exec(select(Badge).where(Badge.group_id == group_id)).all()
+    for badge in badges:
+        session.delete(badge)
+    
+    # Finally delete the group
+    session.delete(group)
+    session.commit()
+    
+    return {"message": "Group deleted successfully"}
+
 @router.get("/{group_id}/members", response_model=List[GroupMemberSchema])
 def get_group_members(
     group_id: str,
