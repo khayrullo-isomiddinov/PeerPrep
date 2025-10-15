@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @plugin "daisyui";
 
+
 @theme {
   --brand: #34d399;
   --brand-strong: #10b981;

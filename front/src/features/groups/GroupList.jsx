@@ -1,12 +1,13 @@
 import { useState, useMemo } from "react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { 
-  faSearch, faFilter, faUsers, faTrophy, faGraduationCap,
+import {
+  faSearch, faFilter, faUsers, faTrophy,
   faSort, faSortUp, faSortDown, faEye, faEyeSlash
 } from "@fortawesome/free-solid-svg-icons"
 import GroupCard from "./GroupCard"
 import { deleteGroup } from "../../utils/api"
 import { useAuth } from "../auth/AuthContext"
+import Button from "../../components/Button"
 
 export default function GroupList({ groups, setGroups, onEdit }) {
   const [searchTerm, setSearchTerm] = useState("")
@@ -17,119 +18,78 @@ export default function GroupList({ groups, setGroups, onEdit }) {
   const [deletingGroups, setDeletingGroups] = useState(new Set())
   const { user, isAuthenticated } = useAuth()
 
-  // Get unique fields for filter
   const fields = useMemo(() => {
-    const fieldSet = new Set(groups.map(g => g.field))
-    return Array.from(fieldSet).sort()
+    const s = new Set(groups.map(g => g.field).filter(Boolean))
+    return Array.from(s).sort()
   }, [groups])
 
-  // Filter and sort groups
   const filteredAndSortedGroups = useMemo(() => {
     let filtered = groups.filter(group => {
-      const matchesSearch = group.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           group.field.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           (group.description && group.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                           (group.exam && group.exam.toLowerCase().includes(searchTerm.toLowerCase()))
-      
+      const q = searchTerm.toLowerCase()
+      const n = (group.name || "").toLowerCase()
+      const f = (group.field || "").toLowerCase()
+      const d = (group.description || "").toLowerCase()
+      const e = (group.exam || "").toLowerCase()
+      const matchesSearch = n.includes(q) || f.includes(q) || d.includes(q) || e.includes(q)
       const matchesField = !selectedField || group.field === selectedField
       const matchesMission = !showMissionsOnly || group.mission_title
-      
       return matchesSearch && matchesField && matchesMission
     })
-
-    // Sort groups
     filtered.sort((a, b) => {
-      let aValue, bValue
-      
-      switch (sortBy) {
-        case "name":
-          aValue = a.name.toLowerCase()
-          bValue = b.name.toLowerCase()
-          break
-        case "field":
-          aValue = a.field.toLowerCase()
-          bValue = b.field.toLowerCase()
-          break
-        case "members":
-          aValue = a.members || 0
-          bValue = b.members || 0
-          break
-        case "created":
-          aValue = new Date(a.created_at || 0)
-          bValue = new Date(b.created_at || 0)
-          break
-        default:
-          aValue = a.name.toLowerCase()
-          bValue = b.name.toLowerCase()
-      }
-
-      if (sortOrder === "asc") {
-        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0
-      } else {
-        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
-      }
+      let av, bv
+      if (sortBy === "name") { av = (a.name || "").toLowerCase(); bv = (b.name || "").toLowerCase() }
+      else if (sortBy === "field") { av = (a.field || "").toLowerCase(); bv = (b.field || "").toLowerCase() }
+      else if (sortBy === "members") { av = a.members || 0; bv = b.members || 0 }
+      else if (sortBy === "created") { av = new Date(a.created_at || 0); bv = new Date(b.created_at || 0) }
+      else { av = (a.name || "").toLowerCase(); bv = (b.name || "").toLowerCase() }
+      if (sortOrder === "asc") return av < bv ? -1 : av > bv ? 1 : 0
+      return av > bv ? -1 : av < bv ? 1 : 0
     })
-
     return filtered
   }, [groups, searchTerm, selectedField, showMissionsOnly, sortBy, sortOrder])
 
-  const handleSort = (field) => {
-    if (sortBy === field) {
-      setSortOrder(sortOrder === "asc" ? "desc" : "asc")
-    } else {
-      setSortBy(field)
-      setSortOrder("asc")
-    }
+  function handleSort(field) {
+    if (sortBy === field) setSortOrder(sortOrder === "asc" ? "desc" : "asc")
+    else { setSortBy(field); setSortOrder("asc") }
   }
 
-  const getSortIcon = (field) => {
+  function getSortIcon(field) {
     if (sortBy !== field) return faSort
     return sortOrder === "asc" ? faSortUp : faSortDown
   }
 
-  const handleDeleteGroup = async (groupId) => {
-    if (!user) {
-      alert("You must be logged in to delete groups")
-      return
-    }
-
-    if (!confirm("Are you sure you want to delete this group? This action cannot be undone.")) {
-      return
-    }
-
+  async function handleDeleteGroup(groupId) {
+    if (!user) { alert("You must be logged in to delete groups"); return }
+    if (!confirm("Delete this group? This cannot be undone.")) return
     setDeletingGroups(prev => new Set(prev).add(groupId))
-    
     try {
       await deleteGroup(groupId)
-      setGroups(groups.filter(group => group.id !== groupId))
+      setGroups(groups.filter(g => g.id !== groupId))
     } catch (error) {
-      console.error("Failed to delete group:", error)
-      const errorMessage = error?.response?.data?.detail || "Failed to delete group"
-      alert(errorMessage)
+      const msg = error?.response?.data?.detail || "Failed to delete group"
+      alert(msg)
     } finally {
       setDeletingGroups(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(groupId)
-        return newSet
+        const ns = new Set(prev)
+        ns.delete(groupId)
+        return ns
       })
     }
   }
 
   if (groups.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-12 text-center">
+      <div className="surface inset-pad rounded-l text-center premium-scale-in">
         <div className="max-w-md mx-auto">
-          <div className="flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full mb-6 mx-auto">
-            <FontAwesomeIcon icon={faUsers} className="text-white text-2xl" />
+          <div className="w-16 h-16 rounded-full premium-bg-primary grid place-items-center mx-auto mb-4 shadow-2">
+            <FontAwesomeIcon icon={faUsers} className="text-white text-xl" />
           </div>
-          <h3 className="text-2xl font-bold text-gray-900 mb-4">No Groups Yet</h3>
-          <p className="text-gray-600 mb-6">
-            Create your first study group to start learning together with others!
-          </p>
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-            <p className="text-blue-800 text-sm">
-              💡 <strong>Tip:</strong> Add a mission challenge to make your group more engaging and competitive!
-            </p>
+          <h3 className="text-2xl font-extrabold">No groups yet</h3>
+          <p className="text-muted mt-2">Create your first study group to start learning together.</p>
+          <div className="premium-card inset-pad mt-6">
+            <div className="text-sm">
+              <span className="premium-text-primary">Tip:</span> Add a mission challenge to make it engaging.
+            </div>
           </div>
         </div>
       </div>
@@ -138,146 +98,137 @@ export default function GroupList({ groups, setGroups, onEdit }) {
 
   return (
     <div className="space-y-6">
-      {/* Filters and Search */}
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-        <div className="flex flex-col lg:flex-row gap-4">
-          {/* Search */}
-          <div className="flex-1">
-            <div className="relative">
-              <FontAwesomeIcon 
-                icon={faSearch} 
-                className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" 
-              />
+      <div className="surface inset-pad rounded-l premium-scale-in">
+        <div className="flex flex-col lg:flex-row gap-4 lg:items-center lg:justify-between">
+          <div className="w-full lg:max-w-xl">
+            <div className="hidden md:inline-flex search-pill w-full">
+              <svg className="w-4 h-4 opacity-70" viewBox="0 0 24 24" fill="none">
+                <path d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
               <input
-                type="text"
-                placeholder="Search groups by name, field, or description..."
+                placeholder="Search groups…"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onChange={e => setSearchTerm(e.target.value)}
               />
+              {searchTerm && (
+                <button onClick={() => setSearchTerm("")} className="text-muted hover:opacity-100">⨯</button>
+              )}
+            </div>
+            <div className="md:hidden premium-input flex items-center gap-2 px-3 py-2 rounded-m">
+              <FontAwesomeIcon icon={faSearch} className="opacity-70" />
+              <input
+                className="bg-transparent outline-none w-full"
+                placeholder="Search groups…"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+              {searchTerm && (
+                <button onClick={() => setSearchTerm("")} className="text-muted hover:opacity-100">⨯</button>
+              )}
             </div>
           </div>
 
-          {/* Field Filter */}
-          <div className="lg:w-48">
-            <div className="relative">
-              <FontAwesomeIcon 
-                icon={faFilter} 
-                className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" 
-              />
-              <select
-                value={selectedField}
-                onChange={(e) => setSelectedField(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
+          <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+            <div className="relative min-w-[12rem]">
+              <div className="premium-input rounded-m flex items-center gap-2 px-3 py-2">
+                <FontAwesomeIcon icon={faFilter} className="opacity-70" />
+                <select
+                  value={selectedField}
+                  onChange={e => setSelectedField(e.target.value)}
+                  className="bg-transparent outline-none w-full"
+                >
+                  <option value="">All fields</option>
+                  {fields.map(f => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="premium-glass rounded-pill p-1 inline-flex">
+              <button
+                onClick={() => setShowMissionsOnly(v => !v)}
+                className={`pill px-3 py-1.5 text-sm font-semibold ${showMissionsOnly ? "premium-text-primary" : "text-muted"}`}
               >
-                <option value="">All Fields</option>
-                {fields.map(field => (
-                  <option key={field} value={field}>{field}</option>
-                ))}
-              </select>
+                <span className="inline-flex items-center gap-2">
+                  <FontAwesomeIcon icon={showMissionsOnly ? faEyeSlash : faEye} />
+                  <span>{showMissionsOnly ? "Hide missions" : "Missions only"}</span>
+                </span>
+              </button>
             </div>
-          </div>
-
-          {/* Mission Filter */}
-          <div className="lg:w-48">
-            <button
-              onClick={() => setShowMissionsOnly(!showMissionsOnly)}
-              className={`w-full flex items-center justify-center space-x-2 px-4 py-3 border rounded-xl transition-colors ${
-                showMissionsOnly 
-                  ? 'bg-orange-50 border-orange-200 text-orange-700' 
-                  : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <FontAwesomeIcon icon={showMissionsOnly ? faEyeSlash : faEye} />
-              <span>{showMissionsOnly ? 'Hide Missions' : 'Missions Only'}</span>
-            </button>
           </div>
         </div>
 
-        {/* Sort Options */}
-        <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
-          <div className="flex items-center space-x-2 text-sm text-gray-600">
+        <div className="mt-4 pt-4 border-t border-white/10 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="inline-flex items-center gap-2 text-muted">
             <FontAwesomeIcon icon={faSort} />
-            <span>Sort by:</span>
+            <span className="text-sm">Sort by</span>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="premium-glass rounded-pill p-1 inline-flex">
             {[
               { key: "name", label: "Name" },
               { key: "field", label: "Field" },
               { key: "members", label: "Members" },
               { key: "created", label: "Created" }
-            ].map(option => (
+            ].map(opt => (
               <button
-                key={option.key}
-                onClick={() => handleSort(option.key)}
-                className={`flex items-center space-x-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  sortBy === option.key
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
+                key={opt.key}
+                onClick={() => handleSort(opt.key)}
+                className={`pill px-3 py-1.5 text-sm font-semibold inline-flex items-center gap-2 ${sortBy === opt.key ? "premium-text-primary" : "text-muted"}`}
               >
-                <span>{option.label}</span>
-                <FontAwesomeIcon icon={getSortIcon(option.key)} className="text-xs" />
+                <span>{opt.label}</span>
+                <FontAwesomeIcon icon={getSortIcon(opt.key)} className="text-xs" />
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Results Summary */}
-      <div className="flex items-center justify-between text-sm text-gray-600">
-        <div className="flex items-center space-x-4">
-          <span>
-            Showing {filteredAndSortedGroups.length} of {groups.length} groups
-          </span>
-          {searchTerm && (
-            <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-              Search: "{searchTerm}"
-            </span>
-          )}
+      <div className="flex items-center justify-between text-sm text-muted">
+        <div className="flex flex-wrap items-center gap-2">
+          <span>Showing {filteredAndSortedGroups.length} of {groups.length} groups</span>
+          {searchTerm && <span className="badge">Search: “{searchTerm}”</span>}
           {selectedField && (
-            <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full">
-              Field: {selectedField}
-            </span>
+            <span className="badge">Field: {selectedField}</span>
           )}
           {showMissionsOnly && (
-            <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded-full">
-              Missions Only
+            <span className="badge inline-flex items-center gap-1">
+              <FontAwesomeIcon icon={faTrophy} />
+              Missions only
             </span>
           )}
         </div>
-        <div className="flex items-center space-x-2">
-          <FontAwesomeIcon icon={faUsers} className="text-blue-500" />
-          <span>{groups.reduce((sum, g) => sum + (g.members || 0), 0)} total members</span>
+        <div className="inline-flex items-center gap-2">
+          <FontAwesomeIcon icon={faUsers} className="premium-text-primary" />
+          <span>{groups.reduce((s, g) => s + (g.members || 0), 0)} total members</span>
         </div>
       </div>
 
-      {/* Groups Grid */}
       {filteredAndSortedGroups.length === 0 ? (
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-12 text-center">
+        <div className="surface inset-pad rounded-l text-center premium-scale-in">
           <div className="max-w-md mx-auto">
-            <div className="flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-6 mx-auto">
-              <FontAwesomeIcon icon={faSearch} className="text-gray-400 text-2xl" />
+            <div className="w-16 h-16 rounded-full bg-paper grid place-items-center mx-auto mb-4 shadow-1">
+              <FontAwesomeIcon icon={faSearch} className="opacity-70 text-xl" />
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-4">No Groups Found</h3>
-            <p className="text-gray-600 mb-6">
-              Try adjusting your search terms or filters to find what you're looking for.
-            </p>
-            <button
-              onClick={() => {
-                setSearchTerm("")
-                setSelectedField("")
-                setShowMissionsOnly(false)
-              }}
-              className="px-6 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors"
-            >
-              Clear Filters
-            </button>
+            <h3 className="text-xl font-extrabold">No groups found</h3>
+            <p className="text-muted mt-2">Try adjusting your search or filters.</p>
+            <div className="mt-6">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setSearchTerm("")
+                  setSelectedField("")
+                  setShowMissionsOnly(false)
+                }}
+              >
+                Clear filters
+              </Button>
+            </div>
           </div>
         </div>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredAndSortedGroups.map((group) => (
+          {filteredAndSortedGroups.map(group => (
             <GroupCard
               key={group.id}
               group={group}

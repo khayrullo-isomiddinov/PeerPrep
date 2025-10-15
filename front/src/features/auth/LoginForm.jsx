@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useLocation, useNavigate, Link } from "react-router-dom"
 import { useAuth } from "./AuthContext"
 import { loginUser } from "../../utils/api"
 import AuthLayout from "./AuthLayout"
@@ -10,6 +10,7 @@ export default function LoginForm() {
   const [msg, setMsg] = useState("")
   const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [show, setShow] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
   const auth = useAuth()
@@ -34,8 +35,6 @@ export default function LoginForm() {
       auth.login({ access_token: data.access_token, user: data.user })
       setMsg(`Welcome back, ${data.user.email}`)
       setSuccess(true)
-      
-      // Small delay to show success message before navigation
       setTimeout(() => {
         navigate("/groups", { replace: true })
       }, 500)
@@ -49,24 +48,62 @@ export default function LoginForm() {
 
   return (
     <AuthLayout title="Welcome Back" subtitle="Sign in to your account">
-      <form onSubmit={submit} className="space-y-5">
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Email</label>
-          <input type="email" value={email} onChange={e=>setEmail(e.target.value)} className="w-full block rounded-xl border border-slate-300/60 dark:border-white/10 bg-white/90 dark:bg-white/5 px-4 py-3 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:border-indigo-500/60" placeholder="you@example.com" required />
+      <form onSubmit={submit} className="space-y-5 premium-fade-in">
+        <div className="field-row">
+          <label className="label">Email</label>
+          <input
+            type="email"
+            value={email}
+            onChange={e=>setEmail(e.target.value)}
+            className="input premium-input"
+            placeholder="you@example.com"
+            required
+          />
         </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Password</label>
-          <input type="password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full block rounded-xl border border-slate-300/60 dark:border-white/10 bg-white/90 dark:bg-white/5 px-4 py-3 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:border-indigo-500/60" placeholder="••••••••" required />
+
+        <div className="field-row">
+          <label className="label">Password</label>
+          <div className="relative">
+            <input
+              type={show ? "text" : "password"}
+              value={password}
+              onChange={e=>setPassword(e.target.value)}
+              className="input premium-input pr-12"
+              placeholder="••••••••"
+              required
+            />
+            <button
+              type="button"
+              onClick={()=>setShow(s=>!s)}
+              className="absolute inset-y-0 right-2 my-auto px-2 rounded-s premium-hover text-muted"
+              aria-label="Toggle password visibility"
+            >
+              {show ? "Hide" : "Show"}
+            </button>
+          </div>
+          <div className="flex items-center justify-between mt-1">
+            <label className="inline-flex items-center gap-2 text-sm text-muted">
+              <input type="checkbox" className="checkbox checkbox-sm" />
+              Remember me
+            </label>
+            <Link to="/forgot" className="text-sm link-quiet">Forgot password?</Link>
+          </div>
         </div>
-        <button 
-          type="submit" 
+
+        <button
+          type="submit"
           disabled={loading}
-          className="w-full rounded-xl px-4 py-3 font-semibold shadow-sm bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-indigo-500/60 disabled:opacity-60 disabled:cursor-not-allowed"
+          className="btn w-full premium-focus disabled:opacity-60"
         >
           {loading ? "Signing in..." : "Sign In"}
         </button>
       </form>
-      {msg && <p className={`mt-5 text-center text-sm ${success ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>{msg}</p>}
+
+      {msg && (
+        <p className={`mt-5 text-center text-sm ${success ? "premium-text-success" : "premium-text-error"}`}>
+          {msg}
+        </p>
+      )}
     </AuthLayout>
   )
 }

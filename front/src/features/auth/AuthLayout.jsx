@@ -2,57 +2,58 @@ import { Link } from "react-router-dom"
 
 export default function AuthLayout({ title, subtitle, children }) {
   return (
-    <div className="min-h-[80vh] grid lg:grid-cols-2 gap-0">
-      <section className="relative hidden lg:flex items-center justify-center overflow-hidden p-12">
+    <div className="min-h-[85vh] grid lg:grid-cols-2">
+      <section className="relative hidden lg:flex items-center justify-center p-10">
         <div className="absolute inset-0 -z-10">
-          <div className="absolute -top-24 -left-24 h-96 w-96 rounded-full blur-3xl opacity-40 bg-gradient-to-br from-indigo-500 via-fuchsia-500 to-emerald-400" />
-          <div className="absolute -bottom-24 -right-24 h-[28rem] w-[28rem] rounded-full blur-3xl opacity-40 bg-gradient-to-tr from-emerald-400 via-sky-400 to-indigo-500" />
-          <div className="absolute inset-0 bg-[radial-gradient(70%_60%_at_20%_20%,rgba(255,255,255,0.12),transparent_60%),radial-gradient(60%_50%_at_80%_80%,rgba(255,255,255,0.06),transparent_60%)] dark:bg-[radial-gradient(70%_60%_at_20%_20%,rgba(255,255,255,0.06),transparent_60%),radial-gradient(60%_50%_at_80%_80%,rgba(255,255,255,0.03),transparent_60%)]" />
+          <div className="absolute -top-24 -left-24 h-96 w-96 rounded-full blur-3xl opacity-40" style={{ background: "linear-gradient(135deg, var(--brand), var(--brand-soft))" }} />
+          <div className="absolute -bottom-24 -right-24 h-[28rem] w-[28rem] rounded-full blur-3xl opacity-30" style={{ background: "linear-gradient(135deg, #60a5fa20, #a78bfa20)" }} />
         </div>
 
-        <div className="max-w-xl w-full text-center space-y-8">
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
-            Study smarter with <span className="text-[--color-accent]">PeerPrep</span>
-          </h1>
-          <p className="text-slate-600 dark:text-slate-300 text-lg">
-            Find groups, plan events, and keep momentum. Your study crew, organized.
-          </p>
+        <div className="max-w-xl w-full space-y-8 premium-fade-in">
+          <div className="hero-accent blur-aura">
+            <span className="badge">PeerPrep</span>
+            <h1 className="mt-4 premium-heading">Study smarter with PeerPrep</h1>
+            <p className="mt-3 text-muted text-lg">Find groups, plan events, and keep momentum. Your study crew, organized.</p>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-2xl p-4 card">
-              <div className="text-sm opacity-80">Active groups</div>
-              <div className="text-2xl font-bold">1,248</div>
+            <div className="mt-8 grid grid-cols-3 gap-3">
+              <div className="card text-center">
+                <div className="text-sm text-muted">Active groups</div>
+                <div className="text-2xl font-extrabold">1,248</div>
+              </div>
+              <div className="card text-center">
+                <div className="text-sm text-muted">Sessions this week</div>
+                <div className="text-2xl font-extrabold">3,972</div>
+              </div>
+              <div className="card text-center">
+                <div className="text-sm text-muted">Avg. focus</div>
+                <div className="text-2xl font-extrabold">87%</div>
+              </div>
             </div>
-            <div className="rounded-2xl p-4 card">
-              <div className="text-sm opacity-80">Sessions this week</div>
-              <div className="text-2xl font-bold">3,972</div>
-            </div>
-            <div className="rounded-2xl p-4 card">
-              <div className="text-sm opacity-80">Avg. focus</div>
-              <div className="text-2xl font-bold">87%</div>
-            </div>
-          </div>
 
-          <div className="flex items-center justify-center gap-6">
-            <img className="h-10 w-10 rounded-full ring-2 ring-white/60 dark:ring-white/10" src="https://i.pravatar.cc/100?img=1" />
-            <img className="h-10 w-10 rounded-full ring-2 ring-white/60 dark:ring-white/10" src="https://i.pravatar.cc/100?img=2" />
-            <img className="h-10 w-10 rounded-full ring-2 ring-white/60 dark:ring-white/10" src="https://i.pravatar.cc/100?img=3" />
-            <div className="text-sm text-slate-600 dark:text-slate-300">
-              Loved by students worldwide
+            <div className="mt-8 flex items-center gap-4">
+              <div className="relative">
+                <div className="w-12 h-12 rounded-full bg-paper outline outline-1 outline-white/10 shadow-1 animate-float" />
+                <div className="absolute -right-3 top-1 w-8 h-8 rounded-full bg-paper outline outline-1 outline-white/10 shadow-1 animate-float" style={{ animationDelay: ".2s" }} />
+                <div className="absolute -left-4 -bottom-2 w-6 h-6 rounded-full bg-paper outline outline-1 outline-white/10 shadow-1 animate-float" style={{ animationDelay: ".4s" }} />
+              </div>
+              <div className="text-sm text-muted">Loved by students worldwide</div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="flex items-center justify-center px-4 py-12">
-        <div className="auth-card w-full">
-          <div className="mb-8 text-center">
-            <h2 className="text-3xl font-extrabold">{title}</h2>
-            {subtitle ? <p className="mt-2 text-slate-500 dark:text-slate-400">{subtitle}</p> : null}
+      <section className="flex items-center justify-center p-6">
+        <div className="auth-card w-full premium-scale-in">
+          <div className="mb-6 text-center">
+            <div className="inline-flex items-center gap-2">
+              <span className="brand-mark" />
+              <h2 className="text-3xl font-extrabold">{title}</h2>
+            </div>
+            {subtitle ? <p className="mt-2 text-muted">{subtitle}</p> : null}
           </div>
           {children}
-          <div className="mt-8 text-center text-sm text-slate-500 dark:text-slate-400">
-            <Link to="/" className="hover:underline">Back to Home</Link>
+          <div className="mt-8 text-center text-sm text-muted">
+            <Link to="/" className="link-quiet hover:opacity-100">Back to Home</Link>
           </div>
         </div>
       </section>

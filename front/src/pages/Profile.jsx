@@ -45,98 +45,126 @@ export default function Profile() {
   if (!isAuthenticated) return null
 
   return (
-    <div className="space-y-20">
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-pink-400 via-rose-400 to-red-400 dark:from-pink-800 dark:via-rose-900 dark:to-red-900 py-16 px-6 text-center shadow-xl">
-        <div data-parallax="0.10" className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-pink-300/40 blur-3xl dark:bg-pink-500/20" />
-        <div data-parallax="0.22" className="absolute -bottom-32 -left-32 w-96 h-96 rounded-full bg-rose-300/40 blur-3xl dark:bg-rose-600/20" />
-        <div className="relative z-10 max-w-3xl mx-auto">
-          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white">My <span className="text-yellow-200">Profile</span></h1>
-          <p className="mt-4 text-lg text-white/90 leading-relaxed">Manage your personal info, groups, and events all in one place.</p>
+    <div className="min-h-[80vh]">
+      <div className="nav-spacer" />
+      <section className="container-page section">
+        <div className="hero-accent premium-scale-in">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div className="h-16 w-16 rounded-full overflow-hidden outline outline-1 outline-white/15 shadow-2">
+                <img
+                  className="h-full w-full object-cover"
+                  src={`https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(form.email || "user")}`}
+                  alt="avatar"
+                />
+              </div>
+              <div>
+                <h1 className="premium-heading">{form.name || "New User"}</h1>
+                <p className="text-muted">{form.email}</p>
+              </div>
+            </div>
+            <div className="inline-flex items-center gap-2">
+              {!editing ? (
+                <Button variant="secondary" onClick={() => setEditing(true)}>Edit Profile</Button>
+              ) : (
+                <div className="inline-flex items-center gap-2">
+                  <Button onClick={handleSave}>Save</Button>
+                  <Button variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </section>
 
-      <section className="max-w-4xl mx-auto px-6">
+      <main className="container-page section space-y-10">
         <Card>
           {!editing ? (
-            <div className="space-y-4">
-              <div>
-                <h2 className="text-2xl font-semibold">{form.name || "New User"}</h2>
-                <p className="text-slate-500 dark:text-slate-400">{form.email}</p>
-              </div>
+            <div className="space-y-3">
+              <div className="text-sm text-muted">About</div>
               <p className="min-h-6">{form.bio || "Add a short bio to let others know you."}</p>
-              <Button variant="secondary" onClick={() => setEditing(true)}>Edit Profile</Button>
             </div>
           ) : (
-            <div className="space-y-4">
-              <input
-                className="w-full block rounded-xl border border-slate-300/60 dark:border-white/10 bg-white/90 dark:bg-white/5 px-4 py-3 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:border-indigo-500/60"
-                name="name"
-                value={form.name}
-                onChange={handleChange}
-                placeholder="Full name"
-              />
-              <input
-                className="w-full block rounded-xl border border-slate-300/60 dark:border-white/10 bg-white/90 dark:bg-white/5 px-4 py-3 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:border-indigo-500/60"
-                name="email"
-                value={form.email}
-                onChange={handleChange}
-                placeholder="Email"
-                type="email"
-              />
-              <textarea
-                className="w-full block rounded-xl border border-slate-300/60 dark:border-white/10 bg-white/90 dark:bg-white/5 px-4 py-3 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:border-indigo-500/60 min-h-[120px]"
-                name="bio"
-                value={form.bio}
-                onChange={handleChange}
-                placeholder="Short bio"
-              />
-              <div className="flex gap-2">
+            <div className="space-y-5">
+              <div className="field-row">
+                <label className="label">Full name</label>
+                <input
+                  className="input"
+                  name="name"
+                  value={form.name}
+                  onChange={handleChange}
+                  placeholder="Full name"
+                />
+              </div>
+              <div className="field-row">
+                <label className="label">Email</label>
+                <input
+                  className="input"
+                  name="email"
+                  value={form.email}
+                  onChange={handleChange}
+                  placeholder="Email"
+                  type="email"
+                />
+              </div>
+              <div className="field-row">
+                <label className="label">Bio</label>
+                <textarea
+                  className="textarea"
+                  name="bio"
+                  value={form.bio}
+                  onChange={handleChange}
+                  placeholder="Short bio"
+                  rows={4}
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
                 <Button onClick={handleSave}>Save</Button>
                 <Button variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
               </div>
             </div>
           )}
         </Card>
-      </section>
 
-      <section className="max-w-7xl mx-auto px-6">
-        <h2 className="text-2xl font-semibold mb-6">Joined Groups</h2>
-        <div className="card bg-base-200/40 shadow-xl border border-white/10">
-          <div className="card-body">
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="surface inset-pad">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-xl font-extrabold">Joined Groups</h2>
+              <span className="badge">{form.joinedGroups.length}</span>
+            </div>
             {form.joinedGroups.length === 0 ? (
-              <p className="text-slate-500 dark:text-slate-400">No groups yet.</p>
+              <p className="text-muted">No groups yet.</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {form.joinedGroups.map((g, i) => (
-                  <span key={i} className="badge badge-outline badge-lg">{g}</span>
+                  <span key={i} className="badge">{g}</span>
                 ))}
               </div>
             )}
           </div>
-        </div>
-      </section>
 
-      <section className="max-w-7xl mx-auto px-6">
-        <h2 className="text-2xl font-semibold mb-6">Upcoming Events</h2>
-        <div className="card bg-base-200/40 shadow-xl border border-white/10">
-          <div className="card-body">
+          <div className="surface inset-pad">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-xl font-extrabold">Upcoming Events</h2>
+              <span className="badge">{form.upcomingEvents.length}</span>
+            </div>
             {form.upcomingEvents.length === 0 ? (
-              <p className="text-slate-500 dark:text-slate-400">No events yet.</p>
+              <p className="text-muted">No events yet.</p>
             ) : (
-              <ul className="menu bg-transparent gap-1 p-0">
+              <ul className="space-y-2">
                 {form.upcomingEvents.map((e, i) => (
-                  <li key={i} className="rounded-lg">
-                    <a className="justify-between rounded-lg hover:bg-base-300/60">
-                      <span>{e}</span>
+                  <li key={i} className="premium-card">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">{e}</span>
                       <span className="badge">Soon</span>
-                    </a>
+                    </div>
                   </li>
                 ))}
               </ul>
             )}
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
     </div>
   )
 }

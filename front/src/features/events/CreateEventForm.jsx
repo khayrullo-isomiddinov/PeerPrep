@@ -24,7 +24,7 @@ export default function CreateEventForm({ onCreated }) {
     } else {
       const dt = new Date(startsAt)
       if (Number.isNaN(dt.getTime())) errs.startsAt = "Invalid date/time"
-      else if (dt.getTime() < Date.now() - 60_000) errs.startsAt = "Start must be in the future"
+      else if (dt.getTime() < Date.now() - 60000) errs.startsAt = "Start must be in the future"
     }
     const capNum = Number(capacity)
     if (!Number.isFinite(capNum) || capNum < 1) errs.capacity = "Capacity must be at least 1"
@@ -67,59 +67,94 @@ export default function CreateEventForm({ onCreated }) {
   }
 
   return (
-    <Card>
-      <form onSubmit={handleSubmit} className="space-y-5">
+    <Card variant="surface">
+      <form onSubmit={handleSubmit} className="space-y-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Create Event</h2>
-          {successMsg && <span className="text-sm text-emerald-400">{successMsg}</span>}
+          <div className="inline-flex items-center gap-2">
+            <span className="badge">New</span>
+            <h2 className="text-xl font-extrabold premium-heading">Create Event</h2>
+          </div>
+          {successMsg && <span className="text-sm premium-text-success">{successMsg}</span>}
         </div>
 
-        <div className="field-row">
-          <label htmlFor="title" className="label">Title</label>
-          <input
-            id="title"
-            className={`input ${fieldErrors.title ? "outline outline-1 outline-red-500/60" : ""}`}
-            placeholder="Event title"
-            value={title}
-            onChange={e=>setTitle(e.target.value)}
-            aria-invalid={!!fieldErrors.title}
-          />
-          {fieldErrors.title && <p className="mt-1 text-xs text-red-500">{fieldErrors.title}</p>}
+        {error && (
+          <div className="premium-card inset-pad">
+            <div className="text-sm premium-text-error">{error}</div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="field-row">
+            <label htmlFor="title" className="label">Title</label>
+            <input
+              id="title"
+              className={`input ${fieldErrors.title ? "ring-soft" : ""}`}
+              placeholder="Event title"
+              value={title}
+              onChange={e=>setTitle(e.target.value)}
+              aria-invalid={!!fieldErrors.title}
+            />
+            <div className="flex items-center justify-between text-sm text-muted">
+              <span>Name it clearly</span>
+              <span>{title.length}/100</span>
+            </div>
+            {fieldErrors.title && <p className="mt-1 text-sm premium-text-error">{fieldErrors.title}</p>}
+          </div>
+
+          <div className="field-row">
+            <label htmlFor="kind" className="label">Type</label>
+            <div className="inline-flex premium-glass rounded-pill p-1">
+              <button
+                type="button"
+                onClick={()=>setKind("one_off")}
+                className={`pill px-3 py-1.5 text-sm font-semibold ${kind==="one_off" ? "premium-text-primary" : "text-muted"}`}
+              >
+                One-off
+              </button>
+              <button
+                type="button"
+                onClick={()=>setKind("group")}
+                className={`pill px-3 py-1.5 text-sm font-semibold ${kind==="group" ? "premium-text-primary" : "text-muted"}`}
+              >
+                Group
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="field-row">
             <label htmlFor="starts_at" className="label">Start date & time</label>
             <input
               id="starts_at"
-              className={`input ${fieldErrors.startsAt ? "outline outline-1 outline-red-500/60" : ""}`}
+              className={`input ${fieldErrors.startsAt ? "ring-soft" : ""}`}
               type="datetime-local"
               value={startsAt}
               onChange={e=>setStartsAt(e.target.value)}
               aria-invalid={!!fieldErrors.startsAt}
             />
-            {fieldErrors.startsAt && <p className="mt-1 text-xs text-red-500">{fieldErrors.startsAt}</p>}
+            {fieldErrors.startsAt && <p className="mt-1 text-sm premium-text-error">{fieldErrors.startsAt}</p>}
           </div>
           <div className="field-row">
             <label htmlFor="location" className="label">Location</label>
             <input
               id="location"
-              className={`input ${fieldErrors.location ? "outline outline-1 outline-red-500/60" : ""}`}
+              className={`input ${fieldErrors.location ? "ring-soft" : ""}`}
               placeholder="e.g. Library Room 3B"
               value={location}
               onChange={e=>setLocation(e.target.value)}
               aria-invalid={!!fieldErrors.location}
             />
-            {fieldErrors.location && <p className="mt-1 text-xs text-red-500">{fieldErrors.location}</p>}
+            {fieldErrors.location && <p className="mt-1 text-sm premium-text-error">{fieldErrors.location}</p>}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="field-row">
             <label htmlFor="capacity" className="label">Capacity</label>
             <input
               id="capacity"
-              className={`input ${fieldErrors.capacity ? "outline outline-1 outline-red-500/60" : ""}`}
+              className={`input ${fieldErrors.capacity ? "ring-soft" : ""}`}
               type="number"
               min="1"
               placeholder="Capacity"
@@ -127,38 +162,23 @@ export default function CreateEventForm({ onCreated }) {
               onChange={e=>setCapacity(e.target.value)}
               aria-invalid={!!fieldErrors.capacity}
             />
-            {fieldErrors.capacity && <p className="mt-1 text-xs text-red-500">{fieldErrors.capacity}</p>}
+            {fieldErrors.capacity && <p className="mt-1 text-sm premium-text-error">{fieldErrors.capacity}</p>}
           </div>
           <div className="field-row">
-            <label htmlFor="kind" className="label">Type</label>
-            <select
-              id="kind"
-              className="input"
-              value={kind}
-              onChange={e=>setKind(e.target.value)}
-            >
-              <option value="one_off">One-off</option>
-              <option value="group">Group</option>
-            </select>
+            <label htmlFor="description" className="label">Description</label>
+            <textarea
+              id="description"
+              className="textarea"
+              placeholder="What is this event about?"
+              value={description}
+              onChange={e=>setDescription(e.target.value)}
+              rows={3}
+            />
           </div>
         </div>
 
-        <div className="field-row">
-          <label htmlFor="description" className="label">Description</label>
-          <textarea
-            id="description"
-            className="textarea"
-            placeholder="What is this event about?"
-            value={description}
-            onChange={e=>setDescription(e.target.value)}
-            rows={3}
-          />
-        </div>
-
-        {error && <div className="text-red-500 text-sm">{error}</div>}
-
         <div className="flex items-center justify-end gap-3">
-          <Button type="submit" disabled={loading}>{loading ? "Creating..." : "Create Event"}</Button>
+          <Button type="submit" loading={loading} className="min-w-36">Create Event</Button>
         </div>
       </form>
     </Card>
