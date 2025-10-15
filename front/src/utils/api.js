@@ -93,6 +93,11 @@ export async function leaveGroup(id) {
   return data
 }
 
+export async function checkGroupMembership(id) {
+  const { data } = await api.get(`groups/${id}/membership`)
+  return data
+}
+
 export async function getGroupMembers(id) {
   const { data } = await api.get(`groups/${id}/members`)
   return data

@@ -332,6 +332,34 @@ def get_group_members(
     
     return members
 
+@router.get("/{group_id}/membership")
+def check_membership(
+    group_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(_get_user_from_token)
+):
+    """Check if current user is a member of the group"""
+    
+    group = session.exec(select(Group).where(Group.id == group_id)).first()
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Group not found"
+        )
+    
+    membership = session.exec(
+        select(GroupMember).where(
+            GroupMember.group_id == group_id,
+            GroupMember.user_id == current_user.id
+        )
+    ).first()
+    
+    return {
+        "is_member": membership is not None,
+        "is_leader": membership.is_leader if membership else False,
+        "joined_at": membership.joined_at if membership else None
+    }
+
 @router.get("/{group_id}/leaderboard", response_model=List[LeaderboardEntry])
 def get_leaderboard(
     group_id: str,

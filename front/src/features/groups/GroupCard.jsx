@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { 
@@ -6,13 +6,34 @@ import {
   faChevronRight, faUserPlus, faUserMinus, faTrash,
   faGraduationCap, faBook, faBullseye, faStar, faEdit
 } from "@fortawesome/free-solid-svg-icons"
+import { checkGroupMembership, joinGroup, leaveGroup } from "../../utils/api"
 
 export default function GroupCard({ group, onDelete, isDeleting = false, canDelete = false, isAuthenticated = false, onEdit }) {
   const [joined, setJoined] = useState(false)
   const [showDetails, setShowDetails] = useState(false)
   const [showLoginPrompt, setShowLoginPrompt] = useState(false)
   const [isClosing, setIsClosing] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const navigate = useNavigate()
+
+  // Check membership status when component mounts or authentication changes
+  useEffect(() => {
+    if (isAuthenticated && !canDelete) {
+      checkMembershipStatus()
+    } else {
+      setJoined(false)
+    }
+  }, [isAuthenticated, group.id, canDelete])
+
+  async function checkMembershipStatus() {
+    try {
+      const membership = await checkGroupMembership(group.id)
+      setJoined(membership.is_member)
+    } catch (error) {
+      console.error("Failed to check membership:", error)
+      setJoined(false)
+    }
+  }
 
   // Calculate days until mission deadline
   const getDaysUntilDeadline = () => {
@@ -34,6 +55,29 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
       setIsClosing(false)
       if (callback) callback()
     }, 200)
+  }
+
+  async function handleJoinLeave() {
+    if (!isAuthenticated) {
+      setShowLoginPrompt(true)
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      if (joined) {
+        await leaveGroup(group.id)
+        setJoined(false)
+      } else {
+        await joinGroup(group.id)
+        setJoined(true)
+      }
+    } catch (error) {
+      console.error("Failed to join/leave group:", error)
+      // Optionally show error message to user
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -128,21 +172,16 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
             {/* Only show join button if user is not the creator */}
             {!canDelete && (
               <button
-                onClick={() => {
-                  if (!isAuthenticated) {
-                    setShowLoginPrompt(true)
-                  } else {
-                    setJoined(!joined)
-                  }
-                }}
+                onClick={handleJoinLeave}
+                disabled={isLoading}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-semibold transition-all duration-200 ${
                   joined 
                     ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 border border-gray-300' 
                     : 'bg-blue-500 text-white hover:bg-blue-600 border border-blue-500 hover:border-blue-600'
-                }`}
+                } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <FontAwesomeIcon icon={joined ? faUserMinus : faUserPlus} />
-                <span>{joined ? "Leave" : "Join"}</span>
+                <span>{isLoading ? (joined ? "Leaving..." : "Joining...") : (joined ? "Leave" : "Join")}</span>
               </button>
             )}
             

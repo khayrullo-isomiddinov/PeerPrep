@@ -1,17 +1,17 @@
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useEffect, useState } from "react"
 import { useAuth } from "../features/auth/AuthContext"
+import { useRef } from "react"
 
 export default function Navbar() {
-  const [drawerOpen, setDrawerOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const { isAuthenticated, user, logout } = useAuth()
+  const { isAuthenticated, user, logout, setUser } = useAuth()
   const loc = useLocation()
   const navigate = useNavigate()
+  const fileRef = useRef(null)
 
   useEffect(() => {
     setMenuOpen(false)
-    setDrawerOpen(false)
   }, [loc.pathname])
 
   function handleLogout() {
@@ -20,73 +20,108 @@ export default function Navbar() {
     navigate("/", { replace: true })
   }
 
-  const linkClass = ({ isActive }) =>
-    `nav-link ${isActive ? "is-active" : ""}`
+  function onPickPhoto() {
+    try { fileRef.current?.click() } catch {}
+  }
+
+  function onPhotoSelected(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const photoUrl = String(reader.result || "")
+      const updated = { ...(user || {}), photoUrl }
+      try { localStorage.setItem("user", JSON.stringify(updated)) } catch {}
+      setUser?.(updated)
+      setMenuOpen(false)
+    }
+    reader.readAsDataURL(file)
+  }
 
   return (
     <>
-      <nav className="nav-root z-nav">
+      <nav className="nav-root z-nav nav-clean">
         <div className="nav-shell">
-          <div className="nav-bar">
-            <div className="nav-aura" />
-            <div className="brand">
-              <button
-                className="lg:hidden btn-secondary px-2 py-2"
-                onClick={() => setDrawerOpen(true)}
-                aria-label="Open menu"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
-              </button>
-              <Link to="/" className="inline-flex items-center gap-2">
-                <span className="brand-mark" />
-                PeerPrep
+          <div className="nav-bar nav-clean-bar">
+            <div className="inline-flex items-center gap-5">
+              <Link to="/" className="brand-new">
+                <svg className="brand-ticket" viewBox="0 0 64 48" aria-hidden>
+                  <defs>
+                    <linearGradient id="pinkGrad" x1="0" x2="1">
+                      <stop offset="0%" stopColor="#fda4af"/>
+                      <stop offset="100%" stopColor="#ec4899"/>
+                    </linearGradient>
+                  </defs>
+                  <path fill="url(#pinkGrad)" d="M8 10c0-2.2 1.8-4 4-4h36c1.1 0 2 .9 2 2v4a4 4 0 1 0 0 8v8a4 4 0 1 0 0 8v4c0 1.1-.9 2-2 2H12c-2.2 0-4-1.8-4-4V10z"/>
+                  <path fill="#fff" opacity=".25" d="M22 10h2v28h-2zM30 10h2v28h-2zM38 10h2v28h-2z"/>
+                </svg>
+                <span className="brand-text">
+                  <span className="text-neutral-800">Peer</span>
+                  <span className="text-pink-600">Prep</span>
+                </span>
               </Link>
-              <ul className="nav-links ml-2">
-                <li><NavLink to="/groups" className={linkClass}>Groups</NavLink></li>
-                <li><NavLink to="/events" className={linkClass}>Events</NavLink></li>
-              </ul>
+              {!isAuthenticated && (
+                <div className="nav-pages">
+                  <NavLink to="/groups" className={({isActive}) => `nav-link-clean ${isActive ? 'is-active' : ''}`}>Groups</NavLink>
+                  <NavLink to="/events" className={({isActive}) => `nav-link-clean ${isActive ? 'is-active' : ''}`}>Events</NavLink>
+                </div>
+              )}
             </div>
 
-            <div className="nav-right">
-              <div className="hidden md:block">
-                <div className="search-pill">
-                  <svg className="w-4 h-4 opacity-70" viewBox="0 0 24 24" fill="none">
-                    <path d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  <input placeholder="Search…" />
-                </div>
-              </div>
+            {isAuthenticated && (
+              <ul className="nav-tabs">
+                <li><NavLink to="/" end className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}>Explore</NavLink></li>
+                <li><NavLink to="/groups" className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}>Groups</NavLink></li>
+                <li><NavLink to="/events" className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}>Upcoming Events</NavLink></li>
+              </ul>
+            )}
 
+            <div className="nav-right gap-2">
               {!isAuthenticated ? (
                 <>
-                  <Link to="/register" className="btn">Sign Up</Link>
-                  <Link to="/login" className="btn-secondary">Login</Link>
+                  <Link to="/login" className="btn-ghost-pink">Log in</Link>
+                  <Link to="/register" className="btn-pink">Sign up</Link>
                 </>
               ) : (
-                <div className="relative">
+                <div className="relative inline-flex items-center gap-2">
+                  <Link 
+                    to="/events/create" 
+                    className="nav-bell hover:bg-pink-50 hover:border-pink-200 transition-colors"
+                    aria-label="Create Event"
+                    title="Create Event"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" className="text-pink-600">
+                      <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                    </svg>
+                  </Link>
+                  <button className="nav-bell" aria-label="Notifications">
+                    <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M12 22a2 2 0 0 0 2-2H10a2 2 0 0 0 2 2zm6-6V11a6 6 0 1 0-12 0v5l-2 2v1h16v-1l-2-2z"/></svg>
+                  </button>
                   <button
                     onClick={() => setMenuOpen(v => !v)}
-                    className="lang-button"
+                    className="auth-chip"
                     aria-haspopup="menu"
                     aria-expanded={menuOpen ? "true" : "false"}
                   >
                     <img
-                      src={`https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(user?.email || "user")}`}
+                      src={user?.photoUrl || user?.avatarUrl || `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(user?.email || "user")}`}
                       alt="Profile"
                       className="nav-avatar"
                     />
-                    <span className="hidden sm:inline">{user?.email}</span>
-                    <svg width="14" height="14" viewBox="0 0 24 24" className="opacity-70">
+                    <span className="hidden sm:inline text-neutral-700">{user?.name || user?.email}</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" className="opacity-60">
                       <path fill="currentColor" d="M7 10l5 5 5-5z" />
                     </svg>
                   </button>
 
                   {menuOpen && (
                     <div className="lang-menu p-2">
+                      <button className="block w-full text-left px-3 py-2 nav-link" onClick={onPickPhoto}>Change Photo</button>
                       <Link to="/profile" className="block px-3 py-2 nav-link" onClick={() => setMenuOpen(false)}>Profile</Link>
                       <button className="block w-full text-left px-3 py-2 nav-link" onClick={handleLogout}>Logout</button>
                     </div>
                   )}
+                  <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPhotoSelected} />
                 </div>
               )}
             </div>
@@ -95,36 +130,6 @@ export default function Navbar() {
       </nav>
 
       <div className="nav-spacer" />
-
-      {drawerOpen && (
-        <div className="fixed inset-0 z-above-nav">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setDrawerOpen(false)} />
-          <div className="absolute right-0 top-0 h-full w-80 surface inset-pad shadow-2">
-            <div className="flex items-center justify-between mb-4">
-              <div className="brand">
-                <span className="brand-mark" />
-                Menu
-              </div>
-              <button className="btn-secondary px-3 py-1.5" onClick={() => setDrawerOpen(false)}>Close</button>
-            </div>
-            <div className="grid gap-2">
-              <NavLink to="/groups" className={linkClass} onClick={() => setDrawerOpen(false)}>Groups</NavLink>
-              <NavLink to="/events" className={linkClass} onClick={() => setDrawerOpen(false)}>Events</NavLink>
-              {!isAuthenticated ? (
-                <>
-                  <Link to="/register" className="btn" onClick={() => setDrawerOpen(false)}>Sign Up</Link>
-                  <Link to="/login" className="btn-secondary" onClick={() => setDrawerOpen(false)}>Login</Link>
-                </>
-              ) : (
-                <>
-                  <Link to="/profile" className="nav-link" onClick={() => setDrawerOpen(false)}>Profile</Link>
-                  <button className="nav-link text-left" onClick={() => { handleLogout(); setDrawerOpen(false) }}>Logout</button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </>
   )
 }

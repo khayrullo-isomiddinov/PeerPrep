@@ -1,6 +1,13 @@
 // src/features/events/EventCard.jsx
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
+import { 
+  faCalendarAlt, faMapMarkerAlt, faUsers, faClock, 
+  faEdit, faTrash, faUserPlus, faUserMinus, faCheck, faStar,
+  faGraduationCap, faBook, faMicroscope, faCode,
+  faMusic, faPalette, faDumbbell, faHeartbeat
+} from "@fortawesome/free-solid-svg-icons"
 import Button from "../../components/Button"
 import { deleteEvent, getAttendees, joinEvent, leaveEvent, updateEvent } from "../../utils/api"
 import { useAuth } from "../auth/AuthContext"
@@ -125,50 +132,243 @@ export default function EventCard({ event, onChanged }) {
     setDescription(event.description || "")
   }
 
+  const getCategoryIcon = (title, description) => {
+    const text = (title + " " + (description || "")).toLowerCase()
+    if (text.includes("math") || text.includes("calculus") || text.includes("algebra")) return faGraduationCap
+    if (text.includes("science") || text.includes("biology") || text.includes("chemistry") || text.includes("physics")) return faMicroscope
+    if (text.includes("tech") || text.includes("programming") || text.includes("coding") || text.includes("computer")) return faCode
+    if (text.includes("literature") || text.includes("english") || text.includes("writing") || text.includes("book")) return faBook
+    if (text.includes("art") || text.includes("design") || text.includes("creative")) return faPalette
+    if (text.includes("music") || text.includes("sound") || text.includes("audio")) return faMusic
+    if (text.includes("sport") || text.includes("fitness") || text.includes("exercise")) return faDumbbell
+    if (text.includes("health") || text.includes("medical") || text.includes("medicine")) return faHeartbeat
+    return faGraduationCap
+  }
+
+  const getCategoryColor = (title, description) => {
+    const text = (title + " " + (description || "")).toLowerCase()
+    if (text.includes("math") || text.includes("calculus") || text.includes("algebra")) return "text-blue-600"
+    if (text.includes("science") || text.includes("biology") || text.includes("chemistry") || text.includes("physics")) return "text-green-600"
+    if (text.includes("tech") || text.includes("programming") || text.includes("coding") || text.includes("computer")) return "text-purple-600"
+    if (text.includes("literature") || text.includes("english") || text.includes("writing") || text.includes("book")) return "text-orange-600"
+    if (text.includes("art") || text.includes("design") || text.includes("creative")) return "text-pink-600"
+    if (text.includes("music") || text.includes("sound") || text.includes("audio")) return "text-indigo-600"
+    if (text.includes("sport") || text.includes("fitness") || text.includes("exercise")) return "text-red-600"
+    if (text.includes("health") || text.includes("medical") || text.includes("medicine")) return "text-emerald-600"
+    return "text-gray-600"
+  }
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffTime = date - now
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    
+    if (diffDays === 0) return "Today"
+    if (diffDays === 1) return "Tomorrow"
+    if (diffDays < 7) return `In ${diffDays} days`
+    return date.toLocaleDateString()
+  }
+
+  const formatTime = (dateString) => {
+    return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+
   return (
-    <div className="premium-card inset-pad premium-hover">
+    <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden premium-hover">
       {!editing ? (
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-lg font-semibold">{event.title}</h3>
-              <span className="badge">{event.kind}</span>
-              {mine && <span className="badge">Owner</span>}
-              {full && <span className="badge">Full</span>}
+        <>
+          {/* Event Image Placeholder */}
+          <div className="h-48 bg-gradient-to-br from-blue-500 to-purple-600 relative">
+            <div className="absolute inset-0 bg-black/20" />
+            <div className="absolute top-4 right-4">
+              <button className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors">
+                <FontAwesomeIcon icon={faStar} className="w-4 h-4" />
+              </button>
             </div>
-            <p className="text-muted">{new Date(event.starts_at).toLocaleString()} · {event.location}</p>
-            {event.description && <p className="premium-text">{event.description}</p>}
-            <p className="text-muted">Capacity {count}/{event.capacity}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {!mine && !joined && !full && (
-              isAuthenticated ? (
-                <Button className="btn" disabled={busyJoin} onClick={onJoin}>{busyJoin ? "..." : "Join"}</Button>
-              ) : (
-                <Button className="btn-secondary" onClick={() => navigate("/login")}>Login to join</Button>
-              )
+            <div className="absolute bottom-4 left-4">
+              <h3 className="text-xl font-bold text-white mb-1">{event.title}</h3>
+              <p className="text-pink-200 text-sm">From Free</p>
+            </div>
+            {mine && (
+              <div className="absolute top-4 left-4">
+                <span className="px-2 py-1 bg-blue-500 text-white rounded text-xs font-medium">
+                  Owner
+                </span>
+              </div>
             )}
-            {!mine && joined && isAuthenticated && (
-              <Button className="btn-secondary" disabled={busyLeave} onClick={onLeave}>{busyLeave ? "..." : "Leave"}</Button>
+            {full && (
+              <div className="absolute top-4 left-4">
+                <span className="px-2 py-1 bg-red-500 text-white rounded text-xs font-medium">
+                  Full
+                </span>
+              </div>
             )}
-            {mine && <Button className="btn-secondary" onClick={() => setEditing(true)}>Edit</Button>}
-            {mine && <Button className="btn-secondary" disabled={busyDelete} onClick={onDelete}>{busyDelete ? "..." : "Delete"}</Button>}
           </div>
-        </div>
+          
+          {/* Event Details */}
+          <div className="p-6">
+            <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
+              <div className="flex items-center gap-2">
+                <FontAwesomeIcon icon={faCalendarAlt} className="w-4 h-4" />
+                <span>{formatDate(event.starts_at)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <FontAwesomeIcon icon={faClock} className="w-4 h-4" />
+                <span>{formatTime(event.starts_at)}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
+              <FontAwesomeIcon icon={faMapMarkerAlt} className="w-4 h-4" />
+              <span className="truncate">{event.location}</span>
+            </div>
+            
+            {event.description && (
+              <p className="text-gray-700 mb-4 line-clamp-2 leading-relaxed text-sm">
+                {event.description}
+              </p>
+            )}
+
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-1 text-sm text-gray-500">
+                <FontAwesomeIcon icon={faUsers} className="w-4 h-4" />
+                <span>{count}/{event.capacity} participants</span>
+              </div>
+              <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
+                {event.kind}
+              </span>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {!mine && !joined && !full && (
+                  isAuthenticated ? (
+                    <button
+                      onClick={onJoin}
+                      disabled={busyJoin}
+                      className="flex items-center gap-2 px-4 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <FontAwesomeIcon icon={faUserPlus} className="w-4 h-4" />
+                      <span>{busyJoin ? "Joining..." : "Join Event"}</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => navigate("/login")}
+                      className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                    >
+                      <FontAwesomeIcon icon={faUserPlus} className="w-4 h-4" />
+                      <span>Login to Join</span>
+                    </button>
+                  )
+                )}
+                {!mine && joined && isAuthenticated && (
+                  <button
+                    onClick={onLeave}
+                    disabled={busyLeave}
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <FontAwesomeIcon icon={faUserMinus} className="w-4 h-4" />
+                    <span>{busyLeave ? "Leaving..." : "Leave"}</span>
+                  </button>
+                )}
+              </div>
+
+              {mine && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setEditing(true)}
+                    className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Edit Event"
+                  >
+                    <FontAwesomeIcon icon={faEdit} className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={onDelete}
+                    disabled={busyDelete}
+                    className="flex items-center gap-2 px-3 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Delete Event"
+                  >
+                    <FontAwesomeIcon icon={faTrash} className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {joined && (
+              <div className="mt-4 flex items-center gap-2 text-green-600 bg-green-50 px-3 py-2 rounded-lg">
+                <FontAwesomeIcon icon={faCheck} className="w-4 h-4" />
+                <span className="text-sm font-medium">You're attending this event</span>
+              </div>
+            )}
+          </div>
+        </>
       ) : (
-        <div className="space-y-4">
-          <input className="input" value={title} onChange={e => setTitle(e.target.value)} disabled={busySave} />
-          <input className="input" type="datetime-local" value={startsAt} onChange={e => setStartsAt(e.target.value)} disabled={busySave} />
-          <input className="input" value={location} onChange={e => setLocation(e.target.value)} disabled={busySave} />
-          <input className="input" type="number" min="1" value={capacity} onChange={e => setCapacity(e.target.value)} disabled={busySave} />
-          <textarea className="textarea" value={description} onChange={e => setDescription(e.target.value)} disabled={busySave} />
-          <div className="flex gap-2 justify-end">
-            <Button className="btn" disabled={busySave} onClick={onSave}>{busySave ? "Saving..." : "Save"}</Button>
-            <Button className="btn-secondary" disabled={busySave} onClick={onCancel}>Cancel</Button>
+        <div className="p-6 space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Event</h3>
+          <input 
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input" 
+            value={title} 
+            onChange={e => setTitle(e.target.value)} 
+            disabled={busySave}
+            placeholder="Event title"
+          />
+          <input 
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input" 
+            type="datetime-local" 
+            value={startsAt} 
+            onChange={e => setStartsAt(e.target.value)} 
+            disabled={busySave} 
+          />
+          <input 
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input" 
+            value={location} 
+            onChange={e => setLocation(e.target.value)} 
+            disabled={busySave}
+            placeholder="Location"
+          />
+          <input 
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input" 
+            type="number" 
+            min="1" 
+            value={capacity} 
+            onChange={e => setCapacity(e.target.value)} 
+            disabled={busySave}
+            placeholder="Capacity"
+          />
+          <textarea 
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input" 
+            value={description} 
+            onChange={e => setDescription(e.target.value)} 
+            disabled={busySave}
+            placeholder="Event description"
+            rows={3}
+          />
+          <div className="flex gap-3 justify-end">
+            <button 
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium disabled:opacity-50" 
+              disabled={busySave} 
+              onClick={onCancel}
+            >
+              Cancel
+            </button>
+            <button 
+              className="px-4 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50" 
+              disabled={busySave} 
+              onClick={onSave}
+            >
+              {busySave ? "Saving..." : "Save Changes"}
+            </button>
           </div>
         </div>
       )}
-      {err && <div className="mt-3 text-sm premium-text-error">{err}</div>}
+      {err && (
+        <div className="px-6 pb-4">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+            <p className="text-red-600 text-sm">{err}</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

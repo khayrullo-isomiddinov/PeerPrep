@@ -1,142 +1,158 @@
 import { Link } from "react-router-dom"
-import { useAuth } from "../features/auth/AuthContext"
 
 export default function Home() {
-  const { isAuthenticated, user, logout } = useAuth()
-
   return (
-    <div className="min-h-screen tap-safe premium-scrollbar flex flex-col">
-      <div className="nav-spacer" />
-      <section className="container-page flex-1 grid place-items-center">
-        <div className="relative w-full">
-          <div className="absolute inset-0 -z-10">
-            <div data-parallax="0.06" className="absolute -top-24 -left-16 w-72 h-72 rounded-full bg-white/6 blur-3xl animate-float" />
-            <div data-parallax="0.12" className="absolute -bottom-24 -right-10 w-96 h-96 rounded-full bg-white/6 blur-3xl animate-float" style={{ animationDuration: "9s" }} />
-          </div>
+    <div className="min-h-screen tap-safe premium-scrollbar flex flex-col home-light route-transition">
 
-          <div className="grid lg:grid-cols-12 gap-12 items-center min-h-[calc(100vh-220px)]">
-            <div className="lg:col-span-6 order-2 lg:order-1 hero-accent premium-scale-in">
-              <span className="badge">PeerPrep</span>
-              <h1 className="mt-4 leading-[1.02] tracking-tight premium-heading text-5xl md:text-6xl">Study groups, finally done right.</h1>
-              <p className="mt-6 text-lg md:text-xl text-muted max-w-xl">Modern, personalized, effortless. Organize study groups, schedule sessions, and keep momentum.</p>
-              <div className="mt-8 flex flex-wrap items-center gap-3">
-                <Link to="/groups" className="cta">Explore groups</Link>
-                <Link to="/events" className="btn-secondary">Browse events</Link>
-                {isAuthenticated ? (
-                  <>
-                    <span className="ml-2 text-sm opacity-80">Signed in as {user?.email}</span>
-                    <button onClick={logout} className="btn-secondary">Logout</button>
-                  </>
-                ) : (
-                  <>
-                    <Link to="/login" className="btn">Login</Link>
-                    <Link to="/register" className="btn-secondary">Register</Link>
-                  </>
-                )}
-              </div>
-              <div className="mt-8 flex flex-wrap gap-2">
-                <span className="badge">Workshops</span>
-                <span className="badge">Exam Prep</span>
-                <span className="badge">Accountability</span>
-                <span className="badge">Budapest</span>
-              </div>
-            </div>
-                <div className="lg:col-span-6 order-1 lg:order-2">
-  <div className="relative w-full max-w-[38rem] mx-auto aspect-square premium-fade-in">
-    <div className="absolute inset-0 rounded-full premium-glass shadow-3 blur-aura" />
-    <div className="absolute inset-8 rounded-full bg-paper shadow-2 outline outline-1 outline-white/10" />
-
-    {/* CENTER */}
-    <div className="absolute inset-0 grid place-items-center">
-      <div className="w-44 h-44 rounded-full premium-card grid place-items-center animate-float" style={{ animationDuration: "7s" }}>
-        <div className="text-center">
-          <div className="text-3xl font-extrabold">Next up</div>
-          <div className="text-sm text-muted mt-1">Pick your focus</div>
+      {/* Hero */}
+      <section className="home-hero premium-fade-in">
+        <div className="home-hero-bg" />
+        <div className="home-hero-inner reveal-up">
+          <h1 className="home-hero-title">
+            <span>Pick up your</span>
+            <span className="accent">wonderful plans</span>
+          </h1>
         </div>
-      </div>
-    </div>
-
-    {/* FLOATING ORBIT BUTTONS – Clean, no images */}
-    <Link to="/events" className="absolute -top-4 left-1/2 -translate-x-1/2 w-28 h-28 rounded-full cta grid place-items-center text-center shadow-2 reveal-up">
-      <div className="text-sm font-bold leading-tight">Events</div>
-    </Link>
-
-    <Link to="/groups" className="absolute top-1/3 -left-4 w-28 h-28 rounded-full premium-card premium-hover grid place-items-center text-center reveal-up" style={{ animationDelay: ".06s" }}>
-      <div className="text-sm font-semibold leading-tight">Groups</div>
-    </Link>
-
-    <Link to="/events" className="absolute bottom-6 left-8 w-24 h-24 rounded-full premium-card premium-hover grid place-items-center text-center reveal-up" style={{ animationDelay: ".12s" }}>
-      <div className="text-xs font-semibold">Create</div>
-    </Link>
-
-    <div className="absolute top-8 right-6 w-24 h-24 rounded-full premium-card grid place-items-center text-center reveal-up" style={{ animationDelay: ".18s" }}>
-      <div>
-        <div className="text-xl font-extrabold">4.9</div>
-        <div className="text-[11px] text-muted -mt-1">Rating</div>
-      </div>
-    </div>
-
-    <div className="absolute bottom-8 right-2 w-28 h-28 rounded-full premium-card grid place-items-center text-center reveal-up" style={{ animationDelay: ".24s" }}>
-      <div>
-        <div className="text-xl font-extrabold">100+</div>
-        <div className="text-[11px] text-muted -mt-1">Groups</div>
-      </div>
-    </div>
-
-  </div>
-</div>
-
+        <div className="search-wrap reveal-up" style={{animationDelay:'.06s'}}>
+          <div className="home-search premium-scale-in">
+            <div className="field">
+              <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#ec4899" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z" stroke="#ec4899" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              <input placeholder="Find the event you're interested in"/>
+            </div>
+            <div className="divider" />
+            <div className="field">
+              <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#ec4899" d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+              <input placeholder="New York, NY"/>
+            </div>
+            <button className="btn-pink square">Search</button>
           </div>
         </div>
       </section>
 
-      <section className="container-page section">
-        <div className="rounded-pill premium-glass p-3 shadow-2 premium-fade-in">
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <Link to="/events" className="pill cta">New Event</Link>
-            <Link to="/groups" className="pill btn-secondary">Create Group</Link>
-            <Link to="/events" className="pill btn-secondary">This Week</Link>
-            <Link to="/groups" className="pill btn-secondary">Nearby</Link>
-            <Link to="/events" className="pill btn-secondary">Top Rated</Link>
+      {/* New events */}
+      <section className="home-section">
+        <div className="home-section-inner reveal-up" style={{animationDelay:'.12s'}}>
+          <div className="home-section-head">
+            <h2 className="home-title">New events in <span className="accent">NYC</span></h2>
+            <button className="btn-ghost-pink pill">View more</button>
+          </div>
+
+          <div className="home-card-grid">
+            <article className="event-card">
+              <img src="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?q=80&w=1600&auto=format&fit=crop" alt="Urban Marathon"/>
+              <div className="event-meta">
+                <h3>Urban Marathon</h3>
+                <div className="row"><span className="muted">Monday, June 06 | 06:00 AM</span><span className="price">From $20</span></div>
+                <div className="row muted">New York, NY</div>
+              </div>
+            </article>
+
+            <article className="event-card">
+              <img src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=1600&auto=format&fit=crop" alt="Melody Mania"/>
+              <div className="event-meta">
+                <h3>Melody Mania</h3>
+                <div className="row"><span className="muted">Wednesday, June 24 | 07:00 PM</span><span className="free">Free ticket</span></div>
+                <div className="row muted">New York, NY</div>
+              </div>
+            </article>
+
+            <article className="event-card">
+              <img src="https://images.unsplash.com/photo-1483412033650-1015ddeb83d1?q=80&w=1600&auto=format&fit=crop" alt="Rockin' the Stage"/>
+              <div className="event-meta">
+                <h3>"Rockin' the Stage"</h3>
+                <div className="row"><span className="muted">Monday, March 14 | 04:00 PM</span><span className="price">From $120</span></div>
+                <div className="row muted">New York, NY</div>
+              </div>
+            </article>
           </div>
         </div>
       </section>
 
-      <section className="container-page section">
-        <div className="grid lg:grid-cols-12 gap-8 items-center">
-          <div className="lg:col-span-7">
-            <div className="grid grid-cols-3 gap-4">
-              <img data-parallax="0.06" src="https://images.unsplash.com/photo-1523580846011-23a0495f3c17?q=80&w=1200&auto=format&fit=crop" alt="" className="rounded-l premium-loading object-cover h-56 w-full reveal-up" />
-              <img data-parallax="0.1" src="https://images.unsplash.com/photo-1523580846011-d3a5bc25702b?q=80&w=1200&auto=format&fit=crop" alt="" className="rounded-l premium-loading object-cover h-44 w-full reveal-up" style={{ animationDelay: ".06s" }} />
-              <img data-parallax="0.08" src="https://images.unsplash.com/photo-1558021211-6d1403321394?q=80&w=1200&auto=format&fit=crop" alt="" className="rounded-l premium-loading object-cover h-36 w-full reveal-up" style={{ animationDelay: ".12s" }} />
-              <img data-parallax="0.12" src="https://images.unsplash.com/photo-1513258496099-48168024aec0?q=80&w=1200&auto=format&fit=crop" alt="" className="rounded-l premium-loading object-cover h-52 w-full reveal-up" style={{ animationDelay: ".18s" }} />
-              <img data-parallax="0.14" src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=1200&auto=format&fit=crop" alt="" className="rounded-l premium-loading object-cover h-40 w-full reveal-up" style={{ animationDelay: ".24s" }} />
-              <img data-parallax="0.16" src="https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=1200&auto=format&fit=crop" alt="" className="rounded-l premium-loading object-cover h-48 w-full reveal-up" style={{ animationDelay: ".3s" }} />
-            </div>
+      {/* Upcoming in 24h */}
+      <section className="home-section">
+        <div className="home-section-inner reveal-up">
+          <div className="home-section-head">
+            <h2 className="home-title">Upcoming <span className="accent">in 24h</span></h2>
+            <button className="btn-ghost-pink pill">View more</button>
           </div>
-          <div className="lg:col-span-5">
-            <div className="surface inset-pad rounded-x premium-scale-in">
-              <h2 className="text-2xl font-bold">Find your people</h2>
-              <p className="text-muted mt-2">Join active groups, meet new peers, and keep showing up. Your next breakthrough is one focused session away.</p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Link to="/groups" className="btn">Browse groups</Link>
-                <Link to="/events" className="btn-secondary">Upcoming events</Link>
+          <div className="upcoming-grid">
+            <article className="upcoming-card">
+              <img src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=1600&auto=format&fit=crop" alt="Musical Fusion Festival" />
+              <div className="event-meta">
+                <h3>Musical Fusion Festival</h3>
+                <div className="row"><span className="muted">Monday, June 06 | 06:00 AM</span><span className="price">From $100</span></div>
+                <div className="row muted">New York, NY</div>
               </div>
-              <div className="mt-6 grid grid-cols-3 gap-3">
-                <div className="premium-card premium-hover text-center rounded-l">
-                  <div className="text-3xl font-extrabold">12</div>
-                  <div className="text-muted text-sm">Today</div>
-                </div>
-                <div className="premium-card premium-hover text-center rounded-l">
-                  <div className="text-3xl font-extrabold">47</div>
-                  <div className="text-muted text-sm">This week</div>
-                </div>
-                <div className="premium-card premium-hover text-center rounded-l">
-                  <div className="text-3xl font-extrabold">350+</div>
-                  <div className="text-muted text-sm">All time</div>
-                </div>
+            </article>
+            <article className="upcoming-card">
+              <img src="https://images.unsplash.com/photo-1520975616617-9f8a1fef7c88?q=80&w=1600&auto=format&fit=crop" alt="Business in the United States" />
+              <div className="event-meta">
+                <h3>Business in the United States</h3>
+                <div className="row"><span className="muted">Tuesday, June 07 | 06:00 AM</span><span className="price">From $50</span></div>
+                <div className="row muted">Atlanta</div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      {/* Highlights this week */}
+      <section className="home-section">
+        <div className="home-section-inner reveal-up">
+          <div className="home-section-head">
+            <h2 className="home-title">Highlights <span className="accent">this week</span></h2>
+            <button className="btn-ghost-pink pill">View more</button>
+          </div>
+          <div className="highlight-banner" role="region" aria-label="Highlights">
+            <img className="highlight-img" src="https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?q=80&w=2000&auto=format&fit=crop" alt="An Oil Painting Odyssey" />
+            <div className="highlight-gradient" />
+            <div className="highlight-card">
+              <div className="badge">From $8</div>
+              <h3 className="highlight-title">Brushstrokes & Beyond: An Oil Painting Odyssey</h3>
+              <div className="muted text-sm">Tuesday, June 7 | 06:00 PM</div>
+              <div className="muted text-sm">2678 Forest Ave, San Jose, CA</div>
+              <div className="mt-3">
+                <a className="btn-pink square" href="#">Purchase Ticket</a>
               </div>
             </div>
+            <button className="highlight-nav prev" aria-label="Previous">‹</button>
+            <button className="highlight-nav next" aria-label="Next">›</button>
+          </div>
+        </div>
+      </section>
+
+      {/* More events */}
+      <section className="home-section">
+        <div className="home-section-inner reveal-up">
+          <div className="home-section-head">
+            <h2 className="home-title">More events</h2>
+            <button className="btn-ghost-pink pill">View more</button>
+          </div>
+          <div className="home-card-grid">
+            <article className="event-card">
+              <img src="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?q=80&w=1600&auto=format&fit=crop" alt="Marathon"/>
+              <div className="event-meta">
+                <h3>Marathon</h3>
+                <div className="row"><span className="muted">Monday, June 06 | 06:00 AM</span><span className="price">From $10</span></div>
+                <div className="row muted">New York, NY</div>
+              </div>
+            </article>
+            <article className="event-card">
+              <img src="https://images.unsplash.com/photo-1511379938547-c1f69419868d?q=80&w=1600&auto=format&fit=crop" alt="Rock Festival"/>
+              <div className="event-meta">
+                <h3>Rock Festival</h3>
+                <div className="row"><span className="muted">Monday, March 14 | 04:00 PM</span><span className="price">From $100</span></div>
+                <div className="row muted">New York, NY</div>
+              </div>
+            </article>
+            <article className="event-card">
+              <img src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=1600&auto=format&fit=crop" alt="Harmony of Melodies Concert"/>
+              <div className="event-meta">
+                <h3>Harmony of Melodies Concert</h3>
+                <div className="row"><span className="muted">Wednesday, June 24 | 07:00 PM</span><span className="free">Free ticket</span></div>
+                <div className="row muted">New York, NY</div>
+              </div>
+            </article>
           </div>
         </div>
       </section>

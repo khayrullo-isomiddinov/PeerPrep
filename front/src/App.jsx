@@ -9,6 +9,7 @@ import Footer from "./components/Footer"
 import Home from "./pages/Home"
 import Groups from "./pages/Groups"
 import Events from "./pages/Events"
+import CreateEvent from "./pages/CreateEvent"
 import Profile from "./pages/Profile"
 import RegisterForm from "./features/auth/RegisterForm"
 import LoginForm from "./features/auth/LoginForm"
@@ -19,11 +20,9 @@ export default function App() {
   
   useEffect(() => {
     try { initParallax() } catch (e) { console.error(e) }
-    // mount toast container
     import("./utils/toast.jsx").then(m => m.ensureToastContainer()).catch(() => {})
   }, [])
 
-  // Show loading screen while validating authentication
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50">
@@ -42,11 +41,12 @@ export default function App() {
     <div className="route-transition">
       <Navbar />
       <ScrollProgressBar />
-      <main className="max-w-6xl mx-auto px-4 py-8">
+      <main>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/groups" element={<Groups />} />
           <Route path="/events" element={<Events />} />
+          <Route path="/events/create" element={<CreateEvent />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/register" element={<RegisterForm />} />
           <Route path="/login" element={<LoginForm />} />
