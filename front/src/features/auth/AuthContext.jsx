@@ -7,14 +7,9 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => {
     try { return localStorage.getItem("access_token") } catch { return null }
   })
-  const [user, setUser] = useState(() => {
-    try {
-      const u = localStorage.getItem("user")
-      return u ? JSON.parse(u) : null
-    } catch { return null }
-  })
-  const [isLoading, setIsLoading] = useState(!!token) // Show loading while validating token
-  const isAuthenticated = !!token && !isLoading
+  const [user, setUser] = useState(null)
+  const [isLoading, setIsLoading] = useState(true) // Always start with loading true
+  const isAuthenticated = !!token && !!user && !isLoading
 
   // Validate token on startup
   useEffect(() => {
@@ -31,33 +26,37 @@ export function AuthProvider({ children }) {
         setIsLoading(false)
       } catch (error) {
         // Token is invalid, clear it
-        logout()
+        localStorage.removeItem("access_token")
+        setToken(null)
+        setUser(null)
+        setAuthHeader(null)
         setIsLoading(false)
       }
     }
 
     validateToken()
-  }, []) // Only run on mount
+  }, []) // Only run once on mount
 
   // keep axios auth header in sync when token changes
   useEffect(() => {
-    if (token && !isLoading) {
+    if (token) {
       setAuthHeader(token)
     }
-  }, [token, isLoading])
+  }, [token])
 
-  function login({ access_token, user }) {
+  async function login({ access_token, user: fullUser }) {
+    // Persist token immediately
     localStorage.setItem("access_token", access_token)
-    localStorage.setItem("user", JSON.stringify(user))
-    setToken(access_token)
-    setUser(user)
-    setIsLoading(false) // Ensure loading state is cleared
     setAuthHeader(access_token)
+    setToken(access_token)
+    
+    // Use the full user data from login response (no additional API call needed)
+    setUser(fullUser)
+    setIsLoading(false)
   }
 
   function logout() {
     localStorage.removeItem("access_token")
-    localStorage.removeItem("user")
     setToken(null)
     setUser(null)
     setAuthHeader(null)

@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select, func
 from app.db import get_session
 from app.models import Event, User, EventAttendee
@@ -23,14 +23,50 @@ def create_event(data: EventCreate, session: Session = Depends(get_session), cur
 
 
 @router.get("", response_model=List[EventRead])
-def list_events(session: Session = Depends(get_session), kind: Optional[str] = None, group_id: Optional[int] = None, limit: int = 50, offset: int = 0):
+def list_events(
+    session: Session = Depends(get_session),
+    kind: Optional[str] = None,
+    group_id: Optional[int] = None,
+    q: Optional[str] = None,
+    location: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+):
     query = select(Event)
     if kind:
         query = query.where(Event.kind == kind)
     if group_id is not None:
         query = query.where(Event.group_id == group_id)
+    if q:
+        like = f"%{q}%"
+        query = query.where((Event.title.ilike(like)) | (Event.description.ilike(like)))
+    if location:
+        like_loc = f"%{location}%"
+        query = query.where(Event.location.ilike(like_loc))
     query = query.order_by(Event.starts_at).limit(limit).offset(offset)
     return session.exec(query).all()
+
+@router.get("/autocomplete")
+def autocomplete_events(
+    q: str = Query("", min_length=1),
+    limit: int = Query(8, le=20),
+    session: Session = Depends(get_session)
+):
+    """Autocomplete events by title"""
+    query = select(Event.title, Event.id, Event.location).where(
+        Event.title.ilike(f"%{q}%")
+    ).limit(limit)
+    
+    events = session.exec(query).all()
+    return [
+        {
+            "id": event.id,
+            "title": event.title,
+            "location": event.location,
+            "full": f"{event.title} - {event.location}" if event.location else event.title
+        }
+        for event in events
+    ]
 
 @router.get("/{event_id}", response_model=EventRead)
 def get_event(event_id: int, session: Session = Depends(get_session)):

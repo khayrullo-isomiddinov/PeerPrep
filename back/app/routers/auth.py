@@ -1,13 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Response
 from fastapi.responses import RedirectResponse
 from sqlmodel import Session, select
 from app.db import get_session
 from app.models import User
 from app.core.security import hash_password, verify_password, create_access_token, decode_token
 from app.config import settings
-from app.schemas.auth import RegisterIn, LoginIn
+from app.schemas.auth import RegisterIn, LoginIn, ProfileUpdate, UserProfile
 import secrets
 from app.services.email import send_email
+from typing import Optional
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -46,7 +47,19 @@ def login(data: LoginIn, session: Session = Depends(get_session)):
     if not user.is_verified:
         raise HTTPException(status_code=403, detail="Email not verified")
     token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    return {"access_token": token, "token_type": "bearer", "user": {"id": user.id, "email": user.email}}
+    return {
+        "access_token": token, 
+        "token_type": "bearer", 
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "bio": user.bio,
+            "photo_url": user.photo_url,
+            "is_verified": user.is_verified,
+            "created_at": user.created_at.isoformat(),
+        }
+    }
 
 @router.get("/verify")
 def verify_email(token: str, session: Session = Depends(get_session)):
@@ -78,10 +91,62 @@ def _get_user_from_token(
     return user
 
 @router.get("/me")
-def me(current_user: User = Depends(_get_user_from_token)):
+def me(response: Response, current_user: User = Depends(_get_user_from_token)):
+    response.headers["Cache-Control"] = "private, max-age=300"  # Cache for 5 minutes
     return {
         "id": current_user.id,
         "email": current_user.email,
+        "name": current_user.name,
+        "bio": current_user.bio,
+        "photo_url": current_user.photo_url,
         "is_verified": current_user.is_verified,
-        "created_at": current_user.created_at,
+        "created_at": current_user.created_at.isoformat(),
     }
+
+@router.put("/profile")
+def update_profile(
+    profile_data: ProfileUpdate,
+    current_user: User = Depends(_get_user_from_token),
+    session: Session = Depends(get_session)
+):
+    # Update only provided fields
+    if profile_data.name is not None:
+        current_user.name = profile_data.name
+    if profile_data.bio is not None:
+        current_user.bio = profile_data.bio
+    if profile_data.photo_url is not None:
+        current_user.photo_url = profile_data.photo_url
+    
+    session.add(current_user)
+    session.commit()
+    session.refresh(current_user)
+    
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "name": current_user.name,
+        "bio": current_user.bio,
+        "photo_url": current_user.photo_url,
+        "is_verified": current_user.is_verified,
+        "created_at": current_user.created_at.isoformat(),
+    }
+
+@router.delete("/account")
+def delete_account(
+    current_user: User = Depends(_get_user_from_token),
+    session: Session = Depends(get_session)
+):
+    """Delete user account (except admin)"""
+    
+    # Prevent admin from deleting their account
+    if current_user.email == settings.ADMIN_EMAIL:
+        raise HTTPException(
+            status_code=403, 
+            detail="Admin account cannot be deleted"
+        )
+    
+    # Delete the user (this will cascade delete related records due to foreign key constraints)
+    session.delete(current_user)
+    session.commit()
+    
+    return {"message": "Account deleted successfully"}

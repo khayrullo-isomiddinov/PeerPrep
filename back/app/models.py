@@ -31,6 +31,7 @@ class GroupBase(SQLModel):
     field: str
     exam: Optional[str] = None
     description: Optional[str] = None
+    cover_image_url: Optional[str] = None
 
 class Group(GroupBase, table=True):
     id: Optional[str] = Field(default=None, primary_key=True, index=True)
@@ -58,6 +59,11 @@ class User(SQLModel, table=True):
     is_verified: bool = Field(default=False, nullable=False)
     verification_token: Optional[str] = Field(default=None, index=True, nullable=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Profile fields
+    name: Optional[str] = None
+    bio: Optional[str] = None
+    photo_url: Optional[str] = None
 
 class EventAttendee(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change_me"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
 
+    # Admin bootstrap
+    ADMIN_EMAIL: str = "harryshady131@gmail.com"
+    ADMIN_PASSWORD: str = "Khayrullo2003"
+
     @classmethod
     def parse_origins(cls, v: Union[str, List[str]]):
         if isinstance(v, list):

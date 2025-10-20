@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 from datetime import datetime
 from app.models import MissionStatus
@@ -17,23 +17,21 @@ class GroupCreate(BaseModel):
     mission_badge_name: Optional[str] = Field(None, max_length=50, description="Badge name for completion")
     mission_badge_description: Optional[str] = Field(None, max_length=200, description="Badge description")
     
-    @validator('mission_deadline')
+    @field_validator('mission_deadline')
     def validate_deadline(cls, v):
         if v and v <= datetime.utcnow():
             raise ValueError('Mission deadline must be in the future')
         return v
-    
-    @validator('mission_title')
-    def validate_mission_title(cls, v, values):
-        if v and not values.get('mission_description'):
+
+    @model_validator(mode="after")
+    def validate_mission_pair(self):
+        title = self.mission_title
+        desc = self.mission_description
+        if title and not desc:
             raise ValueError('Mission description is required when mission title is provided')
-        return v
-    
-    @validator('mission_description')
-    def validate_mission_description(cls, v, values):
-        if v and not values.get('mission_title'):
+        if desc and not title:
             raise ValueError('Mission title is required when mission description is provided')
-        return v
+        return self
 
 class GroupUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)

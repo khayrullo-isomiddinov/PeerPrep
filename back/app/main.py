@@ -8,6 +8,7 @@ from app.seed import seed_db
 from app.routers import health as health_router
 from app.routers import events as events_router
 from app.routers import groups as groups_router
+from app.routers import locations as locations_router
 from app.routers import auth as auth_router
 
 @asynccontextmanager
@@ -34,9 +35,9 @@ app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Temporarily allow all origins for debugging
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -44,3 +45,4 @@ app.include_router(health_router.router, prefix=settings.API_PREFIX)
 app.include_router(auth_router.router, prefix=settings.API_PREFIX)
 app.include_router(events_router.router, prefix=settings.API_PREFIX)
 app.include_router(groups_router.router, prefix=settings.API_PREFIX)
+app.include_router(locations_router.router, prefix=settings.API_PREFIX)

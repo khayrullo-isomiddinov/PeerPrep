@@ -10,6 +10,7 @@ import Home from "./pages/Home"
 import Groups from "./pages/Groups"
 import Events from "./pages/Events"
 import CreateEvent from "./pages/CreateEvent"
+import CreateGroup from "./pages/CreateGroup"
 import Profile from "./pages/Profile"
 import RegisterForm from "./features/auth/RegisterForm"
 import LoginForm from "./features/auth/LoginForm"
@@ -45,6 +46,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/groups" element={<Groups />} />
+          <Route path="/groups/create" element={<CreateGroup />} />
           <Route path="/events" element={<Events />} />
           <Route path="/events/create" element={<CreateEvent />} />
           <Route path="/profile" element={<Profile />} />

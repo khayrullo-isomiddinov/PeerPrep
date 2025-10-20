@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlmodel import Session, select, func
 from typing import List, Optional
 from datetime import datetime
@@ -50,6 +50,7 @@ def create_group(
         field=group_data.field,
         exam=group_data.exam,
         description=group_data.description,
+        cover_image_url=group_data.cover_image_url,
         created_by=current_user.id,
         mission_title=group_data.mission_title,
         mission_description=group_data.mission_description,
@@ -84,6 +85,7 @@ def create_group(
 def list_groups(
     field: Optional[str] = None,
     status_filter: Optional[MissionStatus] = None,
+    q: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
     session: Session = Depends(get_session)
@@ -97,11 +99,43 @@ def list_groups(
     
     if status_filter:
         query = query.where(Group.mission_status == status_filter)
+
+    if q:
+        like = f"%{q}%"
+        query = query.where(
+            (Group.name.ilike(like)) |
+            (Group.description.ilike(like)) |
+            (Group.mission_title.ilike(like)) |
+            (Group.mission_description.ilike(like))
+        )
     
     query = query.offset(offset).limit(limit).order_by(Group.created_at.desc())
     
     groups = session.exec(query).all()
     return groups
+
+@router.get("/autocomplete")
+def autocomplete_groups(
+    q: str = Query("", min_length=1),
+    limit: int = Query(8, le=20),
+    session: Session = Depends(get_session)
+):
+    """Autocomplete groups by name"""
+    query = select(Group.name, Group.id, Group.field, Group.exam).where(
+        Group.name.ilike(f"%{q}%")
+    ).limit(limit)
+    
+    groups = session.exec(query).all()
+    return [
+        {
+            "id": group.id,
+            "name": group.name,
+            "field": group.field,
+            "exam": group.exam,
+            "full": f"{group.name} - {group.field}" if group.field else group.name
+        }
+        for group in groups
+    ]
 
 @router.get("/{group_id}", response_model=GroupSchema)
 def get_group(

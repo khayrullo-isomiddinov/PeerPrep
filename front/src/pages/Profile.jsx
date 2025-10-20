@@ -1,33 +1,42 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import Card from "../components/Card"
 import Button from "../components/Button"
 import { useAuth } from "../features/auth/AuthContext"
+import { updateProfile, deleteAccount } from "../utils/api"
 
 export default function Profile() {
-  const { user, isAuthenticated, setUser } = useAuth()
+  const { user, isAuthenticated, isLoading, setUser, logout } = useAuth()
   const navigate = useNavigate()
+  const fileRef = useRef(null)
   const [editing, setEditing] = useState(false)
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    bio: "",
-    joinedGroups: [],
-    upcomingEvents: []
-  })
+  const [uploading, setUploading] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const initialForm = useMemo(() => ({
+    name: user?.name || "",
+    email: user?.email || "",
+    bio: user?.bio || "",
+    photoUrl: user?.photo_url || user?.photoUrl || "",
+    createdAt: user?.created_at || null,
+  }), [user])
+  const [form, setForm] = useState(initialForm)
 
   useEffect(() => {
-    if (!isAuthenticated) navigate("/login", { replace: true })
-  }, [isAuthenticated, navigate])
+    // Only redirect if we're done loading and definitely not authenticated
+    if (!isLoading && !isAuthenticated) {
+      navigate("/login", { replace: true })
+    }
+  }, [isLoading, isAuthenticated, navigate])
 
   useEffect(() => {
     if (user) {
       setForm({
-        name: user.name || (user.email ? user.email.split("@")[0] : ""),
+        name: user.name || "",
         email: user.email || "",
         bio: user.bio || "",
-        joinedGroups: user.joinedGroups || [],
-        upcomingEvents: user.upcomingEvents || []
+        photoUrl: user.photo_url || user.photoUrl || "",
+        createdAt: user.created_at || null,
       })
     }
   }, [user])
@@ -37,39 +46,219 @@ export default function Profile() {
     setForm(prev => ({ ...prev, [name]: value }))
   }
 
-  function handleSave() {
-    setUser(prev => ({ ...prev, ...form }))
+  async function handleSave() {
+    try {
+      const profileData = {
+        name: form.name,
+        bio: form.bio,
+        photo_url: form.photoUrl
+      }
+      
+      const updatedProfile = await updateProfile(profileData)
+      
+      // Update local state
+      const updatedUser = { ...user, ...updatedProfile }
+      setUser(updatedUser)
+
+      // Rely on server as source of truth (no local persistence)
+      
     setEditing(false)
+    } catch (error) {
+      console.error("Failed to save profile:", error)
+      // You could add a toast notification here
+    }
   }
 
+  function onPickPhoto() {
+    try { fileRef.current?.click() } catch {}
+  }
+
+  async function onPhotoSelected(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    setUploading(true)
+    const reader = new FileReader()
+    reader.onload = async () => {
+      const photoUrl = String(reader.result || "")
+      const updatedForm = { ...form, photoUrl }
+      setForm(updatedForm)
+      
+      try {
+        // Save photo to database
+        const profileData = {
+          name: form.name,
+          bio: form.bio,
+          photo_url: photoUrl
+        }
+        
+        const updatedProfile = await updateProfile(profileData)
+        
+        // Update user state
+        const updatedUser = { ...user, ...updatedProfile }
+        setUser(updatedUser)
+
+        // Rely on server response as canonical
+      } catch (error) {
+        console.error("Failed to save photo:", error)
+        // Still update local state even if API fails
+        const updatedUser = { ...user, photoUrl }
+        setUser(updatedUser)
+        // Note: this change is temporary until next successful save
+      }
+      
+      setUploading(false)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function getProfileImage() {
+    if (form.photoUrl) return form.photoUrl
+    return `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(form.email || "user")}`
+  }
+
+  async function handleDeleteAccount() {
+    if (!window.confirm("Are you sure you want to delete your account? This action cannot be undone.")) {
+      return
+    }
+    
+    const confirmText = prompt("Type 'DELETE' to confirm account deletion:")
+    if (confirmText !== "DELETE") {
+      alert("Account deletion cancelled.")
+      return
+    }
+    
+    setDeleting(true)
+    try {
+      await deleteAccount()
+      // Logout and redirect to home
+      logout()
+      navigate("/", { replace: true })
+    } catch (error) {
+      console.error("Failed to delete account:", error)
+      alert("Failed to delete account. Please try again.")
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading profile...</p>
+        </div>
+      </div>
+    )
+  }
+  
   if (!isAuthenticated) return null
 
+  function formatMemberSince(createdAt) {
+    if (!createdAt) return null
+    try {
+      const d = new Date(createdAt)
+      return d.toLocaleDateString(undefined, { year: "numeric", month: "long" })
+    } catch {
+      return null
+    }
+  }
+
   return (
-    <div className="min-h-[80vh]">
+    <div className="min-h-screen tap-safe premium-scrollbar bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 route-transition">
       <div className="nav-spacer" />
-      <section className="container-page section">
-        <div className="hero-accent premium-scale-in">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-            <div className="flex items-center gap-4">
-              <div className="h-16 w-16 rounded-full overflow-hidden outline outline-1 outline-white/15 shadow-2">
-                <img
-                  className="h-full w-full object-cover"
-                  src={`https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(form.email || "user")}`}
-                  alt="avatar"
+      
+      {/* Profile Header */}
+      <section className="relative bg-gradient-to-r from-white via-pink-50/30 to-purple-50/30 border-b border-gray-200/60 backdrop-blur-sm premium-fade-in">
+        <div className="absolute inset-0 bg-gradient-to-r from-pink-500/5 via-purple-500/5 to-indigo-500/5"></div>
+        <div className="container-page py-12 relative z-10">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
+            {/* Profile Info */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+              {/* Profile Photo */}
+              <div className="relative group">
+                <div className="relative h-32 w-32 rounded-full overflow-hidden border-4 border-white shadow-2xl ring-4 ring-pink-100">
+                  <img
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    src={getProfileImage()}
+                    alt="Profile"
+                  />
+                  {uploading && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Photo Upload Overlay */}
+                <button
+                  onClick={onPickPhoto}
+                  className="absolute -bottom-2 -right-2 h-12 w-12 bg-gradient-to-r from-pink-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-110 ring-2 ring-white"
+                  title="Change photo"
+                >
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </button>
+                
+                <input 
+                  ref={fileRef} 
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  onChange={onPhotoSelected} 
                 />
               </div>
-              <div>
-                <h1 className="premium-heading">{form.name || "New User"}</h1>
-                <p className="text-muted">{form.email}</p>
+
+              {/* User Info */}
+              <div className="flex-1">
+                <h1 className="text-5xl font-bold bg-gradient-to-r from-gray-900 via-pink-600 to-purple-600 bg-clip-text text-transparent mb-3">
+                  {form.name || form.email}
+                </h1>
+                <p className="text-xl text-gray-600 mb-4">{form.email}</p>
+                <div className="flex items-center gap-6 text-sm">
+                  <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-700 rounded-full">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                    </svg>
+                    {formatMemberSince(form.createdAt) ? `Member since ${formatMemberSince(form.createdAt)}` : "Member"}
+                  </div>
+                  {/* Additional badges can be added here when data is available */}
+                </div>
               </div>
             </div>
-            <div className="inline-flex items-center gap-2">
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3">
               {!editing ? (
-                <Button variant="secondary" onClick={() => setEditing(true)}>Edit Profile</Button>
+                <button
+                  onClick={() => setEditing(true)}
+                  className="btn-pink-pill text-lg px-8 py-4 shadow-lg hover:shadow-xl"
+                >
+                  <svg className="w-6 h-6 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Edit Profile
+                </button>
               ) : (
-                <div className="inline-flex items-center gap-2">
-                  <Button onClick={handleSave}>Save</Button>
-                  <Button variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleSave}
+                    className="px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-lg"
+                  >
+                    <svg className="w-6 h-6 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Save Changes
+                  </button>
+                  <button
+                    onClick={() => setEditing(false)}
+                    className="px-8 py-4 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-semibold rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-lg"
+                  >
+                    Cancel
+                  </button>
                 </div>
               )}
             </div>
@@ -77,93 +266,316 @@ export default function Profile() {
         </div>
       </section>
 
-      <main className="container-page section space-y-10">
-        <Card>
+      {/* Main Content */}
+      <main className="container-page py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Column - About & Stats */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* About Section */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/60 p-8 hover:shadow-xl transition-all duration-300 premium-scale-in">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 bg-gradient-to-r from-pink-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-900">About Me</h2>
+                </div>
+                {editing && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSave}
+                      className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-medium rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all duration-200 text-sm shadow-md"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setEditing(false)}
+                      className="px-4 py-2 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-medium rounded-lg hover:from-gray-600 hover:to-gray-700 transition-all duration-200 text-sm shadow-md"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+              
           {!editing ? (
-            <div className="space-y-3">
-              <div className="text-sm text-muted">About</div>
-              <p className="min-h-6">{form.bio || "Add a short bio to let others know you."}</p>
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Bio</h3>
+                    <p className="text-gray-700 leading-relaxed min-h-[4rem]">
+                      {form.bio || "Tell others about yourself! Add a bio to showcase your interests, goals, and what you're studying."}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Full Name</h3>
+                      <p className="text-gray-700">{form.name || "Not provided"}</p>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Email</h3>
+                      <p className="text-gray-700">{form.email}</p>
+                    </div>
+                  </div>
             </div>
           ) : (
-            <div className="space-y-5">
-              <div className="field-row">
-                <label className="label">Full name</label>
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Bio</label>
+                    <textarea
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all duration-200 resize-none"
+                      name="bio"
+                      value={form.bio}
+                      onChange={handleChange}
+                      placeholder="Tell us about yourself, your interests, and what you're studying..."
+                      rows={4}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Full Name</label>
                 <input
-                  className="input"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all duration-200"
                   name="name"
                   value={form.name}
                   onChange={handleChange}
-                  placeholder="Full name"
+                        placeholder="Enter your full name"
                 />
               </div>
-              <div className="field-row">
-                <label className="label">Email</label>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
                 <input
-                  className="input"
+                        className="w-full px-4 py-3 border border-gray-200 bg-gray-50 rounded-xl text-gray-600 cursor-not-allowed"
                   name="email"
                   value={form.email}
-                  onChange={handleChange}
-                  placeholder="Email"
-                  type="email"
+                  disabled
                 />
               </div>
-              <div className="field-row">
-                <label className="label">Bio</label>
-                <textarea
-                  className="textarea"
-                  name="bio"
-                  value={form.bio}
-                  onChange={handleChange}
-                  placeholder="Short bio"
-                  rows={4}
-                />
-              </div>
-              <div className="flex gap-2 justify-end">
-                <Button onClick={handleSave}>Save</Button>
-                <Button variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
               </div>
             </div>
           )}
-        </Card>
-
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="surface inset-pad">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-xl font-extrabold">Joined Groups</h2>
-              <span className="badge">{form.joinedGroups.length}</span>
             </div>
-            {form.joinedGroups.length === 0 ? (
-              <p className="text-muted">No groups yet.</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {form.joinedGroups.map((g, i) => (
-                  <span key={i} className="badge">{g}</span>
-                ))}
+
+            {/* Activity Feed */}
+            {false && (
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/60 p-8 hover:shadow-xl transition-all duration-300 premium-fade-in">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="h-10 w-10 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl flex items-center justify-center shadow-lg">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900">Recent Activity</h2>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+                  <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
+                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-gray-900 font-medium">Joined "React Study Group"</p>
+                    <p className="text-gray-500 text-sm">2 hours ago</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+                  <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
+                    <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-gray-900 font-medium">Completed "JavaScript Fundamentals"</p>
+                    <p className="text-gray-500 text-sm">1 day ago</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+                  <div className="h-12 w-12 bg-purple-100 rounded-full flex items-center justify-center">
+                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-gray-900 font-medium">Attended "Web Development Workshop"</p>
+                    <p className="text-gray-500 text-sm">3 days ago</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            )}
+          </div>
+
+          {/* Right Column - Stats & Quick Info */}
+          {false && (
+          <div className="space-y-6">
+            {/* Quick Stats */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/60 p-6 hover:shadow-xl transition-all duration-300 premium-scale-in">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="h-8 w-8 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center shadow-md">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">Quick Stats</h3>
+              </div>
+              
+              <div className="space-y-6">
+                {/* Joined Groups */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900">Groups</p>
+                      <p className="text-sm text-gray-600">Study groups</p>
+                    </div>
+                  </div>
+                  <span className="text-2xl font-bold text-gray-900">{form.joinedGroups.length}</span>
+                </div>
+
+                {/* Upcoming Events */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 bg-purple-500 rounded-lg flex items-center justify-center">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900">Events</p>
+                      <p className="text-sm text-gray-600">Upcoming</p>
+                    </div>
+                  </div>
+                  <span className="text-2xl font-bold text-gray-900">{form.upcomingEvents.length}</span>
+                </div>
+
+                {/* Study Hours */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 bg-green-500 rounded-lg flex items-center justify-center">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900">Study Hours</p>
+                      <p className="text-sm text-gray-600">This month</p>
+                    </div>
+                  </div>
+                  <span className="text-2xl font-bold text-gray-900">42</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Groups Preview */}
+            {form.joinedGroups.length > 0 && (
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/60 p-6 hover:shadow-xl transition-all duration-300 premium-fade-in">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="h-8 w-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center shadow-md">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900">My Groups</h3>
+                </div>
+                <div className="space-y-3">
+                  {form.joinedGroups.slice(0, 3).map((group, i) => (
+                    <div key={i} className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                      <div className="h-8 w-8 bg-blue-500 rounded-full flex items-center justify-center">
+                        <span className="text-white text-sm font-bold">{group.charAt(0)}</span>
+                      </div>
+                      <span className="text-blue-700 font-medium">{group}</span>
+                    </div>
+                  ))}
+                  {form.joinedGroups.length > 3 && (
+                    <p className="text-gray-500 text-sm text-center">+{form.joinedGroups.length - 3} more groups</p>
+                  )}
+                </div>
               </div>
             )}
-          </div>
 
-          <div className="surface inset-pad">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-xl font-extrabold">Upcoming Events</h2>
-              <span className="badge">{form.upcomingEvents.length}</span>
+            {/* Study Progress */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/60 p-6 hover:shadow-xl transition-all duration-300 premium-scale-in">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="h-8 w-8 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg flex items-center justify-center shadow-md">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">Study Progress</h3>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-gray-600">Monthly Goal</span>
+                    <span className="text-gray-900 font-semibold">75%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div className="bg-gradient-to-r from-green-400 to-green-500 h-3 rounded-full" style={{width: '75%'}}></div>
+                  </div>
+                  <p className="text-green-600 text-sm mt-2">42 hours completed</p>
+                </div>
+              </div>
             </div>
-            {form.upcomingEvents.length === 0 ? (
-              <p className="text-muted">No events yet.</p>
-            ) : (
-              <ul className="space-y-2">
-                {form.upcomingEvents.map((e, i) => (
-                  <li key={i} className="premium-card">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold">{e}</span>
-                      <span className="badge">Soon</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
           </div>
-        </section>
+          )}
+        </div>
+        
+        {/* Delete Account Section - Only show for non-admin users */}
+        {user?.email !== "harryshady131@gmail.com" && (
+          <div className="mt-8">
+            <div className="bg-red-50/80 backdrop-blur-sm rounded-2xl shadow-lg border border-red-200/60 p-8 hover:shadow-xl transition-all duration-300 premium-fade-in">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="h-10 w-10 bg-gradient-to-r from-red-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 18.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-red-900">Danger Zone</h2>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-red-900 mb-2">Delete Account</h3>
+                  <p className="text-red-700 mb-4">
+                    Once you delete your account, there is no going back. This will permanently remove your account, 
+                    all your data, and your participation in groups and events.
+                  </p>
+                </div>
+                
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={deleting}
+                  className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold rounded-xl hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                >
+                  {deleting ? (
+                    <>
+                      <svg className="w-5 h-5 inline mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Deleting Account...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete My Account
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   )

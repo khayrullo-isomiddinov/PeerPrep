@@ -1,5 +1,6 @@
 // src/pages/Events.jsx
 import { useEffect, useState, useMemo } from "react"
+import { useSearchParams } from "react-router-dom"
 import { Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { 
@@ -35,6 +36,7 @@ const TIME_FILTERS = [
 export default function Events() {
   const { isAuthenticated } = useAuth()
   const [events, setEvents] = useState([])
+  const [params] = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
@@ -45,8 +47,10 @@ export default function Events() {
   async function load() {
     setLoading(true)
     try {
-      const data = await listEvents()
-    setEvents(data)
+      const q = params.get('q') || undefined
+      const location = params.get('location') || undefined
+      const data = await listEvents({ q, location })
+      setEvents(data)
     } catch (error) {
       console.error("Failed to load events:", error)
     } finally {
@@ -56,7 +60,9 @@ export default function Events() {
 
   useEffect(() => {
     load()
-  }, [])
+    setSearchQuery(params.get('q') || "")
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params])
 
   const filteredAndSortedEvents = useMemo(() => {
     let filtered = events

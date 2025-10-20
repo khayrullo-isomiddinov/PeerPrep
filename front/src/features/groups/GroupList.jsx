@@ -9,7 +9,7 @@ import { deleteGroup } from "../../utils/api"
 import { useAuth } from "../auth/AuthContext"
 import Button from "../../components/Button"
 
-export default function GroupList({ groups, setGroups, onEdit }) {
+export default function GroupList({ groups, setGroups, onEdit, showFilters = true }) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedField, setSelectedField] = useState("")
   const [showMissionsOnly, setShowMissionsOnly] = useState(false)
@@ -98,6 +98,7 @@ export default function GroupList({ groups, setGroups, onEdit }) {
 
   return (
     <div className="space-y-6">
+      {showFilters && (
       <div className="surface inset-pad rounded-l premium-scale-in">
         <div className="flex flex-col lg:flex-row gap-4 lg:items-center lg:justify-between">
           <div className="w-full lg:max-w-xl">
@@ -106,24 +107,24 @@ export default function GroupList({ groups, setGroups, onEdit }) {
                 <path d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <input
-                placeholder="Search groups…"
+                placeholder="Search groups..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
               />
               {searchTerm && (
-                <button onClick={() => setSearchTerm("")} className="text-muted hover:opacity-100">⨯</button>
+                <button onClick={() => setSearchTerm("")} className="text-muted hover:opacity-100">Clear</button>
               )}
             </div>
             <div className="md:hidden premium-input flex items-center gap-2 px-3 py-2 rounded-m">
               <FontAwesomeIcon icon={faSearch} className="opacity-70" />
               <input
                 className="bg-transparent outline-none w-full"
-                placeholder="Search groups…"
+                placeholder="Search groups..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
               />
               {searchTerm && (
-                <button onClick={() => setSearchTerm("")} className="text-muted hover:opacity-100">⨯</button>
+                <button onClick={() => setSearchTerm("")} className="text-muted hover:opacity-100">Clear</button>
               )}
             </div>
           </div>
@@ -183,11 +184,13 @@ export default function GroupList({ groups, setGroups, onEdit }) {
           </div>
         </div>
       </div>
+      )}
 
+      {showFilters && (
       <div className="flex items-center justify-between text-sm text-muted">
         <div className="flex flex-wrap items-center gap-2">
           <span>Showing {filteredAndSortedGroups.length} of {groups.length} groups</span>
-          {searchTerm && <span className="badge">Search: “{searchTerm}”</span>}
+          {searchTerm && <span className="badge">Search: "{searchTerm}"</span>}
           {selectedField && (
             <span className="badge">Field: {selectedField}</span>
           )}
@@ -203,6 +206,7 @@ export default function GroupList({ groups, setGroups, onEdit }) {
           <span>{groups.reduce((s, g) => s + (g.members || 0), 0)} total members</span>
         </div>
       </div>
+      )}
 
       {filteredAndSortedGroups.length === 0 ? (
         <div className="surface inset-pad rounded-l text-center premium-scale-in">
@@ -244,3 +248,12 @@ export default function GroupList({ groups, setGroups, onEdit }) {
     </div>
   )
 }
+
+
+
+
+
+
+
+
+

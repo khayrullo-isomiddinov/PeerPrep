@@ -22,7 +22,6 @@ api.interceptors.response.use(
   err => {
     if (err?.response?.status === 401) {
       setAuthHeader(null)
-      localStorage.removeItem("user")
     }
     return Promise.reject(err)
   }
@@ -111,4 +110,38 @@ export async function getGroupLeaderboard(id) {
 export async function deleteGroup(id) {
   const { data } = await api.delete(`groups/${id}`)
   return data
+}
+
+// Profile API functions
+export async function getProfile() {
+  const { data } = await api.get("auth/me")
+  return data
+}
+
+export async function updateProfile(profileData) {
+  const { data } = await api.put("auth/profile", profileData)
+  return data
+}
+
+export async function deleteAccount() {
+  const { data } = await api.delete("auth/account")
+  return data
+}
+
+// Locations autocomplete
+export async function searchLocations(query) {
+  const { data } = await api.get("locations", { params: { query } })
+  return data // [{ name, country, full }]
+}
+
+// Events autocomplete
+export async function autocompleteEvents(query) {
+  const { data } = await api.get("events/autocomplete", { params: { q: query } })
+  return data // [{ id, title, location, full }]
+}
+
+// Groups autocomplete
+export async function autocompleteGroups(query) {
+  const { data } = await api.get("groups/autocomplete", { params: { q: query } })
+  return data // [{ id, name, field, exam, full }]
 }

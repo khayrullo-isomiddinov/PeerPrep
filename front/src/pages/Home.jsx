@@ -1,10 +1,79 @@
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
+import { useEffect, useRef, useState } from "react"
+import { searchLocations, autocompleteEvents, autocompleteGroups } from "../utils/api"
 
 export default function Home() {
+  const navigate = useNavigate()
+  const [type, setType] = useState("events") // 'events' | 'groups'
+  const [query, setQuery] = useState("")
+  const [location, setLocation] = useState("")
+  const [locOptions, setLocOptions] = useState([])
+  const [eventOptions, setEventOptions] = useState([])
+  const [groupOptions, setGroupOptions] = useState([])
+  const [showLocMenu, setShowLocMenu] = useState(false)
+  const [showQueryMenu, setShowQueryMenu] = useState(false)
+  const locDebounce = useRef(null)
+  const queryDebounce = useRef(null)
+
+  // Fetch location suggestions with simple debounce
+  useEffect(() => {
+    if (locDebounce.current) clearTimeout(locDebounce.current)
+    locDebounce.current = setTimeout(async () => {
+      if (!location || location.length < 2) { setLocOptions([]); return }
+      try {
+        const data = await searchLocations(location)
+        setLocOptions(data)
+      } catch {
+        setLocOptions([])
+      }
+    }, 200)
+    return () => { if (locDebounce.current) clearTimeout(locDebounce.current) }
+  }, [location])
+
+  // Fetch query suggestions (events or groups) with debounce
+  useEffect(() => {
+    if (queryDebounce.current) clearTimeout(queryDebounce.current)
+    queryDebounce.current = setTimeout(async () => {
+      if (!query || query.length < 2) { 
+        setEventOptions([])
+        setGroupOptions([])
+        return 
+      }
+      try {
+        if (type === "events") {
+          const data = await autocompleteEvents(query)
+          setEventOptions(data)
+          setGroupOptions([])
+        } else {
+          const data = await autocompleteGroups(query)
+          setGroupOptions(data)
+          setEventOptions([])
+        }
+      } catch {
+        setEventOptions([])
+        setGroupOptions([])
+      }
+    }, 300)
+    return () => { if (queryDebounce.current) clearTimeout(queryDebounce.current) }
+  }, [query, type])
+
+  function onSearch() {
+    if (type === "events") {
+      const params = new URLSearchParams()
+      if (query.trim()) params.set("q", query.trim())
+      if (location.trim()) params.set("location", location.trim())
+      navigate(`/events?${params.toString()}`)
+    } else {
+      const params = new URLSearchParams()
+      if (query.trim()) params.set("q", query.trim())
+      navigate(`/groups?${params.toString()}`)
+    }
+  }
+
   return (
     <div className="min-h-screen tap-safe premium-scrollbar flex flex-col home-light route-transition">
 
-      {/* Hero */}
+      {}
       <section className="home-hero premium-fade-in">
         <div className="home-hero-bg" />
         <div className="home-hero-inner reveal-up">
@@ -15,16 +84,63 @@ export default function Home() {
         </div>
         <div className="search-wrap reveal-up" style={{animationDelay:'.06s'}}>
           <div className="home-search premium-scale-in">
-            <div className="field">
+            <div className="field" style={{position:'relative'}}>
               <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#ec4899" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z" stroke="#ec4899" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              <input placeholder="Find the event you're interested in"/>
+              <input
+                value={query}
+                onChange={e => { setQuery(e.target.value); setShowQueryMenu(true) }}
+                onFocus={() => setShowQueryMenu(true)}
+                onBlur={() => setTimeout(() => setShowQueryMenu(false), 150)}
+                placeholder={type === 'events' ? "Find the event you're interested in" : "Find a mission group"}
+                className="home-search-input"
+              />
+              {showQueryMenu && ((type === 'events' && eventOptions.length > 0) || (type === 'groups' && groupOptions.length > 0)) && (
+                <div className="search-autocomplete">
+                  {type === 'events' ? eventOptions.map((opt, idx) => (
+                    <button key={idx} onMouseDown={() => { setQuery(opt.title); setShowQueryMenu(false) }}>
+                      <div className="font-medium text-gray-900">{opt.title}</div>
+                      {opt.location && <div className="text-sm text-gray-500">{opt.location}</div>}
+                    </button>
+                  )) : groupOptions.map((opt, idx) => (
+                    <button key={idx} onMouseDown={() => { setQuery(opt.name); setShowQueryMenu(false) }}>
+                      <div className="font-medium text-gray-900">{opt.name}</div>
+                      {opt.field && <div className="text-sm text-gray-500">{opt.field}</div>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="divider" />
+            <div className="field" style={{position:'relative'}}>
+              <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#ec4899" d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+              <input
+                value={location}
+                onChange={e => { setLocation(e.target.value); setShowLocMenu(true) }}
+                onFocus={() => setShowLocMenu(true)}
+                onBlur={() => setTimeout(() => setShowLocMenu(false), 150)}
+                placeholder="Search location (events only)"
+                disabled={type !== 'events'}
+                className="home-search-input"
+              />
+              {showLocMenu && locOptions.length > 0 && (
+                <div className="search-autocomplete">
+                  {locOptions.map((opt, idx) => (
+                    <button key={idx} onMouseDown={() => { setLocation(opt.full); setShowLocMenu(false) }}>
+                      <div className="font-medium text-gray-900">{opt.name}</div>
+                      <div className="text-sm text-gray-500">{opt.country}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="divider" />
             <div className="field">
-              <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#ec4899" d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
-              <input placeholder="New York, NY"/>
+              <select value={type} onChange={e => setType(e.target.value)} className="home-search-select">
+                <option value="events">Events</option>
+                <option value="groups">Groups</option>
+              </select>
             </div>
-            <button className="btn-pink square">Search</button>
+            <button className="btn-pink square" onClick={onSearch}>Search</button>
           </div>
         </div>
       </section>
@@ -96,7 +212,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Highlights this week */}
+      {}
       <section className="home-section">
         <div className="home-section-inner reveal-up">
           <div className="home-section-head">
@@ -121,7 +237,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* More events */}
+      {}
       <section className="home-section">
         <div className="home-section-inner reveal-up">
           <div className="home-section-head">
