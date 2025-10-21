@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     EMAIL_PASS: str = ""
 
     SECRET_KEY: str = "change_me"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
     # Admin bootstrap
     ADMIN_EMAIL: str = "harryshady131@gmail.com"

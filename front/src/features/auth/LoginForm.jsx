@@ -35,9 +35,8 @@ export default function LoginForm() {
       auth.login({ access_token: data.access_token, user: data.user })
       setMsg(`Welcome back, ${data.user.email}`)
       setSuccess(true)
-      setTimeout(() => {
-        navigate("/groups", { replace: true })
-      }, 500)
+      // Navigate immediately for smoother UX
+      navigate("/groups", { replace: true })
     } catch (err) {
       setMsg(err?.response?.data?.detail || "Login failed")
       setSuccess(false)

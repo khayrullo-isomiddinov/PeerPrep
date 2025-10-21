@@ -10,16 +10,11 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
     field: "",
     exam: "",
     description: "",
-    mission_title: "",
-    mission_description: "",
-    mission_deadline: "",
-    mission_capacity: 10,
-    mission_badge_name: "",
-    mission_badge_description: "",
+    deadline: "",
+    capacity: 10,
   })
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
-  const [hasMission, setHasMission] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
 
   useEffect(() => {
@@ -29,14 +24,9 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
       field: group.field || "",
       exam: group.exam || "",
       description: group.description || "",
-      mission_title: group.mission_title || "",
-      mission_description: group.mission_description || "",
-      mission_deadline: group.mission_deadline ? new Date(group.mission_deadline).toISOString().split("T")[0] : "",
-      mission_capacity: group.mission_capacity || 10,
-      mission_badge_name: group.mission_badge_name || "",
-      mission_badge_description: group.mission_badge_description || "",
+      deadline: group.deadline ? new Date(group.deadline).toISOString().split("T")[0] : "",
+      capacity: group.capacity || 10,
     })
-    setHasMission(!!group.mission_title)
   }, [group])
 
   const fieldOptions = [
@@ -60,17 +50,8 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
     if (!form.field.trim()) next.field = "Field of study is required"
     if (form.description && form.description.length > 500) next.description = "Max 500 characters"
     if (form.exam && form.exam.length > 100) next.exam = "Max 100 characters"
-    if (hasMission) {
-      if (!form.mission_title.trim()) next.mission_title = "Mission title is required"
-      else if (form.mission_title.length > 100) next.mission_title = "Max 100 characters"
-      if (!form.mission_description.trim()) next.mission_description = "Mission description is required"
-      else if (form.mission_description.length > 1000) next.mission_description = "Max 1000 characters"
-      if (!form.mission_deadline) next.mission_deadline = "Deadline is required"
-      else if (new Date(form.mission_deadline) <= new Date()) next.mission_deadline = "Deadline must be in the future"
-      if (form.mission_capacity < 1 || form.mission_capacity > 100) next.mission_capacity = "Capacity 1–100"
-      if (form.mission_badge_name && form.mission_badge_name.length > 50) next.mission_badge_name = "Max 50 characters"
-      if (form.mission_badge_description && form.mission_badge_description.length > 200) next.mission_badge_description = "Max 200 characters"
-    }
+    if (form.deadline && new Date(form.deadline) <= new Date()) next.deadline = "Deadline must be in the future"
+    if (form.capacity < 1 || form.capacity > 100) next.capacity = "Capacity 1–100"
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -89,21 +70,8 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
         field: form.field.trim(),
         exam: form.exam.trim() || null,
         description: form.description.trim() || null,
-      }
-      if (hasMission) {
-        payload.mission_title = form.mission_title.trim()
-        payload.mission_description = form.mission_description.trim()
-        payload.mission_deadline = new Date(form.mission_deadline).toISOString()
-        payload.mission_capacity = form.mission_capacity
-        payload.mission_badge_name = form.mission_badge_name.trim() || null
-        payload.mission_badge_description = form.mission_badge_description.trim() || null
-      } else {
-        payload.mission_title = null
-        payload.mission_description = null
-        payload.mission_deadline = null
-        payload.mission_capacity = 10
-        payload.mission_badge_name = null
-        payload.mission_badge_description = null
+        deadline: form.deadline ? new Date(form.deadline).toISOString() : null,
+        capacity: form.capacity,
       }
       await onUpdate(group.id, payload)
     } catch (err) {
@@ -114,279 +82,211 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
     }
   }
 
-  function minDate() {
-    const t = new Date()
-    t.setDate(t.getDate() + 1)
-    return t.toISOString().split("T")[0]
-  }
-
-  function daysUntil() {
-    if (!form.mission_deadline) return null
-    const d = new Date(form.mission_deadline)
-    return Math.ceil((d - new Date()) / (1000 * 60 * 60 * 24))
-  }
 
   if (!group) return null
 
   return (
-    <div className="fixed inset-0 z-above-nav bg-black/60 overflow-y-auto overscroll-contain">
-      <div className="container-page min-h-screen py-8 grid place-items-center">
-        <div className="auth-card w-full max-w-4xl p-0">
-          <div className="sticky top-0 z-10 px-6 py-4 rounded-t-xl" style={{ background: "rgba(23,28,43,.92)", backdropFilter: "blur(8px)" }}>
+    <div className="fixed inset-0 z-above-nav bg-black/50 overflow-y-auto overscroll-contain">
+      <div className="min-h-screen py-8 px-4 flex items-center justify-center">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden">
+          <div className="sticky top-0 z-10 px-6 py-4 bg-white border-b border-gray-200">
             <div className="flex items-center justify-between">
-              <div className="inline-flex items-center gap-2">
-                <span className="badge">Edit</span>
-                <h2 className="premium-heading">Update group</h2>
+              <div className="inline-flex items-center gap-3">
+                <span className="px-3 py-1 bg-pink-100 text-pink-700 text-sm font-medium rounded-full">Edit</span>
+                <h2 className="text-2xl font-bold text-gray-900">Update Group</h2>
               </div>
-              <button onClick={onCancel} className="btn-secondary">Close</button>
+              <button 
+                onClick={onCancel} 
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+              >
+                Close
+              </button>
             </div>
           </div>
 
-          <div className="max-h-[78vh] overflow-y-auto premium-scrollbar px-6 pb-6 pt-2">
+          <div className="max-h-[78vh] overflow-y-auto px-6 pb-6 pt-4">
             {errors.submit && (
-              <div className="premium-card inset-pad mt-2">
-                <div className="inline-flex items-center gap-2 premium-text-error">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                <div className="inline-flex items-center gap-2 text-red-600">
                   <FontAwesomeIcon icon={faExclamationTriangle} />
-                  <span>{errors.submit}</span>
+                  <span className="font-medium">{errors.submit}</span>
                 </div>
               </div>
             )}
 
-            <form onSubmit={submit} className="mt-4 space-y-8">
-              <section className="surface inset-pad rounded-l space-y-6">
-                <div className="inline-flex items-center gap-2">
-                  <FontAwesomeIcon icon={faUsers} />
-                  <h3 className="text-xl font-bold">Basic information</h3>
+            <form onSubmit={submit} className="space-y-8">
+              <section className="bg-gray-50 rounded-xl p-6 space-y-6">
+                <div className="inline-flex items-center gap-3">
+                  <FontAwesomeIcon icon={faUsers} className="w-5 h-5 text-pink-500" />
+                  <h3 className="text-xl font-bold text-gray-900">Basic Information</h3>
                 </div>
                 <div className="grid md:grid-cols-2 gap-6">
-                  <div className="field-row">
-                    <label className="label">Group name *</label>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-gray-700">Group name *</label>
                     <input
                       name="name"
                       value={form.name}
                       onChange={handleChange}
-                      className={`input ${errors.name ? "ring-soft" : ""}`}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
+                        errors.name ? 'border-red-300' : 'border-gray-300'
+                      }`}
                       placeholder="e.g., Data Structures Study Group"
                       maxLength={100}
                     />
-                    <div className="flex items-center justify-between text-sm text-muted">
+                    <div className="flex items-center justify-between text-sm text-gray-500">
                       <span>Clear and memorable</span>
-                      <span className={form.name.length > 80 ? "premium-text-warning" : ""}>{form.name.length}/100</span>
+                      <span className={form.name.length > 80 ? "text-orange-600" : ""}>{form.name.length}/100</span>
                     </div>
-                    {errors.name && <div className="premium-text-error text-sm">{errors.name}</div>}
+                    {errors.name && <div className="text-red-600 text-sm">{errors.name}</div>}
                   </div>
 
-                  <div className="field-row">
-                    <label className="label">Field of study *</label>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-gray-700">Field of study *</label>
                     <select
                       name="field"
                       value={form.field}
                       onChange={handleChange}
-                      className={`input ${errors.field ? "ring-soft" : ""}`}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
+                        errors.field ? 'border-red-300' : 'border-gray-300'
+                      }`}
                     >
                       <option value="">Select a field…</option>
                       {fieldOptions.map(f => (
                         <option key={f} value={f}>{f}</option>
                       ))}
                     </select>
-                    {errors.field && <div className="premium-text-error text-sm">{errors.field}</div>}
+                    {errors.field && <div className="text-red-600 text-sm">{errors.field}</div>}
                   </div>
 
-                  <div className="field-row">
-                    <label className="label">Upcoming exam</label>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-gray-700">Upcoming exam</label>
                     <input
                       name="exam"
                       value={form.exam}
                       onChange={handleChange}
-                      className={`input ${errors.exam ? "ring-soft" : ""}`}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
+                        errors.exam ? 'border-red-300' : 'border-gray-300'
+                      }`}
                       placeholder="e.g., Midterm, Final, Certification"
                       maxLength={100}
                     />
-                    <div className="flex items-center justify-between text-sm text-muted">
+                    <div className="flex items-center justify-between text-sm text-gray-500">
                       <span>What are you preparing for?</span>
                       <span>{form.exam.length}/100</span>
                     </div>
-                    {errors.exam && <div className="premium-text-error text-sm">{errors.exam}</div>}
+                    {errors.exam && <div className="text-red-600 text-sm">{errors.exam}</div>}
                   </div>
 
-                  <div className="field-row">
-                    <label className="label">Description</label>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-gray-700">Description</label>
                     <textarea
                       name="description"
                       value={form.description}
                       onChange={handleChange}
-                      className={`textarea ${errors.description ? "ring-soft" : ""}`}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
+                        errors.description ? 'border-red-300' : 'border-gray-300'
+                      }`}
                       placeholder="What will you study and how will you collaborate?"
                       rows={4}
                       maxLength={500}
                     />
-                    <div className="flex items-center justify-between text-sm text-muted">
+                    <div className="flex items-center justify-between text-sm text-gray-500">
                       <span>Help others understand the focus</span>
-                      <span className={form.description.length > 400 ? "premium-text-warning" : ""}>{form.description.length}/500</span>
+                      <span className={form.description.length > 400 ? "text-orange-600" : ""}>{form.description.length}/500</span>
                     </div>
-                    {errors.description && <div className="premium-text-error text-sm">{errors.description}</div>}
+                    {errors.description && <div className="text-red-600 text-sm">{errors.description}</div>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-gray-700">Group Deadline</label>
+                    <input
+                      type="date"
+                      name="deadline"
+                      value={form.deadline}
+                      onChange={handleChange}
+                      min={new Date().toISOString().split('T')[0]}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
+                        errors.deadline ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                    />
+                    {errors.deadline && <div className="text-red-600 text-sm">{errors.deadline}</div>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-gray-700">Maximum Participants</label>
+                    <input
+                      type="number"
+                      name="capacity"
+                      value={form.capacity}
+                      onChange={handleChange}
+                      min="1"
+                      max="100"
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
+                        errors.capacity ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                    />
+                    {errors.capacity && <div className="text-red-600 text-sm">{errors.capacity}</div>}
                   </div>
                 </div>
               </section>
 
-              <section className="surface inset-pad rounded-l space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="inline-flex items-center gap-2">
-                    <FontAwesomeIcon icon={faTrophy} />
-                    <h3 className="text-xl font-bold">Mission challenge</h3>
-                    <span className="badge">Optional</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setHasMission(v => !v)}
-                    className={hasMission ? "btn" : "btn-secondary"}
-                  >
-                    {hasMission ? "Disable mission" : "Enable mission"}
-                  </button>
-                </div>
-
-                {hasMission && (
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="md:col-span-2 field-row">
-                      <label className="label">Mission title *</label>
-                      <input
-                        name="mission_title"
-                        value={form.mission_title}
-                        onChange={handleChange}
-                        className={`input ${errors.mission_title ? "ring-soft" : ""}`}
-                        placeholder="e.g., 30-Day Algorithms Sprint"
-                        maxLength={100}
-                      />
-                      <div className="flex items-center justify-between text-sm text-muted">
-                        <span>Main goal</span>
-                        <span className={form.mission_title.length > 80 ? "premium-text-warning" : ""}>{form.mission_title.length}/100</span>
-                      </div>
-                      {errors.mission_title && <div className="premium-text-error text-sm">{errors.mission_title}</div>}
-                    </div>
-
-                    <div className="md:col-span-2 field-row">
-                      <label className="label">Mission description *</label>
-                      <textarea
-                        name="mission_description"
-                        value={form.mission_description}
-                        onChange={handleChange}
-                        className={`textarea ${errors.mission_description ? "ring-soft" : ""}`}
-                        placeholder="Describe requirements, proof, and how success is judged."
-                        rows={4}
-                        maxLength={1000}
-                      />
-                      <div className="flex items-center justify-between text-sm text-muted">
-                        <span>Be specific about submissions</span>
-                        <span className={form.mission_description.length > 800 ? "premium-text-warning" : ""}>{form.mission_description.length}/1000</span>
-                      </div>
-                      {errors.mission_description && <div className="premium-text-error text-sm">{errors.mission_description}</div>}
-                    </div>
-
-                    <div className="field-row">
-                      <label className="label inline-flex items-center gap-2"><FontAwesomeIcon icon={faClock} /> Deadline *</label>
-                      <input
-                        type="date"
-                        name="mission_deadline"
-                        value={form.mission_deadline}
-                        onChange={handleChange}
-                        min={minDate()}
-                        className={`input ${errors.mission_deadline ? "ring-soft" : ""}`}
-                      />
-                      {form.mission_deadline && <div className="text-sm text-muted mt-1">{daysUntil()} days remaining</div>}
-                      {errors.mission_deadline && <div className="premium-text-error text-sm">{errors.mission_deadline}</div>}
-                    </div>
-
-                    <div className="field-row">
-                      <label className="label inline-flex items-center gap-2"><FontAwesomeIcon icon={faUsers} /> Maximum participants *</label>
-                      <input
-                        type="number"
-                        name="mission_capacity"
-                        value={form.mission_capacity}
-                        onChange={handleChange}
-                        className={`input ${errors.mission_capacity ? "ring-soft" : ""}`}
-                        min="1"
-                        max="100"
-                      />
-                      <div className="text-sm text-muted mt-1">How many can join</div>
-                      {errors.mission_capacity && <div className="premium-text-error text-sm">{errors.mission_capacity}</div>}
-                    </div>
-
-                    <div className="field-row">
-                      <label className="label">Badge name</label>
-                      <input
-                        name="mission_badge_name"
-                        value={form.mission_badge_name}
-                        onChange={handleChange}
-                        className={`input ${errors.mission_badge_name ? "ring-soft" : ""}`}
-                        placeholder="e.g., Sprint Champion"
-                        maxLength={50}
-                      />
-                      <div className="flex items-center justify-between text-sm text-muted">
-                        <span>What participants earn</span>
-                        <span>{form.mission_badge_name.length}/50</span>
-                      </div>
-                      {errors.mission_badge_name && <div className="premium-text-error text-sm">{errors.mission_badge_name}</div>}
-                    </div>
-
-                    <div className="field-row">
-                      <label className="label">Badge description</label>
-                      <textarea
-                        name="mission_badge_description"
-                        value={form.mission_badge_description}
-                        onChange={handleChange}
-                        className={`textarea ${errors.mission_badge_description ? "ring-soft" : ""}`}
-                        placeholder="What does this badge represent?"
-                        rows={2}
-                        maxLength={200}
-                      />
-                      <div className="flex items-center justify-between text-sm text-muted">
-                        <span>Explain the achievement</span>
-                        <span className={form.mission_badge_description.length > 160 ? "premium-text-warning" : ""}>{form.mission_badge_description.length}/200</span>
-                      </div>
-                      {errors.mission_badge_description && <div className="premium-text-error text-sm">{errors.mission_badge_description}</div>}
-                    </div>
-                  </div>
-                )}
-              </section>
-
-              <section className="surface inset-pad rounded-l">
+              <section className="bg-white border border-gray-200 rounded-xl p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="inline-flex items-center gap-2">
-                    <span className="badge">{hasMission ? "Mission challenge" : "Basic group"}</span>
-                    <span className="text-muted">Review and save</span>
+                  <div className="inline-flex items-center gap-3">
+                    <span className="px-3 py-1 bg-gray-100 text-gray-700 text-sm font-medium rounded-full">
+                      Study Group
+                    </span>
+                    <span className="text-gray-500">Review and save</span>
                   </div>
-                  <div className="inline-flex gap-2">
-                    <button type="button" onClick={() => setShowPreview(v => !v)} className="btn-secondary">
+                  <div className="inline-flex gap-3">
+                    <button 
+                      type="button" 
+                      onClick={() => setShowPreview(v => !v)} 
+                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                    >
                       {showPreview ? "Hide preview" : "Preview"}
                     </button>
-                    <button type="submit" disabled={loading} className="btn">
-                      {loading ? "Updating…" : (<span className="inline-flex items-center gap-2"><FontAwesomeIcon icon={faSave} />Save changes</span>)}
+                    <button 
+                      type="submit" 
+                      disabled={loading} 
+                      className="px-6 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {loading ? "Updating…" : (
+                        <span className="inline-flex items-center gap-2">
+                          <FontAwesomeIcon icon={faSave} className="w-4 h-4" />
+                          Save changes
+                        </span>
+                      )}
                     </button>
                   </div>
                 </div>
 
                 {showPreview && (
-                  <div className="premium-card inset-pad mt-4">
+                  <div className="bg-gray-50 rounded-lg p-4 mt-4">
                     <div className="grid md:grid-cols-2 gap-4">
                       <div>
-                        <div className="text-muted">Name</div>
-                        <div className="font-semibold">{form.name || "—"}</div>
+                        <div className="text-gray-500 text-sm">Name</div>
+                        <div className="font-semibold text-gray-900">{form.name || "—"}</div>
                       </div>
                       <div>
-                        <div className="text-muted">Field</div>
-                        <div className="font-semibold">{form.field || "—"}</div>
+                        <div className="text-gray-500 text-sm">Field</div>
+                        <div className="font-semibold text-gray-900">{form.field || "—"}</div>
                       </div>
                       <div className="md:col-span-2">
-                        <div className="text-muted">Description</div>
-                        <div>{form.description || "—"}</div>
+                        <div className="text-gray-500 text-sm">Description</div>
+                        <div className="text-gray-900">{form.description || "—"}</div>
                       </div>
                       <div>
-                        <div className="text-muted">Exam</div>
-                        <div>{form.exam || "—"}</div>
+                        <div className="text-gray-500 text-sm">Exam</div>
+                        <div className="text-gray-900">{form.exam || "—"}</div>
                       </div>
                       <div>
-                        <div className="text-muted">Type</div>
-                        <div className="font-semibold">{hasMission ? "Mission challenge" : "Basic group"}</div>
+                        <div className="text-gray-500 text-sm">Deadline</div>
+                        <div className="text-gray-900">{form.deadline ? new Date(form.deadline).toLocaleDateString() : "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-500 text-sm">Capacity</div>
+                        <div className="text-gray-900">{form.capacity} members</div>
                       </div>
                     </div>
                   </div>

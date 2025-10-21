@@ -10,7 +10,6 @@ from app.models import (
     GroupMember,
     Event,
     EventKind,
-    MissionStatus,
 )
 from app.config import settings
 
@@ -114,7 +113,7 @@ def seed_db(session: Session) -> None:
     ]
 
     # Group mission templates - focused on long-term goals with deadlines
-    group_mission_templates = [
+    group_templates = [
         ("GRE Prep Study Group", "Complete GRE preparation with peer accountability", "GRE Master", "Graduate School", "GRE"),
         ("MCAT Study Squad", "Intensive MCAT preparation with study partners", "MCAT Ace", "Medical School", "MCAT"),
         ("Bar Exam Study Group", "Bar exam preparation with mock tests", "Bar Exam Pro", "Law School", "Bar Exam"),
@@ -164,9 +163,9 @@ def seed_db(session: Session) -> None:
 
     groups = []
     for i in range(groups_to_create):
-        base_title, base_desc, badge, field, exam = group_mission_templates[i % len(group_mission_templates)]
-        mission_days = rng.randint(30, 120)  # 1-4 months for exam prep
-        deadline = now + timedelta(days=mission_days)
+        base_title, base_desc, badge, field, exam = group_templates[i % len(group_templates)]
+        group_days = rng.randint(30, 120)  # 1-4 months for exam prep
+        deadline = now + timedelta(days=group_days)
         cap = rng.randint(4, 12)  # Much smaller groups for better accountability
         name = base_title  # Remove cohort numbering
         gid = f"{_slugify(base_title)}-{_rand_suffix(6)}"
@@ -178,13 +177,8 @@ def seed_db(session: Session) -> None:
             description=f"{base_desc}. Join our accountability group and achieve your goal together!",
             created_by=admin.id,
             members=0,
-            mission_title=base_title,
-            mission_description=base_desc,
-            mission_deadline=deadline,
-            mission_capacity=cap,
-            mission_status=MissionStatus.active,
-            mission_badge_name=badge,
-            mission_badge_description=f"Earn the '{badge}' badge upon completion of the mission."
+            deadline=deadline,
+            capacity=cap,
         )
         groups.append(g)
         session.add(g)

@@ -21,32 +21,20 @@ class Event(EventBase, table=True):
     created_by: int = Field(index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-class MissionStatus(str, enum.Enum):
-    active = "active"
-    completed = "completed"
-    cancelled = "cancelled"
-
 class GroupBase(SQLModel):
     name: str
     field: str
     exam: Optional[str] = None
     description: Optional[str] = None
     cover_image_url: Optional[str] = None
+    deadline: Optional[datetime] = None
+    capacity: int = 10
 
 class Group(GroupBase, table=True):
     id: Optional[str] = Field(default=None, primary_key=True, index=True)
     members: int = 0
     created_by: int = Field(foreign_key="user.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    # Mission fields
-    mission_title: Optional[str] = None
-    mission_description: Optional[str] = None
-    mission_deadline: Optional[datetime] = None
-    mission_capacity: int = 10
-    mission_status: MissionStatus = MissionStatus.active
-    mission_badge_name: Optional[str] = None
-    mission_badge_description: Optional[str] = None
 
 class GroupCreate(GroupBase):
     pass

@@ -12,7 +12,6 @@ import { useAuth } from "../features/auth/AuthContext"
 const STEPS = [
   { id: 'cover', title: 'Upload cover', icon: faImage, section: 'GROUP INFORMATION' },
   { id: 'general', title: 'General information', icon: faInfo, section: 'GROUP INFORMATION' },
-  { id: 'mission', title: 'Mission & Goals', icon: faGraduationCap, section: 'GROUP INFORMATION' },
   { id: 'review', title: 'Review and Create', icon: faEye, section: 'CREATE GROUP' }
 ]
 
@@ -25,19 +24,15 @@ export default function CreateGroup() {
     field: "",
     exam: "",
     description: "",
-    mission_title: "",
-    mission_description: "",
-    mission_deadline: "",
-    mission_capacity: 10,
-    mission_badge_name: "",
-    mission_badge_description: "",
-    hasMission: false,
+    deadline: "",
+    capacity: 10,
     coverImage: null
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [fieldErrors, setFieldErrors] = useState({})
   const [lastUpdate, setLastUpdate] = useState(new Date())
+
 
   if (!isLoading && !isAuthenticated) {
     navigate("/login", { replace: true })
@@ -63,16 +58,17 @@ export default function CreateGroup() {
   function validateStep(step) {
     const errs = {}
     switch (step) {
-      case 0: // General
+      case 0: // Cover Image (optional)
+        // Cover image is optional, so no validation needed
+        break
+      case 1: // General Info
         if (!formData.name.trim()) errs.name = "Group name is required"
         if (!formData.field.trim()) errs.field = "Field of study is required"
         break
-      case 1: // Mission
-        if (formData.hasMission) {
-          if (!formData.mission_title.trim()) errs.mission_title = "Mission title is required"
-          if (!formData.mission_description.trim()) errs.mission_description = "Mission description is required"
-          if (!formData.mission_deadline) errs.mission_deadline = "Mission deadline is required"
-        }
+      case 2: // Review
+        // Final validation - check all required fields
+        if (!formData.name.trim()) errs.name = "Group name is required"
+        if (!formData.field.trim()) errs.field = "Field of study is required"
         break
     }
     return errs
@@ -81,6 +77,11 @@ export default function CreateGroup() {
   function canProceedToNext() {
     const errs = validateStep(currentStep)
     return Object.keys(errs).length === 0
+  }
+
+  function canCreateGroup() {
+    // Check if all required fields are filled
+    return formData.name.trim() && formData.field.trim()
   }
 
   function nextStep() {
@@ -101,10 +102,24 @@ export default function CreateGroup() {
 
   async function handleSubmit() {
     setError("")
-    const errs = validateStep(currentStep)
+    // Validate all required fields for final submission
+    const errs = {}
+    if (!formData.name.trim()) errs.name = "Group name is required"
+    if (!formData.field.trim()) errs.field = "Field of study is required"
+    
     setFieldErrors(errs)
     if (Object.keys(errs).length > 0) return
 
+    // Check if token still exists before making API call
+    const currentToken = localStorage.getItem("access_token")
+    if (!currentToken) {
+      setError("Your session has expired. Please log in again.")
+      setTimeout(() => {
+        navigate("/login", { replace: true })
+      }, 2000)
+      return
+    }
+    
     setLoading(true)
     try {
       const payload = {
@@ -112,6 +127,8 @@ export default function CreateGroup() {
         field: formData.field.trim(),
         exam: formData.exam.trim() || null,
         description: formData.description.trim() || null,
+        deadline: formData.deadline ? new Date(formData.deadline).toISOString() : null,
+        capacity: formData.capacity,
       }
       
       // Handle cover image
@@ -119,36 +136,34 @@ export default function CreateGroup() {
         // Convert image to data URL for now (in production, you'd upload to a service like AWS S3)
         const reader = new FileReader()
         reader.onload = async () => {
-          payload.cover_image_url = reader.result
-          
-          if (formData.hasMission) {
-            payload.mission_title = formData.mission_title.trim()
-            payload.mission_description = formData.mission_description.trim()
-            payload.mission_deadline = new Date(formData.mission_deadline).toISOString()
-            payload.mission_capacity = formData.mission_capacity
-            payload.mission_badge_name = formData.mission_badge_name.trim() || null
-            payload.mission_badge_description = formData.mission_badge_description.trim() || null
+          // Check token again before API call (in case it expired during image processing)
+          const tokenBeforeApi = localStorage.getItem("access_token")
+          if (!tokenBeforeApi) {
+            setError("Your session has expired. Please log in again.")
+            setTimeout(() => {
+              navigate("/login", { replace: true })
+            }, 2000)
+            return
           }
           
+          payload.cover_image_url = reader.result
           await createGroup(payload)
           navigate("/groups", { replace: true })
         }
         reader.readAsDataURL(formData.coverImage)
       } else {
-        if (formData.hasMission) {
-          payload.mission_title = formData.mission_title.trim()
-          payload.mission_description = formData.mission_description.trim()
-          payload.mission_deadline = new Date(formData.mission_deadline).toISOString()
-          payload.mission_capacity = formData.mission_capacity
-          payload.mission_badge_name = formData.mission_badge_name.trim() || null
-          payload.mission_badge_description = formData.mission_badge_description.trim() || null
-        }
-        
         await createGroup(payload)
         navigate("/groups", { replace: true })
       }
     } catch (e) {
-      setError(e?.response?.data?.detail || "Failed to create group")
+      if (e?.response?.status === 401) {
+        setError("Your session has expired. Please log in again.")
+        setTimeout(() => {
+          navigate("/login", { replace: true })
+        }, 2000)
+      } else {
+        setError(e?.response?.data?.detail || "Failed to create group")
+      }
     } finally {
       setLoading(false)
     }
@@ -212,7 +227,10 @@ export default function CreateGroup() {
                   {steps.map((step, index) => {
                     const stepIndex = STEPS.findIndex(s => s.id === step.id)
                     const isActive = stepIndex === currentStep
-                    const isCompleted = stepIndex < currentStep
+                           const isCompleted = stepIndex < currentStep && (
+                             stepIndex === 0 || // Cover image step is always considered completed if we've moved past it
+                             (stepIndex === 1 && formData.name.trim() && formData.field.trim()) // General info completed
+                           )
                     
                     return (
                       <button
@@ -249,37 +267,30 @@ export default function CreateGroup() {
         <div className="flex-1 p-8">
           <div className="max-w-4xl mx-auto">
                   {/* Step Content */}
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6 step-content">
-                    {currentStep === 0 && (
-                      <CoverImageStep 
-                        formData={formData} 
-                        updateFormData={updateFormData}
-                        fieldErrors={fieldErrors}
-                      />
-                    )}
-                    {currentStep === 1 && (
-                      <GeneralInfoStep 
-                        formData={formData} 
-                        updateFormData={updateFormData}
-                        fieldErrors={fieldErrors}
-                        fieldOptions={fieldOptions}
-                      />
-                    )}
-                    {currentStep === 2 && (
-                      <MissionGoalsStep 
-                        formData={formData} 
-                        updateFormData={updateFormData}
-                        fieldErrors={fieldErrors}
-                      />
-                    )}
-                    {currentStep === 3 && (
-                      <ReviewCreateStep 
-                        formData={formData} 
-                        updateFormData={updateFormData}
-                        error={error}
-                      />
-                    )}
-                  </div>
+                         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6 step-content">
+                           {currentStep === 0 && (
+                             <CoverImageStep 
+                               formData={formData} 
+                               updateFormData={updateFormData}
+                               fieldErrors={fieldErrors}
+                             />
+                           )}
+                           {currentStep === 1 && (
+                             <GeneralInfoStep 
+                               formData={formData} 
+                               updateFormData={updateFormData}
+                               fieldErrors={fieldErrors}
+                               fieldOptions={fieldOptions}
+                             />
+                           )}
+                           {currentStep === 2 && (
+                             <ReviewCreateStep 
+                               formData={formData} 
+                               updateFormData={updateFormData}
+                               error={error}
+                             />
+                           )}
+                         </div>
 
             {/* Action Buttons */}
             <div className="flex items-center justify-between">
@@ -310,7 +321,7 @@ export default function CreateGroup() {
                 ) : (
                   <button
                     onClick={handleSubmit}
-                    disabled={loading || !canProceedToNext()}
+                    disabled={loading || !canCreateGroup()}
                     className="px-6 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                   >
                     <span>{loading ? "Creating..." : "Create Study Group"}</span>
@@ -439,7 +450,7 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, fieldOptions }
               value={formData.name}
               onChange={(e) => updateFormData({ name: e.target.value })}
               placeholder="Make it catchy and memorable"
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input ${
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
                 fieldErrors.name ? 'border-red-300' : 'border-gray-300'
               }`}
             />
@@ -455,7 +466,7 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, fieldOptions }
             <select
               value={formData.field}
               onChange={(e) => updateFormData({ field: e.target.value })}
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 ${
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
                 fieldErrors.field ? 'border-red-300' : 'border-gray-300'
               }`}
             >
@@ -480,144 +491,55 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, fieldOptions }
               value={formData.exam}
               onChange={(e) => updateFormData({ exam: e.target.value })}
               placeholder="e.g., GRE, MCAT, CPA, AWS Certification"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Description
-            </label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => updateFormData({ description: e.target.value })}
-              placeholder="Describe your study group's focus, goals, and what participants can expect"
-              rows={4}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input"
-            />
-          </div>
+                 <div>
+                   <label className="block text-sm font-semibold text-gray-700 mb-2">
+                     Description
+                   </label>
+                   <textarea
+                     value={formData.description}
+                     onChange={(e) => updateFormData({ description: e.target.value })}
+                     placeholder="Describe your study group's focus, goals, and what participants can expect"
+                     rows={4}
+                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
+                   />
+                 </div>
+
+                 <div>
+                   <label className="block text-sm font-semibold text-gray-700 mb-2">
+                     Group Deadline
+                   </label>
+                   <input
+                     type="date"
+                     value={formData.deadline}
+                     onChange={(e) => updateFormData({ deadline: e.target.value })}
+                     min={new Date().toISOString().split('T')[0]}
+                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
+                   />
+                 </div>
+
+                 <div>
+                   <label className="block text-sm font-semibold text-gray-700 mb-2">
+                     Maximum Participants
+                   </label>
+                   <input
+                     type="number"
+                     min="2"
+                     max="50"
+                     value={formData.capacity}
+                     onChange={(e) => updateFormData({ capacity: parseInt(e.target.value) || 10 })}
+                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
+                   />
+                 </div>
         </div>
       </div>
     </div>
   )
 }
 
-function MissionGoalsStep({ formData, updateFormData, fieldErrors }) {
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center space-x-3 mb-6">
-        <FontAwesomeIcon icon={faGraduationCap} className="w-6 h-6 text-pink-500" />
-        <h2 className="text-2xl font-bold text-gray-900">Mission & Goals</h2>
-      </div>
-
-      <div className="space-y-6">
-        <div className="flex items-center space-x-3">
-          <input
-            type="checkbox"
-            id="hasMission"
-            checked={formData.hasMission}
-            onChange={(e) => updateFormData({ hasMission: e.target.checked })}
-            className="w-4 h-4 text-pink-600 border-gray-300 rounded focus:ring-pink-500"
-          />
-          <label htmlFor="hasMission" className="text-lg font-medium text-gray-900">
-            Set up a mission for this group
-          </label>
-        </div>
-
-        {formData.hasMission && (
-          <div className="space-y-6 bg-gray-50 rounded-xl p-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Mission Title *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.mission_title}
-                    onChange={(e) => updateFormData({ mission_title: e.target.value })}
-                    placeholder="e.g., Complete GRE Preparation"
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 ${
-                      fieldErrors.mission_title ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                  />
-                  {fieldErrors.mission_title && (
-                    <p className="mt-1 text-sm text-red-600">{fieldErrors.mission_title}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Mission Description *
-                  </label>
-                  <textarea
-                    value={formData.mission_description}
-                    onChange={(e) => updateFormData({ mission_description: e.target.value })}
-                    placeholder="Describe what the group aims to achieve together"
-                    rows={3}
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 ${
-                      fieldErrors.mission_description ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                  />
-                  {fieldErrors.mission_description && (
-                    <p className="mt-1 text-sm text-red-600">{fieldErrors.mission_description}</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Mission Deadline *
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.mission_deadline}
-                    onChange={(e) => updateFormData({ mission_deadline: e.target.value })}
-                    min={new Date().toISOString().split('T')[0]}
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 ${
-                      fieldErrors.mission_deadline ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                  />
-                  {fieldErrors.mission_deadline && (
-                    <p className="mt-1 text-sm text-red-600">{fieldErrors.mission_deadline}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Group Capacity
-                  </label>
-                  <input
-                    type="number"
-                    min="2"
-                    max="50"
-                    value={formData.mission_capacity}
-                    onChange={(e) => updateFormData({ mission_capacity: parseInt(e.target.value) || 10 })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Badge Name
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.mission_badge_name}
-                    onChange={(e) => updateFormData({ mission_badge_name: e.target.value })}
-                    placeholder="e.g., GRE Master"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
 
 function ReviewCreateStep({ formData, updateFormData, error }) {
   return (
@@ -651,66 +573,50 @@ function ReviewCreateStep({ formData, updateFormData, error }) {
         </div>
       )}
 
-      <div className="bg-gray-50 rounded-xl p-6 space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900">Group Details</h3>
-            <div className="space-y-3">
-              <div>
-                <span className="text-sm font-medium text-gray-500">Name:</span>
-                <p className="text-gray-900">{formData.name || "Not specified"}</p>
-              </div>
-              <div>
-                <span className="text-sm font-medium text-gray-500">Field:</span>
-                <p className="text-gray-900">{formData.field || "Not specified"}</p>
-              </div>
-              <div>
-                <span className="text-sm font-medium text-gray-500">Exam:</span>
-                <p className="text-gray-900">{formData.exam || "Not specified"}</p>
-              </div>
-              <div>
-                <span className="text-sm font-medium text-gray-500">Description:</span>
-                <p className="text-gray-900">{formData.description || "No description provided"}</p>
-              </div>
-            </div>
-          </div>
+             <div className="bg-gray-50 rounded-xl p-6 space-y-6">
+               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                 <div className="space-y-4">
+                   <h3 className="text-lg font-semibold text-gray-900">Group Details</h3>
+                   <div className="space-y-3">
+                     <div>
+                       <span className="text-sm font-medium text-gray-500">Name:</span>
+                       <p className="text-gray-900">{formData.name || "Not specified"}</p>
+                     </div>
+                     <div>
+                       <span className="text-sm font-medium text-gray-500">Field:</span>
+                       <p className="text-gray-900">{formData.field || "Not specified"}</p>
+                     </div>
+                     <div>
+                       <span className="text-sm font-medium text-gray-500">Exam:</span>
+                       <p className="text-gray-900">{formData.exam || "Not specified"}</p>
+                     </div>
+                     <div>
+                       <span className="text-sm font-medium text-gray-500">Description:</span>
+                       <p className="text-gray-900">{formData.description || "No description provided"}</p>
+                     </div>
+                   </div>
+                 </div>
 
-          {formData.hasMission && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900">Mission Details</h3>
-              <div className="space-y-3">
-                <div>
-                  <span className="text-sm font-medium text-gray-500">Mission Title:</span>
-                  <p className="text-gray-900">{formData.mission_title || "Not specified"}</p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500">Description:</span>
-                  <p className="text-gray-900">{formData.mission_description || "Not specified"}</p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500">Deadline:</span>
-                  <p className="text-gray-900">
-                    {formData.mission_deadline 
-                      ? new Date(formData.mission_deadline).toLocaleDateString() 
-                      : "Not specified"
-                    }
-                  </p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500">Capacity:</span>
-                  <p className="text-gray-900">{formData.mission_capacity} members</p>
-                </div>
-                {formData.mission_badge_name && (
-                  <div>
-                    <span className="text-sm font-medium text-gray-500">Badge:</span>
-                    <p className="text-gray-900">{formData.mission_badge_name}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+                 <div className="space-y-4">
+                   <h3 className="text-lg font-semibold text-gray-900">Group Settings</h3>
+                   <div className="space-y-3">
+                     <div>
+                       <span className="text-sm font-medium text-gray-500">Deadline:</span>
+                       <p className="text-gray-900">
+                         {formData.deadline 
+                           ? new Date(formData.deadline).toLocaleDateString() 
+                           : "No deadline set"
+                         }
+                       </p>
+                     </div>
+                     <div>
+                       <span className="text-sm font-medium text-gray-500">Capacity:</span>
+                       <p className="text-gray-900">{formData.capacity} members</p>
+                     </div>
+                   </div>
+                 </div>
+               </div>
+             </div>
     </div>
   )
 }

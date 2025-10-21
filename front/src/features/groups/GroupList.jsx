@@ -79,16 +79,16 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
 
   if (groups.length === 0) {
     return (
-      <div className="surface inset-pad rounded-l text-center premium-scale-in">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
         <div className="max-w-md mx-auto">
-          <div className="w-16 h-16 rounded-full premium-bg-primary grid place-items-center mx-auto mb-4 shadow-2">
-            <FontAwesomeIcon icon={faUsers} className="text-white text-xl" />
+          <div className="w-16 h-16 rounded-full bg-pink-100 flex items-center justify-center mx-auto mb-4">
+            <FontAwesomeIcon icon={faUsers} className="text-pink-500 text-xl" />
           </div>
-          <h3 className="text-2xl font-extrabold">No groups yet</h3>
-          <p className="text-muted mt-2">Create your first study group to start learning together.</p>
-          <div className="premium-card inset-pad mt-6">
-            <div className="text-sm">
-              <span className="premium-text-primary">Tip:</span> Add a mission challenge to make it engaging.
+          <h3 className="text-2xl font-bold text-gray-900">No groups yet</h3>
+          <p className="text-gray-600 mt-2">Create your first study group to start learning together.</p>
+          <div className="bg-pink-50 border border-pink-200 rounded-xl p-4 mt-6">
+            <div className="text-sm text-pink-700">
+              <span className="font-semibold">Tip:</span> Add a mission challenge to make it engaging.
             </div>
           </div>
         </div>
@@ -99,44 +99,45 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
   return (
     <div className="space-y-6">
       {showFilters && (
-      <div className="surface inset-pad rounded-l premium-scale-in">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex flex-col lg:flex-row gap-4 lg:items-center lg:justify-between">
           <div className="w-full lg:max-w-xl">
-            <div className="hidden md:inline-flex search-pill w-full">
-              <svg className="w-4 h-4 opacity-70" viewBox="0 0 24 24" fill="none">
+            <div className="hidden md:flex items-center gap-3 bg-gray-50 rounded-lg px-4 py-3 w-full">
+              <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none">
                 <path d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <input
+                className="bg-transparent outline-none w-full text-gray-900 placeholder-gray-500"
                 placeholder="Search groups..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
               />
               {searchTerm && (
-                <button onClick={() => setSearchTerm("")} className="text-muted hover:opacity-100">Clear</button>
+                <button onClick={() => setSearchTerm("")} className="text-gray-400 hover:text-gray-600">Clear</button>
               )}
             </div>
-            <div className="md:hidden premium-input flex items-center gap-2 px-3 py-2 rounded-m">
-              <FontAwesomeIcon icon={faSearch} className="opacity-70" />
+            <div className="md:hidden flex items-center gap-3 bg-gray-50 rounded-lg px-4 py-3">
+              <FontAwesomeIcon icon={faSearch} className="text-gray-400" />
               <input
-                className="bg-transparent outline-none w-full"
+                className="bg-transparent outline-none w-full text-gray-900 placeholder-gray-500"
                 placeholder="Search groups..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
               />
               {searchTerm && (
-                <button onClick={() => setSearchTerm("")} className="text-muted hover:opacity-100">Clear</button>
+                <button onClick={() => setSearchTerm("")} className="text-gray-400 hover:text-gray-600">Clear</button>
               )}
             </div>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
             <div className="relative min-w-[12rem]">
-              <div className="premium-input rounded-m flex items-center gap-2 px-3 py-2">
-                <FontAwesomeIcon icon={faFilter} className="opacity-70" />
+              <div className="flex items-center gap-3 bg-gray-50 rounded-lg px-4 py-3">
+                <FontAwesomeIcon icon={faFilter} className="text-gray-400" />
                 <select
                   value={selectedField}
                   onChange={e => setSelectedField(e.target.value)}
-                  className="bg-transparent outline-none w-full"
+                  className="bg-transparent outline-none w-full text-gray-900"
                 >
                   <option value="">All fields</option>
                   {fields.map(f => (
@@ -146,10 +147,10 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
               </div>
             </div>
 
-            <div className="premium-glass rounded-pill p-1 inline-flex">
+            <div className="bg-gray-100 rounded-full p-1 inline-flex">
               <button
                 onClick={() => setShowMissionsOnly(v => !v)}
-                className={`pill px-3 py-1.5 text-sm font-semibold ${showMissionsOnly ? "premium-text-primary" : "text-muted"}`}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${showMissionsOnly ? "bg-pink-500 text-white" : "text-gray-600 hover:text-gray-900"}`}
               >
                 <span className="inline-flex items-center gap-2">
                   <FontAwesomeIcon icon={showMissionsOnly ? faEyeSlash : faEye} />
@@ -160,12 +161,12 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
           </div>
         </div>
 
-        <div className="mt-4 pt-4 border-t border-white/10 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <div className="inline-flex items-center gap-2 text-muted">
+        <div className="mt-4 pt-4 border-t border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="inline-flex items-center gap-2 text-gray-600">
             <FontAwesomeIcon icon={faSort} />
             <span className="text-sm">Sort by</span>
           </div>
-          <div className="premium-glass rounded-pill p-1 inline-flex">
+          <div className="bg-gray-100 rounded-full p-1 inline-flex">
             {[
               { key: "name", label: "Name" },
               { key: "field", label: "Field" },
@@ -175,7 +176,7 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
               <button
                 key={opt.key}
                 onClick={() => handleSort(opt.key)}
-                className={`pill px-3 py-1.5 text-sm font-semibold inline-flex items-center gap-2 ${sortBy === opt.key ? "premium-text-primary" : "text-muted"}`}
+                className={`px-4 py-2 rounded-full text-sm font-medium inline-flex items-center gap-2 transition-colors ${sortBy === opt.key ? "bg-pink-500 text-white" : "text-gray-600 hover:text-gray-900"}`}
               >
                 <span>{opt.label}</span>
                 <FontAwesomeIcon icon={getSortIcon(opt.key)} className="text-xs" />
@@ -187,35 +188,35 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
       )}
 
       {showFilters && (
-      <div className="flex items-center justify-between text-sm text-muted">
+      <div className="flex items-center justify-between text-sm text-gray-600">
         <div className="flex flex-wrap items-center gap-2">
           <span>Showing {filteredAndSortedGroups.length} of {groups.length} groups</span>
-          {searchTerm && <span className="badge">Search: "{searchTerm}"</span>}
+          {searchTerm && <span className="px-2 py-1 bg-pink-100 text-pink-700 rounded-full text-xs">Search: "{searchTerm}"</span>}
           {selectedField && (
-            <span className="badge">Field: {selectedField}</span>
+            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs">Field: {selectedField}</span>
           )}
           {showMissionsOnly && (
-            <span className="badge inline-flex items-center gap-1">
+            <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs inline-flex items-center gap-1">
               <FontAwesomeIcon icon={faTrophy} />
               Missions only
             </span>
           )}
         </div>
         <div className="inline-flex items-center gap-2">
-          <FontAwesomeIcon icon={faUsers} className="premium-text-primary" />
+          <FontAwesomeIcon icon={faUsers} className="text-pink-500" />
           <span>{groups.reduce((s, g) => s + (g.members || 0), 0)} total members</span>
         </div>
       </div>
       )}
 
       {filteredAndSortedGroups.length === 0 ? (
-        <div className="surface inset-pad rounded-l text-center premium-scale-in">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
           <div className="max-w-md mx-auto">
-            <div className="w-16 h-16 rounded-full bg-paper grid place-items-center mx-auto mb-4 shadow-1">
-              <FontAwesomeIcon icon={faSearch} className="opacity-70 text-xl" />
+            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+              <FontAwesomeIcon icon={faSearch} className="text-gray-400 text-xl" />
             </div>
-            <h3 className="text-xl font-extrabold">No groups found</h3>
-            <p className="text-muted mt-2">Try adjusting your search or filters.</p>
+            <h3 className="text-xl font-bold text-gray-900">No groups found</h3>
+            <p className="text-gray-600 mt-2">Try adjusting your search or filters.</p>
             <div className="mt-6">
               <Button
                 variant="secondary"

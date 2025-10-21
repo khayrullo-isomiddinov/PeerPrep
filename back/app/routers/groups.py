@@ -6,11 +6,10 @@ import secrets
 import string
 
 from app.db import get_session
-from app.models import Group, GroupMember, MissionSubmission, Badge, User, MissionStatus
+from app.models import Group, GroupMember, User
 from app.schemas.groups import (
     GroupCreate, GroupUpdate, Group as GroupSchema, 
-    GroupMember as GroupMemberSchema, MissionSubmission as MissionSubmissionSchema,
-    Badge as BadgeSchema, LeaderboardEntry
+    GroupMember as GroupMemberSchema
 )
 from app.routers.auth import _get_user_from_token
 
@@ -32,7 +31,7 @@ def create_group(
     session: Session = Depends(get_session),
     current_user: User = Depends(_get_user_from_token)
 ):
-    """Create a new group with optional mission"""
+    """Create a new study group"""
     
     # Generate unique group ID
     group_id = generate_group_id(group_data.name)
@@ -51,14 +50,9 @@ def create_group(
         exam=group_data.exam,
         description=group_data.description,
         cover_image_url=group_data.cover_image_url,
-        created_by=current_user.id,
-        mission_title=group_data.mission_title,
-        mission_description=group_data.mission_description,
-        mission_deadline=group_data.mission_deadline,
-        mission_capacity=group_data.mission_capacity,
-        mission_badge_name=group_data.mission_badge_name,
-        mission_badge_description=group_data.mission_badge_description,
-        mission_status=MissionStatus.active
+        deadline=group_data.deadline,
+        capacity=group_data.capacity,
+        created_by=current_user.id
     )
     
     session.add(group)
@@ -84,7 +78,6 @@ def create_group(
 @router.get("", response_model=List[GroupSchema])
 def list_groups(
     field: Optional[str] = None,
-    status_filter: Optional[MissionStatus] = None,
     q: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
@@ -97,16 +90,12 @@ def list_groups(
     if field:
         query = query.where(Group.field.ilike(f"%{field}%"))
     
-    if status_filter:
-        query = query.where(Group.mission_status == status_filter)
-
     if q:
         like = f"%{q}%"
         query = query.where(
             (Group.name.ilike(like)) |
             (Group.description.ilike(like)) |
-            (Group.mission_title.ilike(like)) |
-            (Group.mission_description.ilike(like))
+            (Group.exam.ilike(like))
         )
     
     query = query.offset(offset).limit(limit).order_by(Group.created_at.desc())
@@ -211,7 +200,7 @@ def join_group(
         )
     
     # Check if group is full
-    if group.members >= group.mission_capacity:
+    if group.members >= group.capacity:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Group is at maximum capacity"
@@ -325,20 +314,9 @@ def delete_group(
     
     # Delete all related records first (due to foreign key constraints)
     # Delete group members
-    session.exec(select(GroupMember).where(GroupMember.group_id == group_id))
     members = session.exec(select(GroupMember).where(GroupMember.group_id == group_id)).all()
     for member in members:
         session.delete(member)
-    
-    # Delete mission submissions
-    submissions = session.exec(select(MissionSubmission).where(MissionSubmission.group_id == group_id)).all()
-    for submission in submissions:
-        session.delete(submission)
-    
-    # Delete badges associated with this group
-    badges = session.exec(select(Badge).where(Badge.group_id == group_id)).all()
-    for badge in badges:
-        session.delete(badge)
     
     # Finally delete the group
     session.delete(group)
@@ -393,49 +371,3 @@ def check_membership(
         "is_leader": membership.is_leader if membership else False,
         "joined_at": membership.joined_at if membership else None
     }
-
-@router.get("/{group_id}/leaderboard", response_model=List[LeaderboardEntry])
-def get_leaderboard(
-    group_id: str,
-    session: Session = Depends(get_session)
-):
-    """Get leaderboard for a group's mission"""
-    
-    group = session.exec(select(Group).where(Group.id == group_id)).first()
-    if not group:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Group not found"
-        )
-    
-    if not group.mission_title:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This group has no active mission"
-        )
-    
-    # Get approved submissions with scores, ordered by score desc
-    submissions = session.exec(
-        select(MissionSubmission, User.email)
-        .join(User, MissionSubmission.user_id == User.id)
-        .where(
-            MissionSubmission.group_id == group_id,
-            MissionSubmission.is_approved == True,
-            MissionSubmission.score.isnot(None)
-        )
-        .order_by(MissionSubmission.score.desc(), MissionSubmission.submitted_at.asc())
-    ).all()
-    
-    leaderboard = []
-    for i, (submission, user_email) in enumerate(submissions, 1):
-        leaderboard.append(LeaderboardEntry(
-            user_id=submission.user_id,
-            user_email=user_email,
-            score=submission.score,
-            rank=i,
-            submission_id=submission.id,
-            submitted_at=submission.submitted_at,
-            is_approved=submission.is_approved
-        ))
-    
-    return leaderboard

@@ -49,7 +49,9 @@ export default function Events() {
     try {
       const q = params.get('q') || undefined
       const location = params.get('location') || undefined
+      console.log('Loading events with params:', { q, location })
       const data = await listEvents({ q, location })
+      console.log('Events loaded:', data)
       setEvents(data)
     } catch (error) {
       console.error("Failed to load events:", error)
@@ -63,6 +65,19 @@ export default function Events() {
     setSearchQuery(params.get('q') || "")
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params])
+
+  // Refresh events when returning from event creation
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log('Page became visible, refreshing events...')
+        load()
+      }
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
 
   const filteredAndSortedEvents = useMemo(() => {
     let filtered = events
@@ -254,9 +269,18 @@ export default function Events() {
          <div className="space-y-8">
            <div className="flex items-center justify-between">
              <h2 className="text-3xl font-bold text-gray-900">New Study Events</h2>
-             <Link to="/events" className="text-pink-500 hover:text-pink-600 font-semibold">
-               View more →
-             </Link>
+             <div className="flex items-center gap-4">
+               <button
+                 onClick={load}
+                 className="text-gray-500 hover:text-gray-700 font-medium flex items-center gap-2"
+               >
+                 <FontAwesomeIcon icon={faArrowTrendUp} className="w-4 h-4" />
+                 Refresh
+               </button>
+               <Link to="/events" className="text-pink-500 hover:text-pink-600 font-semibold">
+                 View more →
+               </Link>
+             </div>
            </div>
 
            {/* Category Tabs */}

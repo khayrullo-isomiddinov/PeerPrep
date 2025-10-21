@@ -15,7 +15,6 @@ export default function Navbar() {
     setCreateMenuOpen(false)
   }, [loc.pathname])
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
       if (createMenuRef.current && !createMenuRef.current.contains(event.target)) {
@@ -35,13 +34,13 @@ export default function Navbar() {
     navigate("/", { replace: true })
   }
 
-
   return (
     <>
-      <nav className="nav-root z-nav nav-clean">
+      <nav className={`nav-root z-nav nav-clean ${isAuthenticated ? 'nav-authenticated' : 'nav-unauthenticated'}`}>
         <div className="nav-shell">
           <div className="nav-bar nav-clean-bar">
-            <div className="inline-flex items-center gap-5">
+            {/* Left section */}
+            <div className="nav-left">
               <Link to="/" className="brand-new">
                 <svg className="brand-ticket" viewBox="0 0 64 48" aria-hidden>
                   <defs>
@@ -66,6 +65,7 @@ export default function Navbar() {
               )}
             </div>
 
+            {/* Center section */}
             {isAuthenticated && (
               <ul className="nav-tabs">
                 <li><NavLink to="/" end className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}>Explore</NavLink></li>
@@ -74,8 +74,14 @@ export default function Navbar() {
               </ul>
             )}
 
+            {/* Right section */}
             <div className="nav-right gap-2">
-              {!isAuthenticated ? (
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-gray-200 animate-pulse rounded-full"></div>
+                  <span className="text-sm text-gray-500">Loading...</span>
+                </div>
+              ) : !isAuthenticated ? (
                 <>
                   <Link to="/login" className="btn-ghost-pink">Log in</Link>
                   <Link to="/register" className="btn-pink">Sign up</Link>

@@ -101,10 +101,13 @@ export default function CreateEventForm({ onCreated }) {
         group_id: null,
         kind: formData.kind
       }
+      console.log('Creating event with payload:', payload)
       const evt = await createEvent(payload)
+      console.log('Event created successfully:', evt)
       onCreated?.(evt)
       navigate("/events")
     } catch (e) {
+      console.error('Event creation failed:', e)
       setError(e?.response?.data?.detail || "Failed to create event")
     } finally {
       setLoading(false)
@@ -286,6 +289,41 @@ export default function CreateEventForm({ onCreated }) {
 
 // Step Components
 function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
+  const [dragActive, setDragActive] = useState(false)
+
+  const handleDrag = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true)
+    } else if (e.type === "dragleave") {
+      setDragActive(false)
+    }
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0]
+      if (file.type.startsWith('image/')) {
+        updateFormData({ coverImage: file })
+      }
+    }
+  }
+
+  const handleFileInput = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      updateFormData({ coverImage: e.target.files[0] })
+    }
+  }
+
+  const removeImage = () => {
+    updateFormData({ coverImage: null })
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3 mb-6">
@@ -297,23 +335,38 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
         Upload a cover image to capture your study group's focus and attract participants.
       </p>
 
-      <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-pink-400 transition-colors">
+      <div className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+        dragActive ? 'border-pink-400 bg-pink-50' : 'border-gray-300 hover:border-pink-400'
+      }`}
+      onDragEnter={handleDrag}
+      onDragLeave={handleDrag}
+      onDragOver={handleDrag}
+      onDrop={handleDrop}>
         {formData.coverImage ? (
           <div className="space-y-4">
             <img 
-              src={formData.coverImage} 
+              src={URL.createObjectURL(formData.coverImage)}
               alt="Cover preview" 
               className="mx-auto max-h-64 rounded-lg shadow-lg"
             />
             <div className="flex items-center justify-center space-x-4">
-              <span className="text-sm text-gray-600">cover-image.jpg</span>
-              <button className="text-red-500 hover:text-red-700 text-sm font-medium flex items-center space-x-1">
+              <span className="text-sm text-gray-600">{formData.coverImage.name}</span>
+              <button 
+                onClick={removeImage}
+                className="text-red-500 hover:text-red-700 text-sm font-medium flex items-center space-x-1"
+              >
                 <FontAwesomeIcon icon={faTrash} className="w-3 h-3" />
                 <span>Remove</span>
               </button>
-              <button className="bg-pink-500 text-white px-4 py-2 rounded-lg hover:bg-pink-600 transition-colors text-sm font-medium">
+              <label className="bg-pink-500 text-white px-4 py-2 rounded-lg hover:bg-pink-600 transition-colors text-sm font-medium cursor-pointer">
                 Change
-              </button>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileInput}
+                  className="hidden"
+                />
+              </label>
             </div>
           </div>
         ) : (
@@ -324,13 +377,23 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Upload cover image</h3>
               <p className="text-gray-600 mb-4">Drag and drop or click to browse</p>
-              <button className="bg-pink-500 text-white px-6 py-2 rounded-lg hover:bg-pink-600 transition-colors font-medium">
+              <label className="bg-pink-500 text-white px-6 py-2 rounded-lg hover:bg-pink-600 transition-colors font-medium cursor-pointer">
                 Choose File
-              </button>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileInput}
+                  className="hidden"
+                />
+              </label>
             </div>
           </div>
         )}
       </div>
+
+      {fieldErrors.coverImage && (
+        <p className="text-red-500 text-sm text-center">{fieldErrors.coverImage}</p>
+      )}
     </div>
   )
 }
@@ -354,7 +417,7 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, categories }) 
               value={formData.title}
               onChange={(e) => updateFormData({ title: e.target.value })}
               placeholder="Make it catchy and memorable"
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input ${
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
                 fieldErrors.title ? 'border-red-300' : 'border-gray-300'
               }`}
             />
@@ -372,7 +435,7 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, categories }) 
               onChange={(e) => updateFormData({ description: e.target.value })}
               placeholder="Provide essential study group details, topics covered, and what participants can expect"
               rows={4}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
             />
           </div>
         </div>
@@ -385,7 +448,7 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, categories }) 
             <select
               value={formData.category}
               onChange={(e) => updateFormData({ category: e.target.value })}
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 ${
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
                 fieldErrors.category ? 'border-red-300' : 'border-gray-300'
               }`}
             >
@@ -447,7 +510,7 @@ function LocationTimeStep({ formData, updateFormData, fieldErrors }) {
                 value={formData.location}
                 onChange={(e) => updateFormData({ location: e.target.value })}
                 placeholder="e.g., Library Room 3B, Zoom Meeting, Coffee Shop"
-                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 ${
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
                   fieldErrors.location ? 'border-red-300' : 'border-gray-300'
                 }`}
               />
@@ -465,7 +528,7 @@ function LocationTimeStep({ formData, updateFormData, fieldErrors }) {
                 value={formData.address}
                 onChange={(e) => updateFormData({ address: e.target.value })}
                 placeholder="Street address"
-                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 ${
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
                   fieldErrors.address ? 'border-red-300' : 'border-gray-300'
                 }`}
               />
@@ -484,7 +547,7 @@ function LocationTimeStep({ formData, updateFormData, fieldErrors }) {
                   value={formData.city}
                   onChange={(e) => updateFormData({ city: e.target.value })}
                   placeholder="City"
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 ${
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
                     fieldErrors.city ? 'border-red-300' : 'border-gray-300'
                   }`}
                 />
@@ -502,7 +565,7 @@ function LocationTimeStep({ formData, updateFormData, fieldErrors }) {
                   value={formData.state}
                   onChange={(e) => updateFormData({ state: e.target.value })}
                   placeholder="State"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
                 />
               </div>
             </div>
@@ -540,7 +603,7 @@ function LocationTimeStep({ formData, updateFormData, fieldErrors }) {
                   const time = formData.startsAt ? formData.startsAt.split('T')[1] : '18:00'
                   updateFormData({ startsAt: `${date}T${time}` })
                 }}
-                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 ${
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
                   fieldErrors.startsAt ? 'border-red-300' : 'border-gray-300'
                 }`}
               />
@@ -562,7 +625,7 @@ function LocationTimeStep({ formData, updateFormData, fieldErrors }) {
                     const time = e.target.value
                     updateFormData({ startsAt: `${date}T${time}` })
                   }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
                 />
               </div>
 
@@ -573,7 +636,7 @@ function LocationTimeStep({ formData, updateFormData, fieldErrors }) {
                 <select
                   value={formData.capacity}
                   onChange={(e) => updateFormData({ capacity: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
                 >
                   <option value="1">1 hour</option>
                   <option value="2">2 hours</option>
@@ -597,7 +660,7 @@ function LocationTimeStep({ formData, updateFormData, fieldErrors }) {
                 value={formData.capacity}
                 onChange={(e) => updateFormData({ capacity: e.target.value })}
                 placeholder="Maximum participants"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
               />
             </div>
 
