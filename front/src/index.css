@@ -108,6 +108,11 @@ html {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
+  /* Adjust grid layout for logged-out state */
+  .nav-unauthenticated .nav-bar {
+    grid-template-columns: auto 1fr auto;
+  }
+
   .nav-aura {
     position: absolute;
     inset: -40px -10px auto -10px;
