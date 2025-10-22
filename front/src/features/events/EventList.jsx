@@ -1,4 +1,3 @@
-// src/features/events/EventList.jsx
 import EventCard from "./EventCard"
 
 export default function EventList({ events, onChanged }) {

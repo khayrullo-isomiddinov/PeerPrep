@@ -61,7 +61,6 @@ export async function getAttendees(id) {
   return data
 }
 
-// Group API functions
 export async function listGroups(params = {}) {
   const { data } = await api.get("groups", { params })
   return data
@@ -128,20 +127,17 @@ export async function deleteAccount() {
   return data
 }
 
-// Locations autocomplete
 export async function searchLocations(query) {
   const { data } = await api.get("locations", { params: { query } })
-  return data // [{ name, country, full }]
+  return data 
 }
 
-// Events autocomplete
 export async function autocompleteEvents(query) {
   const { data } = await api.get("events/autocomplete", { params: { q: query } })
-  return data // [{ id, title, location, full }]
+  return data 
 }
 
-// Groups autocomplete
 export async function autocompleteGroups(query) {
   const { data } = await api.get("groups/autocomplete", { params: { q: query } })
-  return data // [{ id, name, field, exam, full }]
+  return data 
 }

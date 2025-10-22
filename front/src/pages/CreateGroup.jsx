@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { 
-  faUsers, faInfo, faGraduationCap, faEye, faChevronRight, 
+import {
+  faUsers, faInfo, faGraduationCap, faEye, faChevronRight,
   faChevronLeft, faCalendarAlt, faTrophy, faBook, faCheck,
   faImage, faUpload, faTrash
 } from "@fortawesome/free-solid-svg-icons"
@@ -50,7 +50,6 @@ export default function CreateGroup() {
     )
   }
 
-  // Update last update time when form data changes
   useEffect(() => {
     setLastUpdate(new Date())
   }, [formData])
@@ -58,15 +57,13 @@ export default function CreateGroup() {
   function validateStep(step) {
     const errs = {}
     switch (step) {
-      case 0: // Cover Image (optional)
-        // Cover image is optional, so no validation needed
+      case 0:
         break
-      case 1: // General Info
+      case 1:
         if (!formData.name.trim()) errs.name = "Group name is required"
         if (!formData.field.trim()) errs.field = "Field of study is required"
         break
-      case 2: // Review
-        // Final validation - check all required fields
+      case 2:
         if (!formData.name.trim()) errs.name = "Group name is required"
         if (!formData.field.trim()) errs.field = "Field of study is required"
         break
@@ -80,7 +77,6 @@ export default function CreateGroup() {
   }
 
   function canCreateGroup() {
-    // Check if all required fields are filled
     return formData.name.trim() && formData.field.trim()
   }
 
@@ -102,15 +98,13 @@ export default function CreateGroup() {
 
   async function handleSubmit() {
     setError("")
-    // Validate all required fields for final submission
     const errs = {}
     if (!formData.name.trim()) errs.name = "Group name is required"
     if (!formData.field.trim()) errs.field = "Field of study is required"
-    
+
     setFieldErrors(errs)
     if (Object.keys(errs).length > 0) return
 
-    // Check if token still exists before making API call
     const currentToken = localStorage.getItem("access_token")
     if (!currentToken) {
       setError("Your session has expired. Please log in again.")
@@ -119,7 +113,7 @@ export default function CreateGroup() {
       }, 2000)
       return
     }
-    
+
     setLoading(true)
     try {
       const payload = {
@@ -130,13 +124,10 @@ export default function CreateGroup() {
         deadline: formData.deadline ? new Date(formData.deadline).toISOString() : null,
         capacity: formData.capacity,
       }
-      
-      // Handle cover image
+
       if (formData.coverImage) {
-        // Convert image to data URL for now (in production, you'd upload to a service like AWS S3)
         const reader = new FileReader()
         reader.onload = async () => {
-          // Check token again before API call (in case it expired during image processing)
           const tokenBeforeApi = localStorage.getItem("access_token")
           if (!tokenBeforeApi) {
             setError("Your session has expired. Please log in again.")
@@ -145,7 +136,7 @@ export default function CreateGroup() {
             }, 2000)
             return
           }
-          
+
           payload.cover_image_url = reader.result
           await createGroup(payload)
           navigate("/groups", { replace: true })
@@ -191,19 +182,19 @@ export default function CreateGroup() {
   return (
     <div className="min-h-screen bg-gray-50 group-creation-form">
       <div className="flex">
-        {/* Left Sidebar */}
+        { }
         <div className="w-80 bg-white border-r border-gray-200 p-6 step-sidebar">
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Study Group</h1>
             <div className="text-sm text-gray-500 mb-1">
-              Last update: {lastUpdate.toLocaleDateString('en-US', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              })} | {lastUpdate.toLocaleTimeString('en-US', { 
-                hour: '2-digit', 
-                minute: '2-digit' 
+              Last update: {lastUpdate.toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              })} | {lastUpdate.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit'
               })}
             </div>
             <div className="text-sm text-gray-500">
@@ -227,28 +218,26 @@ export default function CreateGroup() {
                   {steps.map((step, index) => {
                     const stepIndex = STEPS.findIndex(s => s.id === step.id)
                     const isActive = stepIndex === currentStep
-                           const isCompleted = stepIndex < currentStep && (
-                             stepIndex === 0 || // Cover image step is always considered completed if we've moved past it
-                             (stepIndex === 1 && formData.name.trim() && formData.field.trim()) // General info completed
-                           )
-                    
+                    const isCompleted = stepIndex < currentStep && (
+                      stepIndex === 0 ||
+                      (stepIndex === 1 && formData.name.trim() && formData.field.trim())
+                    )
+
                     return (
                       <button
                         key={step.id}
                         onClick={() => setCurrentStep(stepIndex)}
-                        className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left step-button ${
-                          isActive 
-                            ? 'bg-pink-50 text-pink-600 border border-pink-200' 
+                        className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left step-button ${isActive
+                            ? 'bg-pink-50 text-pink-600 border border-pink-200'
                             : isCompleted
-                            ? 'text-gray-600 hover:bg-gray-50'
-                            : 'text-gray-400 hover:text-gray-600'
-                        }`}
-                      >
-                        <FontAwesomeIcon 
-                          icon={step.icon} 
-                          className={`w-4 h-4 ${
-                            isActive ? 'text-pink-600' : isCompleted ? 'text-green-500' : ''
+                              ? 'text-gray-600 hover:bg-gray-50'
+                              : 'text-gray-400 hover:text-gray-600'
                           }`}
+                      >
+                        <FontAwesomeIcon
+                          icon={step.icon}
+                          className={`w-4 h-4 ${isActive ? 'text-pink-600' : isCompleted ? 'text-green-500' : ''
+                            }`}
                         />
                         <span className="text-sm font-medium">{step.title}</span>
                         {isCompleted && (
@@ -263,36 +252,36 @@ export default function CreateGroup() {
           </div>
         </div>
 
-        {/* Main Content */}
+        { }
         <div className="flex-1 p-8">
           <div className="max-w-4xl mx-auto">
-                  {/* Step Content */}
-                         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6 step-content">
-                           {currentStep === 0 && (
-                             <CoverImageStep 
-                               formData={formData} 
-                               updateFormData={updateFormData}
-                               fieldErrors={fieldErrors}
-                             />
-                           )}
-                           {currentStep === 1 && (
-                             <GeneralInfoStep 
-                               formData={formData} 
-                               updateFormData={updateFormData}
-                               fieldErrors={fieldErrors}
-                               fieldOptions={fieldOptions}
-                             />
-                           )}
-                           {currentStep === 2 && (
-                             <ReviewCreateStep 
-                               formData={formData} 
-                               updateFormData={updateFormData}
-                               error={error}
-                             />
-                           )}
-                         </div>
+            { }
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6 step-content">
+              {currentStep === 0 && (
+                <CoverImageStep
+                  formData={formData}
+                  updateFormData={updateFormData}
+                  fieldErrors={fieldErrors}
+                />
+              )}
+              {currentStep === 1 && (
+                <GeneralInfoStep
+                  formData={formData}
+                  updateFormData={updateFormData}
+                  fieldErrors={fieldErrors}
+                  fieldOptions={fieldOptions}
+                />
+              )}
+              {currentStep === 2 && (
+                <ReviewCreateStep
+                  formData={formData}
+                  updateFormData={updateFormData}
+                  error={error}
+                />
+              )}
+            </div>
 
-            {/* Action Buttons */}
+            { }
             <div className="flex items-center justify-between">
               <button
                 onClick={cancel}
@@ -300,7 +289,7 @@ export default function CreateGroup() {
               >
                 ✕ Cancel
               </button>
-              
+
               <div className="flex items-center space-x-4">
                 <button
                   onClick={saveDraft}
@@ -308,7 +297,7 @@ export default function CreateGroup() {
                 >
                   Save draft
                 </button>
-                
+
                 {currentStep < STEPS.length - 1 ? (
                   <button
                     onClick={nextStep}
@@ -337,7 +326,6 @@ export default function CreateGroup() {
   )
 }
 
-// Step Components
 function CoverImageStep({ formData, updateFormData, fieldErrors }) {
   const [dragActive, setDragActive] = useState(false)
 
@@ -355,7 +343,7 @@ function CoverImageStep({ formData, updateFormData, fieldErrors }) {
     e.preventDefault()
     e.stopPropagation()
     setDragActive(false)
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0]
       if (file.type.startsWith('image/')) {
@@ -399,9 +387,8 @@ function CoverImageStep({ formData, updateFormData, fieldErrors }) {
           </div>
         ) : (
           <div
-            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-              dragActive ? 'border-pink-400 bg-pink-50' : 'border-gray-300 hover:border-pink-400'
-            }`}
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${dragActive ? 'border-pink-400 bg-pink-50' : 'border-gray-300 hover:border-pink-400'
+              }`}
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
             onDragOver={handleDrag}
@@ -450,9 +437,8 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, fieldOptions }
               value={formData.name}
               onChange={(e) => updateFormData({ name: e.target.value })}
               placeholder="Make it catchy and memorable"
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                fieldErrors.name ? 'border-red-300' : 'border-gray-300'
-              }`}
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${fieldErrors.name ? 'border-red-300' : 'border-gray-300'
+                }`}
             />
             {fieldErrors.name && (
               <p className="mt-1 text-sm text-red-600">{fieldErrors.name}</p>
@@ -466,9 +452,8 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, fieldOptions }
             <select
               value={formData.field}
               onChange={(e) => updateFormData({ field: e.target.value })}
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                fieldErrors.field ? 'border-red-300' : 'border-gray-300'
-              }`}
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${fieldErrors.field ? 'border-red-300' : 'border-gray-300'
+                }`}
             >
               <option value="">Choose the subject for your study group</option>
               {fieldOptions.map(field => (
@@ -495,45 +480,45 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, fieldOptions }
             />
           </div>
 
-                 <div>
-                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                     Description
-                   </label>
-                   <textarea
-                     value={formData.description}
-                     onChange={(e) => updateFormData({ description: e.target.value })}
-                     placeholder="Describe your study group's focus, goals, and what participants can expect"
-                     rows={4}
-                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
-                   />
-                 </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Description
+            </label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => updateFormData({ description: e.target.value })}
+              placeholder="Describe your study group's focus, goals, and what participants can expect"
+              rows={4}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
+            />
+          </div>
 
-                 <div>
-                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                     Group Deadline
-                   </label>
-                   <input
-                     type="date"
-                     value={formData.deadline}
-                     onChange={(e) => updateFormData({ deadline: e.target.value })}
-                     min={new Date().toISOString().split('T')[0]}
-                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
-                   />
-                 </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Group Deadline
+            </label>
+            <input
+              type="date"
+              value={formData.deadline}
+              onChange={(e) => updateFormData({ deadline: e.target.value })}
+              min={new Date().toISOString().split('T')[0]}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
+            />
+          </div>
 
-                 <div>
-                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                     Maximum Participants
-                   </label>
-                   <input
-                     type="number"
-                     min="2"
-                     max="50"
-                     value={formData.capacity}
-                     onChange={(e) => updateFormData({ capacity: parseInt(e.target.value) || 10 })}
-                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
-                   />
-                 </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Maximum Participants
+            </label>
+            <input
+              type="number"
+              min="2"
+              max="50"
+              value={formData.capacity}
+              onChange={(e) => updateFormData({ capacity: parseInt(e.target.value) || 10 })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -559,7 +544,7 @@ function ReviewCreateStep({ formData, updateFormData, error }) {
         </div>
       )}
 
-      {/* Cover Image Preview */}
+      { }
       {formData.coverImage && (
         <div className="bg-gray-50 rounded-xl p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Cover Image</h3>
@@ -573,50 +558,50 @@ function ReviewCreateStep({ formData, updateFormData, error }) {
         </div>
       )}
 
-             <div className="bg-gray-50 rounded-xl p-6 space-y-6">
-               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                 <div className="space-y-4">
-                   <h3 className="text-lg font-semibold text-gray-900">Group Details</h3>
-                   <div className="space-y-3">
-                     <div>
-                       <span className="text-sm font-medium text-gray-500">Name:</span>
-                       <p className="text-gray-900">{formData.name || "Not specified"}</p>
-                     </div>
-                     <div>
-                       <span className="text-sm font-medium text-gray-500">Field:</span>
-                       <p className="text-gray-900">{formData.field || "Not specified"}</p>
-                     </div>
-                     <div>
-                       <span className="text-sm font-medium text-gray-500">Exam:</span>
-                       <p className="text-gray-900">{formData.exam || "Not specified"}</p>
-                     </div>
-                     <div>
-                       <span className="text-sm font-medium text-gray-500">Description:</span>
-                       <p className="text-gray-900">{formData.description || "No description provided"}</p>
-                     </div>
-                   </div>
-                 </div>
+      <div className="bg-gray-50 rounded-xl p-6 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900">Group Details</h3>
+            <div className="space-y-3">
+              <div>
+                <span className="text-sm font-medium text-gray-500">Name:</span>
+                <p className="text-gray-900">{formData.name || "Not specified"}</p>
+              </div>
+              <div>
+                <span className="text-sm font-medium text-gray-500">Field:</span>
+                <p className="text-gray-900">{formData.field || "Not specified"}</p>
+              </div>
+              <div>
+                <span className="text-sm font-medium text-gray-500">Exam:</span>
+                <p className="text-gray-900">{formData.exam || "Not specified"}</p>
+              </div>
+              <div>
+                <span className="text-sm font-medium text-gray-500">Description:</span>
+                <p className="text-gray-900">{formData.description || "No description provided"}</p>
+              </div>
+            </div>
+          </div>
 
-                 <div className="space-y-4">
-                   <h3 className="text-lg font-semibold text-gray-900">Group Settings</h3>
-                   <div className="space-y-3">
-                     <div>
-                       <span className="text-sm font-medium text-gray-500">Deadline:</span>
-                       <p className="text-gray-900">
-                         {formData.deadline 
-                           ? new Date(formData.deadline).toLocaleDateString() 
-                           : "No deadline set"
-                         }
-                       </p>
-                     </div>
-                     <div>
-                       <span className="text-sm font-medium text-gray-500">Capacity:</span>
-                       <p className="text-gray-900">{formData.capacity} members</p>
-                     </div>
-                   </div>
-                 </div>
-               </div>
-             </div>
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900">Group Settings</h3>
+            <div className="space-y-3">
+              <div>
+                <span className="text-sm font-medium text-gray-500">Deadline:</span>
+                <p className="text-gray-900">
+                  {formData.deadline
+                    ? new Date(formData.deadline).toLocaleDateString()
+                    : "No deadline set"
+                  }
+                </p>
+              </div>
+              <div>
+                <span className="text-sm font-medium text-gray-500">Capacity:</span>
+                <p className="text-gray-900">{formData.capacity} members</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

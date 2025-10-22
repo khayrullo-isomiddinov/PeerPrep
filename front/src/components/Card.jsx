@@ -1,6 +1,6 @@
 export default function Card({ 
   children, 
-  variant = "default", // "default" | "premium" | "surface" | "glass"
+  variant = "default", 
   hover = true,
   className = "" 
 }) {

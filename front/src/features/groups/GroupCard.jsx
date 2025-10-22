@@ -20,7 +20,7 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
     } else {
       setJoined(false)
     }
-  }, [isAuthenticated, group.id, canDelete])
+  }, [isAuthenticated, canDelete]) // Removed group.id from dependencies to prevent unnecessary re-checks
 
   async function checkMembershipStatus() {
     try {
@@ -43,10 +43,16 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
       if (joined) {
         await leaveGroup(group.id)
         setJoined(false)
+        // Update local state immediately - no need to re-check membership
       } else {
         await joinGroup(group.id)
         setJoined(true)
+        // Update local state immediately - no need to re-check membership
       }
+    } catch (error) {
+      // If the API call fails, revert the state change
+      setJoined(!joined)
+      console.error('Join/Leave failed:', error)
     } finally {
       setIsLoading(false)
     }
@@ -54,7 +60,7 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
 
   return (
     <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden premium-hover">
-      {/* Header area with cover image */}
+      {}
       <div className="h-48 relative overflow-hidden">
         {group.cover_image_url ? (
           <img
@@ -99,7 +105,7 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
         </div>
       </div>
 
-      {/* Content */}
+      {}
       <div className="p-6">
         {group.description && (
           <p className="text-gray-700 mb-4 line-clamp-2 leading-relaxed text-sm">
@@ -137,7 +143,7 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
           </div>
         )}
 
-        {/* Actions */}
+        {}
         <div className="flex items-center justify-between">
           <button
             onClick={() => setShowDetails(v => !v)}

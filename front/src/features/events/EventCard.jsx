@@ -66,7 +66,7 @@ export default function EventCard({ event, onChanged }) {
       await joinEvent(event.id)
       setJoined(true)
       setCount(c => c + 1)
-      onChanged?.()
+      // Don't trigger full page reload - just update local state
     } catch (e) {
       setErr(e?.response?.data?.detail || "Join failed")
     } finally {
@@ -81,7 +81,7 @@ export default function EventCard({ event, onChanged }) {
       await leaveEvent(event.id)
       setJoined(false)
       setCount(c => Math.max(0, c - 1))
-      onChanged?.()
+      // Don't trigger full page reload - just update local state
     } catch (e) {
       setErr(e?.response?.data?.detail || "Leave failed")
     } finally {
@@ -178,7 +178,7 @@ export default function EventCard({ event, onChanged }) {
     <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden premium-hover">
       {!editing ? (
         <>
-          {/* Event Image Placeholder */}
+          {}
           <div className="h-48 bg-gradient-to-br from-blue-500 to-purple-600 relative">
             <div className="absolute inset-0 bg-black/20" />
             <div className="absolute top-4 right-4">
@@ -206,7 +206,7 @@ export default function EventCard({ event, onChanged }) {
             )}
           </div>
           
-          {/* Event Details */}
+          {}
           <div className="p-6">
             <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
               <div className="flex items-center gap-2">
@@ -239,7 +239,7 @@ export default function EventCard({ event, onChanged }) {
               </span>
             </div>
 
-            {/* Action Buttons */}
+            {}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {!mine && !joined && !full && (

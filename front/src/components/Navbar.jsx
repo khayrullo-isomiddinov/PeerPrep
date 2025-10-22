@@ -39,7 +39,7 @@ export default function Navbar() {
       <nav className={`nav-root z-nav nav-clean ${isAuthenticated ? 'nav-authenticated' : 'nav-unauthenticated'}`}>
         <div className="nav-shell">
           <div className="nav-bar nav-clean-bar">
-            {/* Left section */}
+            {}
             <div className="nav-left">
               <Link to="/" className="brand-new">
                 <svg className="brand-ticket" viewBox="0 0 64 48" aria-hidden>
@@ -65,7 +65,7 @@ export default function Navbar() {
               )}
             </div>
 
-            {/* Center section */}
+            {}
             {isAuthenticated && (
               <ul className="nav-tabs">
                 <li><NavLink to="/" end className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}>Explore</NavLink></li>
@@ -74,7 +74,7 @@ export default function Navbar() {
               </ul>
             )}
 
-            {/* Right section */}
+            {}
             <div className="nav-right gap-2">
               {isLoading ? (
                 <div className="flex items-center gap-2">
@@ -88,7 +88,7 @@ export default function Navbar() {
                 </>
               ) : (
                 <div className="relative inline-flex items-center gap-2">
-                  {/* Create Dropdown */}
+                  {}
                   <div className="relative" ref={createMenuRef}>
                     <button
                       onClick={() => setCreateMenuOpen(v => !v)}

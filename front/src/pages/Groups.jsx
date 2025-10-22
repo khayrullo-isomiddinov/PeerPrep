@@ -23,7 +23,6 @@ export default function Groups() {
   useEffect(() => {
     setSearchQuery(params.get('q') || "")
     loadGroups()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params])
 
   async function loadGroups() {

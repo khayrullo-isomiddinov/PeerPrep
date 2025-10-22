@@ -109,7 +109,6 @@ def update_profile(
     current_user: User = Depends(_get_user_from_token),
     session: Session = Depends(get_session)
 ):
-    # Update only provided fields
     if profile_data.name is not None:
         current_user.name = profile_data.name
     if profile_data.bio is not None:
@@ -138,14 +137,12 @@ def delete_account(
 ):
     """Delete user account (except admin)"""
     
-    # Prevent admin from deleting their account
     if current_user.email == settings.ADMIN_EMAIL:
         raise HTTPException(
             status_code=403, 
             detail="Admin account cannot be deleted"
         )
     
-    # Delete the user (this will cascade delete related records due to foreign key constraints)
     session.delete(current_user)
     session.commit()
     

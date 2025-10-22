@@ -665,7 +665,6 @@ html {
     color: var(--muted-dark);
   }
 
-  /* New footer styling */
   .footer-pro { background: #0f1420; color: #e6e8eb; margin-top: 2rem; }
   .footer-inner { max-width: 80rem; margin-inline: auto; padding: 2.5rem 1rem; }
   .footer-grid { display:grid; grid-template-columns: 1.2fr repeat(3, 1fr) 1.6fr; gap: 2rem; align-items:start; }

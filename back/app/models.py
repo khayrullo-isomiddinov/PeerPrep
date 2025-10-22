@@ -48,7 +48,6 @@ class User(SQLModel, table=True):
     verification_token: Optional[str] = Field(default=None, index=True, nullable=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
-    # Profile fields
     name: Optional[str] = None
     bio: Optional[str] = None
     photo_url: Optional[str] = None
@@ -76,7 +75,7 @@ class MissionSubmission(SQLModel, table=True):
     is_approved: bool = False
     approved_by: Optional[int] = Field(default=None, foreign_key="user.id")
     approved_at: Optional[datetime] = None
-    score: Optional[int] = None  # For leaderboard ranking
+    score: Optional[int] = None  
     feedback: Optional[str] = None
 
 class Badge(SQLModel, table=True):

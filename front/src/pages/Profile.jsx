@@ -169,14 +169,14 @@ export default function Profile() {
     <div className="min-h-screen tap-safe premium-scrollbar bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 route-transition">
       <div className="nav-spacer" />
       
-      {/* Profile Header */}
+      {}
       <section className="relative bg-gradient-to-r from-white via-pink-50/30 to-purple-50/30 border-b border-gray-200/60 backdrop-blur-sm premium-fade-in">
         <div className="absolute inset-0 bg-gradient-to-r from-pink-500/5 via-purple-500/5 to-indigo-500/5"></div>
         <div className="container-page py-12 relative z-10">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
-            {/* Profile Info */}
+            {}
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-              {/* Profile Photo */}
+              {}
               <div className="relative group">
                 <div className="relative h-32 w-32 rounded-full overflow-hidden border-4 border-white shadow-2xl ring-4 ring-pink-100">
                   <img
@@ -191,7 +191,7 @@ export default function Profile() {
                   )}
                 </div>
                 
-                {/* Photo Upload Overlay */}
+                {}
                 <button
                   onClick={onPickPhoto}
                   className="absolute -bottom-2 -right-2 h-12 w-12 bg-gradient-to-r from-pink-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-110 ring-2 ring-white"
@@ -212,7 +212,7 @@ export default function Profile() {
                 />
               </div>
 
-              {/* User Info */}
+              {}
               <div className="flex-1">
                 <h1 className="text-5xl font-bold bg-gradient-to-r from-gray-900 via-pink-600 to-purple-600 bg-clip-text text-transparent mb-3">
                   {form.name || form.email}
@@ -225,12 +225,12 @@ export default function Profile() {
                     </svg>
                     {formatMemberSince(form.createdAt) ? `Member since ${formatMemberSince(form.createdAt)}` : "Member"}
                   </div>
-                  {/* Additional badges can be added here when data is available */}
+                  {}
                 </div>
               </div>
             </div>
 
-            {/* Action Buttons */}
+            {}
             <div className="flex flex-col sm:flex-row gap-3">
               {!editing ? (
                 <button
@@ -266,12 +266,12 @@ export default function Profile() {
         </div>
       </section>
 
-      {/* Main Content */}
+      {}
       <main className="container-page py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - About & Stats */}
+          {}
           <div className="lg:col-span-2 space-y-6">
-            {/* About Section */}
+            {}
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/60 p-8 hover:shadow-xl transition-all duration-300 premium-scale-in">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
@@ -357,7 +357,7 @@ export default function Profile() {
           )}
             </div>
 
-            {/* Activity Feed */}
+            {}
             {false && (
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/60 p-8 hover:shadow-xl transition-all duration-300 premium-fade-in">
               <div className="flex items-center gap-3 mb-6">
@@ -410,10 +410,10 @@ export default function Profile() {
             )}
           </div>
 
-          {/* Right Column - Stats & Quick Info */}
+          {}
           {false && (
           <div className="space-y-6">
-            {/* Quick Stats */}
+            {}
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/60 p-6 hover:shadow-xl transition-all duration-300 premium-scale-in">
               <div className="flex items-center gap-3 mb-6">
                 <div className="h-8 w-8 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center shadow-md">
@@ -425,7 +425,7 @@ export default function Profile() {
               </div>
               
               <div className="space-y-6">
-                {/* Joined Groups */}
+                {}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 bg-blue-500 rounded-lg flex items-center justify-center">
@@ -441,7 +441,7 @@ export default function Profile() {
                   <span className="text-2xl font-bold text-gray-900">{form.joinedGroups.length}</span>
                 </div>
 
-                {/* Upcoming Events */}
+                {}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 bg-purple-500 rounded-lg flex items-center justify-center">
@@ -457,7 +457,7 @@ export default function Profile() {
                   <span className="text-2xl font-bold text-gray-900">{form.upcomingEvents.length}</span>
                 </div>
 
-                {/* Study Hours */}
+                {}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 bg-green-500 rounded-lg flex items-center justify-center">
@@ -475,7 +475,7 @@ export default function Profile() {
               </div>
             </div>
 
-            {/* Groups Preview */}
+            {}
             {form.joinedGroups.length > 0 && (
               <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/60 p-6 hover:shadow-xl transition-all duration-300 premium-fade-in">
                 <div className="flex items-center gap-3 mb-4">
@@ -502,7 +502,7 @@ export default function Profile() {
               </div>
             )}
 
-            {/* Study Progress */}
+            {}
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/60 p-6 hover:shadow-xl transition-all duration-300 premium-scale-in">
               <div className="flex items-center gap-3 mb-4">
                 <div className="h-8 w-8 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg flex items-center justify-center shadow-md">
@@ -529,7 +529,7 @@ export default function Profile() {
           )}
         </div>
         
-        {/* Delete Account Section - Only show for non-admin users */}
+        {}
         {user?.email !== "harryshady131@gmail.com" && (
           <div className="mt-8">
             <div className="bg-red-50/80 backdrop-blur-sm rounded-2xl shadow-lg border border-red-200/60 p-8 hover:shadow-xl transition-all duration-300 premium-fade-in">

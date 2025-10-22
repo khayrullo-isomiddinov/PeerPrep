@@ -38,7 +38,6 @@ export default function CreateEventForm({ onCreated }) {
   const [lastUpdate, setLastUpdate] = useState(new Date())
   const navigate = useNavigate()
 
-  // Update last update time when form data changes
   useEffect(() => {
     setLastUpdate(new Date())
   }, [formData])
@@ -46,14 +45,13 @@ export default function CreateEventForm({ onCreated }) {
   function validateStep(step) {
     const errs = {}
     switch (step) {
-      case 0: // Cover
-        // Cover is optional, no validation needed
+      case 0: 
         break
-      case 1: // General
+      case 1: 
         if (!formData.title.trim()) errs.title = "Title is required"
         if (!formData.category) errs.category = "Category is required"
         break
-      case 2: // Location and time
+      case 2: 
         if (!formData.startsAt) errs.startsAt = "Start date/time is required"
         if (!formData.location.trim()) errs.location = "Location is required"
         if (!formData.address.trim()) errs.address = "Address is required"
@@ -115,10 +113,8 @@ export default function CreateEventForm({ onCreated }) {
   }
 
   function saveDraft() {
-    // Save form data to localStorage as draft
     localStorage.setItem('eventDraft', JSON.stringify(formData))
     setError("")
-    // Show success message
   }
 
   function cancel() {
@@ -137,7 +133,7 @@ export default function CreateEventForm({ onCreated }) {
   return (
     <div className="min-h-screen bg-gray-50 event-creation-form">
       <div className="flex">
-        {/* Left Sidebar */}
+        {}
         <div className="w-80 bg-white border-r border-gray-200 p-6 step-sidebar">
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Create a Study Group</h1>
@@ -206,10 +202,10 @@ export default function CreateEventForm({ onCreated }) {
           </div>
         </div>
 
-        {/* Main Content */}
+        {}
         <div className="flex-1 p-8">
           <div className="max-w-4xl mx-auto">
-            {/* Step Content */}
+            {}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6 step-content">
               {currentStep === 0 && (
                 <UploadCoverStep 
@@ -242,7 +238,7 @@ export default function CreateEventForm({ onCreated }) {
               )}
           </div>
 
-            {/* Action Buttons */}
+            {}
             <div className="flex items-center justify-between">
               <button
                 onClick={cancel}
@@ -287,7 +283,6 @@ export default function CreateEventForm({ onCreated }) {
   )
 }
 
-// Step Components
 function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
   const [dragActive, setDragActive] = useState(false)
 
@@ -490,7 +485,7 @@ function LocationTimeStep({ formData, updateFormData, fieldErrors }) {
         <h2 className="text-2xl font-bold text-gray-900">Location and time</h2>
       </div>
 
-      {/* Location Section */}
+      {}
       <div className="space-y-6">
         <div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Location</h3>
@@ -580,7 +575,7 @@ function LocationTimeStep({ formData, updateFormData, fieldErrors }) {
         </div>
       </div>
 
-      {/* Time Section */}
+      {}
       <div className="space-y-6">
         <div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Schedule</h3>

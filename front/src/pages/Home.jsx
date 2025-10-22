@@ -4,7 +4,7 @@ import { searchLocations, autocompleteEvents, autocompleteGroups } from "../util
 
 export default function Home() {
   const navigate = useNavigate()
-  const [type, setType] = useState("events") // 'events' | 'groups'
+  const [type, setType] = useState("events") 
   const [query, setQuery] = useState("")
   const [location, setLocation] = useState("")
   const [locOptions, setLocOptions] = useState([])
@@ -15,7 +15,6 @@ export default function Home() {
   const locDebounce = useRef(null)
   const queryDebounce = useRef(null)
 
-  // Fetch location suggestions with simple debounce
   useEffect(() => {
     if (locDebounce.current) clearTimeout(locDebounce.current)
     locDebounce.current = setTimeout(async () => {
@@ -30,7 +29,6 @@ export default function Home() {
     return () => { if (locDebounce.current) clearTimeout(locDebounce.current) }
   }, [location])
 
-  // Fetch query suggestions (events or groups) with debounce
   useEffect(() => {
     if (queryDebounce.current) clearTimeout(queryDebounce.current)
     queryDebounce.current = setTimeout(async () => {
@@ -145,7 +143,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* New events */}
+      {}
       <section className="home-section">
         <div className="home-section-inner reveal-up" style={{animationDelay:'.12s'}}>
           <div className="home-section-head">
@@ -184,7 +182,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Upcoming in 24h */}
+      {}
       <section className="home-section">
         <div className="home-section-inner reveal-up">
           <div className="home-section-head">

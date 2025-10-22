@@ -31,7 +31,6 @@ def seed_db(session: Session) -> None:
       owned by the admin so only they can update/delete them via created_by checks.
     """
 
-    # Ensure admin exists
     admin_email = settings.ADMIN_EMAIL
     admin_password = settings.ADMIN_PASSWORD or "password123"
     admin = session.exec(select(User).where(User.email == admin_email)).first()
@@ -47,14 +46,12 @@ def seed_db(session: Session) -> None:
         session.commit()
         session.refresh(admin)
     else:
-        # Enforce admin verification and update password from config each startup
         admin.is_verified = True
         admin.hashed_password = hash_password(admin_password)
         session.add(admin)
         session.commit()
         session.refresh(admin)
 
-    # Ensure a few demo users (non-admin)
     demo_users = [
         ("alice@example.com", "Alice Johnson", "Computer Science student passionate about AI and machine learning"),
         ("bob@example.com", "Bob Smith", "Engineering student focused on software development"),
@@ -74,21 +71,18 @@ def seed_db(session: Session) -> None:
             )
             session.add(u)
         else:
-            # Update existing users with better data
             exists.name = name
             exists.bio = bio
             exists.photo_url = f"https://api.dicebear.com/9.x/avataaars/svg?seed={em}"
             session.add(exists)
     session.commit()
 
-    # Only generate bulk data if empty (avoid duplicating on restarts)
     group_count = session.exec(select(func.count()).select_from(Group)).one()
     event_count = session.exec(select(func.count()).select_from(Event)).one()
     if group_count > 0 or event_count > 0:
         print("Seed skipped: groups/events already present")
         return
 
-    # Real locations with coordinates for future map integration
     real_locations = [
         ("New York University", "New York, NY", "40.7295", "-73.9965"),
         ("Columbia University", "New York, NY", "40.8075", "-73.9626"),
@@ -112,7 +106,6 @@ def seed_db(session: Session) -> None:
         ("McGill University", "Montreal, QC", "45.5048", "-73.5772"),
     ]
 
-    # Group mission templates - focused on long-term goals with deadlines
     group_templates = [
         ("GRE Prep Study Group", "Complete GRE preparation with peer accountability", "GRE Master", "Graduate School", "GRE"),
         ("MCAT Study Squad", "Intensive MCAT preparation with study partners", "MCAT Ace", "Medical School", "MCAT"),
@@ -131,7 +124,6 @@ def seed_db(session: Session) -> None:
         ("Machine Learning Basics", "Learn ML fundamentals", "ML Beginner", "Machine Learning", "Python & ML"),
     ]
 
-    # Event practice session templates - casual one-time meetings
     event_practice_templates = [
         ("Python Coding Practice", "Practice Python algorithms and data structures"),
         ("SQL Query Workshop", "Practice SQL queries and database design"),
@@ -158,16 +150,16 @@ def seed_db(session: Session) -> None:
     now = datetime.utcnow()
     rng = random.Random(42)
 
-    groups_to_create = 50  # Fewer groups for better quality
-    events_to_create = 80  # Fewer events for better quality
+    groups_to_create = 50  
+    events_to_create = 80  
 
     groups = []
     for i in range(groups_to_create):
         base_title, base_desc, badge, field, exam = group_templates[i % len(group_templates)]
-        group_days = rng.randint(30, 120)  # 1-4 months for exam prep
+        group_days = rng.randint(30, 120)  
         deadline = now + timedelta(days=group_days)
-        cap = rng.randint(4, 12)  # Much smaller groups for better accountability
-        name = base_title  # Remove cohort numbering
+        cap = rng.randint(4, 12)  
+        name = base_title  
         gid = f"{_slugify(base_title)}-{_rand_suffix(6)}"
         g = Group(
             id=gid,
@@ -184,21 +176,19 @@ def seed_db(session: Session) -> None:
         session.add(g)
     session.commit()
 
-    # Add admin as leader/member of each group and set members=1
     for g in groups:
         session.add(GroupMember(group_id=g.id, user_id=admin.id, is_leader=True))
         g.members = 1
         session.add(g)
     session.commit()
 
-    # Events: casual practice sessions for exam prep and skill building
     events = []
     for i in range(events_to_create):
         topic, description = event_practice_templates[i % len(event_practice_templates)]
-        start = now + timedelta(days=rng.randint(1, 30), hours=rng.randint(9, 20))  # Next 30 days
-        title = topic  # Remove session numbering
+        start = now + timedelta(days=rng.randint(1, 30), hours=rng.randint(9, 20))  
+        title = topic  
         location_name, location_full, lat, lng = real_locations[i % len(real_locations)]
-        capacity = rng.randint(3, 8)  # Much smaller groups for effective practice
+        capacity = rng.randint(3, 8)  
         evt = Event(
             title=title,
             starts_at=start,
@@ -206,7 +196,7 @@ def seed_db(session: Session) -> None:
             capacity=capacity,
             description=f"{description}. Join us for hands-on practice and peer learning!",
             group_id=None,
-            kind=EventKind.one_off,  # All events are one-time practice sessions
+            kind=EventKind.one_off,  
             created_by=admin.id,
         )
         events.append(evt)

@@ -17,11 +17,11 @@ router = APIRouter(prefix="/groups", tags=["groups"])
 
 def generate_group_id(name: str) -> str:
     """Generate a unique group ID from the group name"""
-    # Convert name to lowercase, replace spaces with hyphens, remove special chars
+    
     base_id = ''.join(c.lower() if c.isalnum() or c == ' ' else '' for c in name)
     base_id = base_id.replace(' ', '-')
     
-    # Add random suffix to ensure uniqueness
+    
     suffix = ''.join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(6))
     return f"{base_id}-{suffix}"
 
@@ -33,16 +33,15 @@ def create_group(
 ):
     """Create a new study group"""
     
-    # Generate unique group ID
     group_id = generate_group_id(group_data.name)
     
-    # Check if group ID already exists (very unlikely but possible)
+    
     existing = session.exec(select(Group).where(Group.id == group_id)).first()
     if existing:
-        # Add timestamp to make it unique
+        
         group_id = f"{group_id}-{int(datetime.utcnow().timestamp())}"
     
-    # Create the group
+    
     group = Group(
         id=group_id,
         name=group_data.name,
@@ -59,7 +58,7 @@ def create_group(
     session.commit()
     session.refresh(group)
     
-    # Add creator as group leader
+    
     group_member = GroupMember(
         group_id=group_id,
         user_id=current_user.id,
@@ -67,7 +66,7 @@ def create_group(
     )
     session.add(group_member)
     
-    # Update member count
+    
     group.members = 1
     session.add(group)
     session.commit()
@@ -158,7 +157,7 @@ def update_group(
             detail="Group not found"
         )
     
-    # Check if user is group leader
+    
     membership = session.exec(
         select(GroupMember).where(
             GroupMember.group_id == group_id,
@@ -173,7 +172,7 @@ def update_group(
             detail="Only group leaders can update groups"
         )
     
-    # Update fields
+    
     update_data = group_data.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(group, field, value)
@@ -199,14 +198,14 @@ def join_group(
             detail="Group not found"
         )
     
-    # Check if group is full
+    
     if group.members >= group.capacity:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Group is at maximum capacity"
         )
     
-    # Check if user is already a member
+    
     existing_membership = session.exec(
         select(GroupMember).where(
             GroupMember.group_id == group_id,
@@ -220,7 +219,7 @@ def join_group(
             detail="Already a member of this group"
         )
     
-    # Add user to group
+    
     group_member = GroupMember(
         group_id=group_id,
         user_id=current_user.id,
@@ -228,7 +227,7 @@ def join_group(
     )
     session.add(group_member)
     
-    # Update member count
+    
     group.members += 1
     session.add(group)
     session.commit()
@@ -250,7 +249,7 @@ def leave_group(
             detail="Group not found"
         )
     
-    # Find membership
+    
     membership = session.exec(
         select(GroupMember).where(
             GroupMember.group_id == group_id,
@@ -264,7 +263,7 @@ def leave_group(
             detail="Not a member of this group"
         )
     
-    # Check if user is the only leader
+    
     if membership.is_leader:
         other_leaders = session.exec(
             select(GroupMember).where(
@@ -280,10 +279,10 @@ def leave_group(
                 detail="Cannot leave group as the only leader. Transfer leadership first."
             )
     
-    # Remove membership
+    
     session.delete(membership)
     
-    # Update member count
+    
     group.members -= 1
     session.add(group)
     session.commit()
@@ -305,20 +304,20 @@ def delete_group(
             detail="Group not found"
         )
     
-    # Check if user is the group creator
+    
     if group.created_by != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the group creator can delete the group"
         )
     
-    # Delete all related records first (due to foreign key constraints)
-    # Delete group members
+    
+    
     members = session.exec(select(GroupMember).where(GroupMember.group_id == group_id)).all()
     for member in members:
         session.delete(member)
     
-    # Finally delete the group
+    
     session.delete(group)
     session.commit()
     

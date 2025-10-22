@@ -14,9 +14,7 @@ from app.routers import auth as auth_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    # seed database once if empty
     try:
-        # using dependency function directly to get a session
         gen = get_session()
         session = next(gen)
         try:
@@ -27,7 +25,6 @@ async def lifespan(app: FastAPI):
             except StopIteration:
                 pass
     except Exception:
-        # best-effort seeding; don't block app startup
         pass
     yield
 

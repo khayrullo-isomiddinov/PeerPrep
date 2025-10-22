@@ -3,7 +3,7 @@ from typing import List
 
 router = APIRouter(prefix="/locations", tags=["locations"])
 
-# Real university locations with coordinates for map integration
+
 _REAL_LOCATIONS = [
     ("New York University", "New York, NY", "40.7295", "-73.9965"),
     ("Columbia University", "New York, NY", "40.8075", "-73.9626"),

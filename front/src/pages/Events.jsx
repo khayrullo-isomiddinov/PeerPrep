@@ -1,4 +1,3 @@
-// src/pages/Events.jsx
 import { useEffect, useState, useMemo } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Link } from "react-router-dom"
@@ -41,7 +40,7 @@ export default function Events() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [selectedTimeFilter, setSelectedTimeFilter] = useState("all")
-  const [sortBy, setSortBy] = useState("date") // date, popularity, capacity
+  const [sortBy, setSortBy] = useState("date")
   const [showFilters, setShowFilters] = useState(false)
 
   async function load() {
@@ -63,10 +62,8 @@ export default function Events() {
   useEffect(() => {
     load()
     setSearchQuery(params.get('q') || "")
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params])
 
-  // Refresh events when returning from event creation
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden) {
@@ -82,7 +79,6 @@ export default function Events() {
   const filteredAndSortedEvents = useMemo(() => {
     let filtered = events
 
-    // Search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(event => 
@@ -92,16 +88,13 @@ export default function Events() {
       )
     }
 
-    // Category filter (placeholder - would need backend support)
     if (selectedCategory !== "all") {
-      // For now, we'll filter by keywords in title/description
       filtered = filtered.filter(event => {
         const text = (event.title + " " + (event.description || "")).toLowerCase()
         return text.includes(selectedCategory)
       })
     }
 
-    // Time filter
     if (selectedTimeFilter !== "all") {
       const now = new Date()
       filtered = filtered.filter(event => {
@@ -127,7 +120,6 @@ export default function Events() {
       })
     }
 
-    // Sort
     filtered.sort((a, b) => {
       switch (sortBy) {
         case "date":
@@ -163,7 +155,7 @@ export default function Events() {
     <div className="min-h-screen tap-safe premium-scrollbar bg-white route-transition">
       <div className="nav-spacer" />
       
-      {/* Hero + Search */}
+      {}
       <section className="events-hero premium-fade-in">
         <div className="events-hero-bg" />
         <div className="events-hero-inner">
@@ -187,12 +179,12 @@ export default function Events() {
         </div>
       </section>
 
-      {/* Advanced Filters */}
+      {}
       {showFilters && (
         <section className="container-page section">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="space-y-6 premium-fade-in">
-              {/* Categories */}
+              {}
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Categories</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -216,7 +208,7 @@ export default function Events() {
                 </div>
               </div>
 
-              {/* Time Filters */}
+              {}
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">When</h3>
                 <div className="flex flex-wrap gap-2">
@@ -236,7 +228,7 @@ export default function Events() {
                 </div>
           </div>
 
-              {/* Sort Options */}
+              {}
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Sort by</h3>
                 <div className="flex gap-2">
@@ -264,7 +256,7 @@ export default function Events() {
         </section>
       )}
 
-       {/* All Events */}
+       {}
        <section className="container-page section">
          <div className="space-y-8">
            <div className="flex items-center justify-between">
@@ -283,7 +275,7 @@ export default function Events() {
              </div>
            </div>
 
-           {/* Category Tabs */}
+           {}
            <div className="flex flex-wrap gap-2">
              {CATEGORIES.map(category => (
                <button

@@ -8,10 +8,9 @@ export function AuthProvider({ children }) {
     try { return localStorage.getItem("access_token") } catch { return null }
   })
   const [user, setUser] = useState(null)
-  const [isLoading, setIsLoading] = useState(true) // Always start with loading true
+  const [isLoading, setIsLoading] = useState(true)
   const isAuthenticated = !!token && !!user && !isLoading
 
-  // Validate token on startup
   useEffect(() => {
     const validateToken = async () => {
       if (!token) {
@@ -35,9 +34,8 @@ export function AuthProvider({ children }) {
     }
 
     validateToken()
-  }, []) // Only run once on mount
+  }, []) 
 
-  // keep axios auth header in sync when token changes
   useEffect(() => {
     if (token) {
       setAuthHeader(token)
@@ -45,12 +43,10 @@ export function AuthProvider({ children }) {
   }, [token])
 
   async function login({ access_token, user: fullUser }) {
-    // Persist token immediately
     localStorage.setItem("access_token", access_token)
     setAuthHeader(access_token)
     setToken(access_token)
     
-    // Use the full user data from login response (no additional API call needed)
     setUser(fullUser)
     setIsLoading(false)
   }
