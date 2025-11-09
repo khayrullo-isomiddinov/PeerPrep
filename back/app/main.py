@@ -14,6 +14,12 @@ from app.routers import auth as auth_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # Run migrations
+    try:
+        from app.migrations import run_migrations
+        run_migrations()
+    except Exception as e:
+        print(f"Migration warning: {e}")
     try:
         gen = get_session()
         session = next(gen)

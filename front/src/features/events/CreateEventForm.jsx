@@ -28,7 +28,7 @@ export default function CreateEventForm({ onCreated }) {
     state: "",
     country: "",
     capacity: 8,
-    kind: "one_off",
+    kind: "one_off", // Default to one_off, only show option for group events
     coverImage: null,
     albumImages: []
   })
@@ -661,31 +661,19 @@ function LocationTimeStep({ formData, updateFormData, fieldErrors }) {
 
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Study Type
+                Event Type
               </label>
               <div className="space-y-2">
                 <label className="flex items-center">
                   <input
-                    type="radio"
-                    name="kind"
-                    value="one_off"
-                    checked={formData.kind === "one_off"}
-                    onChange={(e) => updateFormData({ kind: e.target.value })}
-                    className="mr-3"
-                  />
-                  <span className="text-sm">One-time session</span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    name="kind"
-                    value="group"
+                    type="checkbox"
                     checked={formData.kind === "group"}
-                    onChange={(e) => updateFormData({ kind: e.target.value })}
+                    onChange={(e) => updateFormData({ kind: e.target.checked ? "group" : "one_off" })}
                     className="mr-3"
                   />
-                  <span className="text-sm">Ongoing study group</span>
+                  <span className="text-sm">This is an ongoing study group event</span>
                 </label>
+                <p className="text-xs text-gray-500 ml-6">Leave unchecked for a one-time event (default)</p>
               </div>
             </div>
           </div>

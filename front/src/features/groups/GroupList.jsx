@@ -16,6 +16,7 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
   const [sortBy, setSortBy] = useState("name")
   const [sortOrder, setSortOrder] = useState("asc")
   const [deletingGroups, setDeletingGroups] = useState(new Set())
+  const [deleteConfirm, setDeleteConfirm] = useState(null) // { groupId, groupName }
   const { user, isAuthenticated } = useAuth()
 
   const fields = useMemo(() => {
@@ -58,10 +59,22 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
     return sortOrder === "asc" ? faSortUp : faSortDown
   }
 
-  async function handleDeleteGroup(groupId) {
-    if (!user) { alert("You must be logged in to delete groups"); return }
-    if (!confirm("Delete this group? This cannot be undone.")) return
+  function handleDeleteClick(groupId) {
+    if (!user) { 
+      alert("You must be logged in to delete groups")
+      return 
+    }
+    const group = groups.find(g => g.id === groupId)
+    setDeleteConfirm({ groupId, groupName: group?.name || "this group" })
+  }
+
+  async function handleDeleteConfirm() {
+    if (!deleteConfirm) return
+    
+    const { groupId } = deleteConfirm
+    setDeleteConfirm(null)
     setDeletingGroups(prev => new Set(prev).add(groupId))
+    
     try {
       await deleteGroup(groupId)
       setGroups(groups.filter(g => g.id !== groupId))
@@ -237,7 +250,7 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
             <GroupCard
               key={group.id}
               group={group}
-              onDelete={() => handleDeleteGroup(group.id)}
+              onDelete={() => handleDeleteClick(group.id)}
               isDeleting={deletingGroups.has(group.id)}
               canDelete={user && group.created_by === user.id}
               isAuthenticated={isAuthenticated}
@@ -246,6 +259,84 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
           ))}
         </div>
       )}
+
+      {/* Custom Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ease-out"
+          style={{ 
+            animation: 'fadeIn 0.3s ease-out',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            position: 'fixed',
+            width: '100%',
+            height: '100%',
+            minHeight: '100vh'
+          }}
+          onClick={() => setDeleteConfirm(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4"
+            style={{ 
+              animation: 'slideUpFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+              transform: 'translateY(0)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-xl font-bold text-gray-900">Delete Group?</h3>
+                <p className="text-gray-600 mt-1">Are you sure you want to delete <span className="font-semibold">"{deleteConfirm.groupName}"</span>?</p>
+              </div>
+            </div>
+            
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-sm text-red-800">
+                <span className="font-semibold">Warning:</span> This action cannot be undone. All group data, members, and missions will be permanently deleted.
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={handleDeleteConfirm}
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium text-white bg-red-500 hover:bg-red-600 transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] shadow-md hover:shadow-lg"
+              >
+                Delete Group
+              </button>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes slideUpFadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(20px) scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+      `}</style>
     </div>
   )
 }

@@ -114,7 +114,8 @@ def update_profile(
     if profile_data.bio is not None:
         current_user.bio = profile_data.bio
     if profile_data.photo_url is not None:
-        current_user.photo_url = profile_data.photo_url
+        # Allow empty string to clear photo, or set new photo
+        current_user.photo_url = profile_data.photo_url if profile_data.photo_url else None
     
     session.add(current_user)
     session.commit()

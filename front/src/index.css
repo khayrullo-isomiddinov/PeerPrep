@@ -108,9 +108,9 @@ html {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  /* Adjust grid layout for logged-out state */
+  /* Keep consistent grid layout - don't change on auth state */
   .nav-unauthenticated .nav-bar {
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: 1fr auto 1fr;
   }
 
   .nav-aura {
@@ -172,7 +172,15 @@ html {
   }
 
   .nav-left { display: inline-flex; align-items: center; gap: 1.25rem; justify-self: start; }
-  .nav-right { display: inline-flex; align-items: center; gap: .5rem; justify-self: end; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+  .nav-right { 
+    display: inline-flex; 
+    align-items: center; 
+    gap: .5rem; 
+    justify-self: end; 
+    transition: opacity 0.2s ease-in-out;
+    position: relative;
+    min-height: 2.5rem; /* Prevent height jump */
+  }
 
   .search-pill {
     display: none;

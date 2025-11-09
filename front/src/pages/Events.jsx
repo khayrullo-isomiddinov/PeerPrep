@@ -145,10 +145,18 @@ export default function Events() {
 
   function onChanged(updated) {
     if (!updated) {
-      load()
+      // For deletions, reload after delay to prevent flash
+      setTimeout(() => {
+        load()
+      }, 400)
       return
     }
     setEvents(prev => prev.map(e => (e.id === updated.id ? updated : e)))
+  }
+
+  function handleDelete(eventId) {
+    // Remove event from local state immediately for smooth deletion
+    setEvents(prev => prev.filter(e => e.id !== eventId))
   }
 
   return (
@@ -305,7 +313,7 @@ export default function Events() {
               ))}
             </div>
           ) : filteredAndSortedEvents.length > 0 ? (
-            <EventList events={filteredAndSortedEvents} onChanged={onChanged} />
+            <EventList events={filteredAndSortedEvents} onChanged={onChanged} onDelete={handleDelete} />
           ) : (
             <div className="text-center py-16">
               <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">

@@ -66,28 +66,37 @@ export default function Navbar() {
             </div>
 
             {}
-            {isAuthenticated && (
-              <ul className="nav-tabs">
-                <li><NavLink to="/" end className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}>Explore</NavLink></li>
-                <li><NavLink to="/groups" className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}>Groups</NavLink></li>
-                <li><NavLink to="/events" className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}>Upcoming Events</NavLink></li>
-              </ul>
-            )}
+            {/* Middle section - always present to maintain grid structure */}
+            <div style={{ gridColumn: '2', justifySelf: 'center' }}>
+              {isAuthenticated && (
+                <ul className="nav-tabs">
+                  <li><NavLink to="/" end className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}>Explore</NavLink></li>
+                  <li><NavLink to="/groups" className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}>Groups</NavLink></li>
+                  <li><NavLink to="/events" className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}>Upcoming Events</NavLink></li>
+                </ul>
+              )}
+            </div>
 
             {}
-            <div className="nav-right gap-2">
+            <div className="nav-right gap-2" style={{ gridColumn: '3', justifySelf: 'end' }}>
               {isLoading ? (
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 bg-gray-200 animate-pulse rounded-full"></div>
                   <span className="text-sm text-gray-500">Loading...</span>
                 </div>
-              ) : !isAuthenticated ? (
-                <>
-                  <Link to="/login" className="btn-ghost-pink">Log in</Link>
-                  <Link to="/register" className="btn-pink">Sign up</Link>
-                </>
               ) : (
-                <div className="relative inline-flex items-center gap-2">
+                <>
+                  {/* Unauthenticated buttons */}
+                  {!isAuthenticated && (
+                    <div className="flex items-center gap-2">
+                      <Link to="/login" className="btn-ghost-pink">Log in</Link>
+                      <Link to="/register" className="btn-pink">Sign up</Link>
+                    </div>
+                  )}
+                  
+                  {/* Authenticated content */}
+                  {isAuthenticated && (
+                    <div className="relative inline-flex items-center gap-2">
                   {}
                   <div className="relative" ref={createMenuRef}>
                     <button
@@ -150,9 +159,13 @@ export default function Navbar() {
                       </div>
                     ) : (
                       <img
-                        src={user?.photo_url || `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(user?.email || "user")}`}
+                        key={user?.photo_url || 'default'}
+                        src={(user?.photo_url && user.photo_url.trim()) ? user.photo_url : `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(user?.email || "user")}`}
                         alt="Profile"
                         className="nav-avatar"
+                        onError={(e) => {
+                          e.target.src = `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(user?.email || "user")}`
+                        }}
                       />
                     )}
                     <span className="hidden sm:inline text-neutral-700">
@@ -179,7 +192,9 @@ export default function Navbar() {
                       </button>
                     </div>
                   )}
-                </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

@@ -31,13 +31,13 @@ export default function Profile() {
 
   useEffect(() => {
     if (user) {
-      setForm({
+      setForm(prev => ({
         name: user.name || "",
         email: user.email || "",
         bio: user.bio || "",
-        photoUrl: user.photo_url || user.photoUrl || "",
+        photoUrl: user.photo_url || user.photoUrl || prev.photoUrl || "",
         createdAt: user.created_at || null,
-      })
+      }))
     }
   }, [user])
 
@@ -55,10 +55,19 @@ export default function Profile() {
       }
       
       const updatedProfile = await updateProfile(profileData)
+      console.log("Profile saved:", updatedProfile)
       
       // Update local state
       const updatedUser = { ...user, ...updatedProfile }
       setUser(updatedUser)
+      
+      // Ensure form is also updated with the server response
+      setForm(prev => ({
+        ...prev,
+        name: updatedProfile.name || prev.name,
+        bio: updatedProfile.bio || prev.bio,
+        photoUrl: updatedProfile.photo_url || prev.photoUrl
+      }))
 
       // Rely on server as source of truth (no local persistence)
       
@@ -75,14 +84,49 @@ export default function Profile() {
 
   async function onPhotoSelected(e) {
     const file = e.target.files?.[0]
-    if (!file) return
+    if (!file) {
+      console.log("No file selected")
+      return
+    }
     
+    // Check for HEIC/HEIF files (not supported by browsers)
+    const fileName = file.name.toLowerCase()
+    const isHeic = fileName.endsWith('.heic') || fileName.endsWith('.heif') || 
+                   file.type === 'image/heic' || file.type === 'image/heif'
+    
+    if (isHeic) {
+      alert("HEIC/HEIF format is not supported. Please convert your image to JPG or PNG first. You can do this on your iPhone by going to Settings > Camera > Formats and selecting 'Most Compatible'.")
+      return
+    }
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert("Please select an image file (JPG, PNG, GIF, or WebP)")
+      return
+    }
+    
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image size must be less than 5MB. Please compress or resize your image.")
+      return
+    }
+    
+    console.log("Processing image:", file.name, file.type, file.size)
     setUploading(true)
+    
     const reader = new FileReader()
+    reader.onerror = () => {
+      console.error("Error reading file")
+      setUploading(false)
+      alert("Failed to read image file")
+    }
+    
     reader.onload = async () => {
       const photoUrl = String(reader.result || "")
-      const updatedForm = { ...form, photoUrl }
-      setForm(updatedForm)
+      console.log("Image converted to base64, length:", photoUrl.length)
+      
+      // Update form immediately so user sees the image right away
+      setForm(prev => ({ ...prev, photoUrl }))
       
       try {
         // Save photo to database
@@ -92,28 +136,42 @@ export default function Profile() {
           photo_url: photoUrl
         }
         
+        console.log("Saving profile with photo_url length:", photoUrl.length)
         const updatedProfile = await updateProfile(profileData)
+        console.log("Profile updated successfully:", updatedProfile)
+        console.log("Returned photo_url:", updatedProfile.photo_url ? "exists" : "missing", updatedProfile.photo_url?.substring(0, 50))
         
-        // Update user state
+        // Update user state with the response from server
         const updatedUser = { ...user, ...updatedProfile }
         setUser(updatedUser)
+        
+        // Ensure form is also updated with the server response
+        setForm(prev => ({
+          ...prev,
+          photoUrl: updatedProfile.photo_url || photoUrl
+        }))
 
-        // Rely on server response as canonical
+        console.log("Profile picture saved and updated!")
       } catch (error) {
         console.error("Failed to save photo:", error)
+        alert("Failed to save profile picture. Please try again.")
         // Still update local state even if API fails
-        const updatedUser = { ...user, photoUrl }
+        const updatedUser = { ...user, photo_url: photoUrl }
         setUser(updatedUser)
         // Note: this change is temporary until next successful save
       }
       
       setUploading(false)
+      // Reset file input so same file can be selected again
+      if (fileRef.current) {
+        fileRef.current.value = ''
+      }
     }
     reader.readAsDataURL(file)
   }
 
   function getProfileImage() {
-    if (form.photoUrl) return form.photoUrl
+    if (form.photoUrl && form.photoUrl.trim()) return form.photoUrl
     return `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(form.email || "user")}`
   }
 
@@ -180,9 +238,13 @@ export default function Profile() {
               <div className="relative group">
                 <div className="relative h-32 w-32 rounded-full overflow-hidden border-4 border-white shadow-2xl ring-4 ring-pink-100">
                   <img
+                    key={form.photoUrl || 'default'}
                     className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                     src={getProfileImage()}
                     alt="Profile"
+                    onError={(e) => {
+                      e.target.src = `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(form.email || "user")}`
+                    }}
                   />
                   {uploading && (
                     <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
