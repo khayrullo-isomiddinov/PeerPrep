@@ -33,6 +33,10 @@ class GroupMember(BaseModel):
     joined_at: datetime
     is_leader: bool
 
+class GroupMemberWithUser(GroupMember):
+    user_email: Optional[str] = None
+    user_name: Optional[str] = None
+
 class MissionSubmission(BaseModel):
     id: int
     group_id: str
@@ -45,15 +49,6 @@ class MissionSubmission(BaseModel):
     approved_at: Optional[datetime] = None
     score: Optional[int] = None
     feedback: Optional[str] = None
-
-class Badge(BaseModel):
-    id: int
-    user_id: int
-    group_id: str
-    badge_name: str
-    badge_description: Optional[str] = None
-    earned_at: datetime
-    mission_title: Optional[str] = None
 
 class LeaderboardEntry(BaseModel):
     user_id: int

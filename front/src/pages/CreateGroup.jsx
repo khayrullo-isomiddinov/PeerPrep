@@ -2,11 +2,10 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
-  faUsers, faInfo, faGraduationCap, faEye, faChevronRight,
-  faChevronLeft, faCalendarAlt, faTrophy, faBook, faCheck,
-  faImage, faUpload, faTrash
+  faInfo, faEye, faChevronRight, faCheck,
+  faImage, faUpload, faTrash, faWandMagicSparkles
 } from "@fortawesome/free-solid-svg-icons"
-import { createGroup } from "../utils/api"
+import { createGroup, refineEventText } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
 
 const STEPS = [
@@ -32,6 +31,10 @@ export default function CreateGroup() {
   const [error, setError] = useState("")
   const [fieldErrors, setFieldErrors] = useState({})
   const [lastUpdate, setLastUpdate] = useState(new Date())
+  const [refiningName, setRefiningName] = useState(false)
+  const [refiningDescription, setRefiningDescription] = useState(false)
+  const [refiningMissionTitle, setRefiningMissionTitle] = useState(false)
+  const [refiningMissionDescription, setRefiningMissionDescription] = useState(false)
 
 
   if (!isLoading && !isAuthenticated) {
@@ -94,6 +97,126 @@ export default function CreateGroup() {
 
   function updateFormData(updates) {
     setFormData(prev => ({ ...prev, ...updates }))
+  }
+
+  async function handleRefineName() {
+    if (!formData.name.trim()) {
+      setError("Please enter a group name first before refining.")
+      return
+    }
+    
+    const token = localStorage.getItem("access_token")
+    if (!token) {
+      setError("Please log in to use AI refinement.")
+      navigate("/login")
+      return
+    }
+    
+    setRefiningName(true)
+    setError("")
+    try {
+      const refined = await refineEventText(formData.name, "title")
+      updateFormData({ name: refined })
+    } catch (e) {
+      if (e?.response?.status === 401) {
+        setError("Your session has expired. Please log in again.")
+        navigate("/login")
+      } else {
+        setError(e?.response?.data?.detail || "Failed to refine name. Please try again.")
+      }
+    } finally {
+      setRefiningName(false)
+    }
+  }
+
+  async function handleRefineDescription() {
+    if (!formData.description.trim()) {
+      setError("Please enter a description first before refining.")
+      return
+    }
+    
+    const token = localStorage.getItem("access_token")
+    if (!token) {
+      setError("Please log in to use AI refinement.")
+      navigate("/login")
+      return
+    }
+    
+    setRefiningDescription(true)
+    setError("")
+    try {
+      const refined = await refineEventText(formData.description, "description")
+      updateFormData({ description: refined })
+    } catch (e) {
+      if (e?.response?.status === 401) {
+        setError("Your session has expired. Please log in again.")
+        navigate("/login")
+      } else {
+        setError(e?.response?.data?.detail || "Failed to refine description. Please try again.")
+      }
+    } finally {
+      setRefiningDescription(false)
+    }
+  }
+
+  async function handleRefineMissionTitle() {
+    if (!formData.mission_title?.trim()) {
+      setError("Please enter a mission title first before refining.")
+      return
+    }
+    
+    const token = localStorage.getItem("access_token")
+    if (!token) {
+      setError("Please log in to use AI refinement.")
+      navigate("/login")
+      return
+    }
+    
+    setRefiningMissionTitle(true)
+    setError("")
+    try {
+      const refined = await refineEventText(formData.mission_title, "title")
+      updateFormData({ mission_title: refined })
+    } catch (e) {
+      if (e?.response?.status === 401) {
+        setError("Your session has expired. Please log in again.")
+        navigate("/login")
+      } else {
+        setError(e?.response?.data?.detail || "Failed to refine mission title. Please try again.")
+      }
+    } finally {
+      setRefiningMissionTitle(false)
+    }
+  }
+
+  async function handleRefineMissionDescription() {
+    if (!formData.mission_description?.trim()) {
+      setError("Please enter a mission description first before refining.")
+      return
+    }
+    
+    const token = localStorage.getItem("access_token")
+    if (!token) {
+      setError("Please log in to use AI refinement.")
+      navigate("/login")
+      return
+    }
+    
+    setRefiningMissionDescription(true)
+    setError("")
+    try {
+      const refined = await refineEventText(formData.mission_description, "description")
+      updateFormData({ mission_description: refined })
+    } catch (e) {
+      if (e?.response?.status === 401) {
+        setError("Your session has expired. Please log in again.")
+        navigate("/login")
+      } else {
+        setError(e?.response?.data?.detail || "Failed to refine mission description. Please try again.")
+      }
+    } finally {
+      setRefiningMissionDescription(false)
+    }
   }
 
   async function handleSubmit() {
@@ -182,7 +305,6 @@ export default function CreateGroup() {
   return (
     <div className="min-h-screen bg-gray-50 group-creation-form">
       <div className="flex">
-        { }
         <div className="w-80 bg-white border-r border-gray-200 p-6 step-sidebar">
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Study Group</h1>
@@ -252,10 +374,8 @@ export default function CreateGroup() {
           </div>
         </div>
 
-        { }
         <div className="flex-1 p-8">
           <div className="max-w-4xl mx-auto">
-            { }
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6 step-content">
               {currentStep === 0 && (
                 <CoverImageStep
@@ -270,6 +390,10 @@ export default function CreateGroup() {
                   updateFormData={updateFormData}
                   fieldErrors={fieldErrors}
                   fieldOptions={fieldOptions}
+                  onRefineName={handleRefineName}
+                  onRefineDescription={handleRefineDescription}
+                  refiningName={refiningName}
+                  refiningDescription={refiningDescription}
                 />
               )}
               {currentStep === 2 && (
@@ -281,7 +405,6 @@ export default function CreateGroup() {
               )}
             </div>
 
-            { }
             <div className="flex items-center justify-between">
               <button
                 onClick={cancel}
@@ -418,7 +541,7 @@ function CoverImageStep({ formData, updateFormData, fieldErrors }) {
   )
 }
 
-function GeneralInfoStep({ formData, updateFormData, fieldErrors, fieldOptions }) {
+function GeneralInfoStep({ formData, updateFormData, fieldErrors, fieldOptions, onRefineName, onRefineDescription, refiningName, refiningDescription }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3 mb-6">
@@ -429,9 +552,29 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, fieldOptions }
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Group Name *
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-semibold text-gray-700">
+                Group Name *
+              </label>
+              <button
+                onClick={onRefineName}
+                disabled={refiningName || !formData.name.trim()}
+                className="flex items-center space-x-1 px-2 py-1 text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded hover:from-purple-600 hover:to-pink-600 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Refine and polish your group name with AI"
+              >
+                {refiningName ? (
+                  <>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                    <span>Refining...</span>
+                  </>
+                ) : (
+                  <>
+                    <FontAwesomeIcon icon={faWandMagicSparkles} className="w-3 h-3" />
+                    <span>Refine</span>
+                  </>
+                )}
+              </button>
+            </div>
             <input
               type="text"
               value={formData.name}
@@ -481,9 +624,29 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, fieldOptions }
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Description
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-semibold text-gray-700">
+                Description
+              </label>
+              <button
+                onClick={onRefineDescription}
+                disabled={refiningDescription || !formData.description.trim()}
+                className="flex items-center space-x-1 px-2 py-1 text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded hover:from-purple-600 hover:to-pink-600 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Refine and polish your description with AI"
+              >
+                {refiningDescription ? (
+                  <>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                    <span>Refining...</span>
+                  </>
+                ) : (
+                  <>
+                    <FontAwesomeIcon icon={faWandMagicSparkles} className="w-3 h-3" />
+                    <span>Refine</span>
+                  </>
+                )}
+              </button>
+            </div>
             <textarea
               value={formData.description}
               onChange={(e) => updateFormData({ description: e.target.value })}
@@ -544,7 +707,6 @@ function ReviewCreateStep({ formData, updateFormData, error }) {
         </div>
       )}
 
-      { }
       {formData.coverImage && (
         <div className="bg-gray-50 rounded-xl p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Cover Image</h3>

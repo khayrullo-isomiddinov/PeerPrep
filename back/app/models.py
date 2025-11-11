@@ -51,6 +51,7 @@ class User(SQLModel, table=True):
     name: Optional[str] = None
     bio: Optional[str] = None
     photo_url: Optional[str] = None
+    xp: int = Field(default=0, description="Experience points earned from activities")
 
 class EventAttendee(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -77,12 +78,3 @@ class MissionSubmission(SQLModel, table=True):
     approved_at: Optional[datetime] = None
     score: Optional[int] = None  
     feedback: Optional[str] = None
-
-class Badge(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True, foreign_key="user.id")
-    group_id: str = Field(index=True, foreign_key="group.id")
-    badge_name: str
-    badge_description: Optional[str] = None
-    earned_at: datetime = Field(default_factory=datetime.utcnow)
-    mission_title: Optional[str] = None

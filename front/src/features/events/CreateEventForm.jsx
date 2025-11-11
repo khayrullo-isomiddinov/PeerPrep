@@ -4,9 +4,9 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { 
   faImage, faInfo, faMapMarkerAlt, faEye, faChevronRight, 
   faChevronLeft, faCalendarAlt, faClock, faUsers, faGraduationCap,
-  faBook, faTrash, faUpload, faCheck
+  faBook, faTrash, faUpload, faCheck, faWandMagicSparkles
 } from "@fortawesome/free-solid-svg-icons"
-import { createEvent } from "../../utils/api"
+import { createEvent, refineEventText } from "../../utils/api"
 
 const STEPS = [
   { id: 'cover', title: 'Upload cover', icon: faImage, section: 'EVENT INFORMATION' },
@@ -36,6 +36,8 @@ export default function CreateEventForm({ onCreated }) {
   const [error, setError] = useState("")
   const [fieldErrors, setFieldErrors] = useState({})
   const [lastUpdate, setLastUpdate] = useState(new Date())
+  const [refiningTitle, setRefiningTitle] = useState(false)
+  const [refiningDescription, setRefiningDescription] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -80,6 +82,70 @@ export default function CreateEventForm({ onCreated }) {
 
   function updateFormData(updates) {
     setFormData(prev => ({ ...prev, ...updates }))
+  }
+
+  async function handleRefineTitle() {
+    if (!formData.title.trim()) {
+      setError("Please enter a title first before refining.")
+      return
+    }
+    
+    // Check if user is logged in
+    const token = localStorage.getItem("access_token")
+    if (!token) {
+      setError("Please log in to use AI refinement.")
+      navigate("/login")
+      return
+    }
+    
+    setRefiningTitle(true)
+    setError("")
+    try {
+      const refined = await refineEventText(formData.title, "title")
+      updateFormData({ title: refined })
+    } catch (e) {
+      if (e?.response?.status === 401) {
+        setError("Your session has expired. Please log in again.")
+        navigate("/login")
+      } else {
+        setError(e?.response?.data?.detail || "Failed to refine title. Please try again.")
+      }
+      console.error("Refinement error:", e)
+    } finally {
+      setRefiningTitle(false)
+    }
+  }
+
+  async function handleRefineDescription() {
+    if (!formData.description.trim()) {
+      setError("Please enter a description first before refining.")
+      return
+    }
+    
+    // Check if user is logged in
+    const token = localStorage.getItem("access_token")
+    if (!token) {
+      setError("Please log in to use AI refinement.")
+      navigate("/login")
+      return
+    }
+    
+    setRefiningDescription(true)
+    setError("")
+    try {
+      const refined = await refineEventText(formData.description, "description")
+      updateFormData({ description: refined })
+    } catch (e) {
+      if (e?.response?.status === 401) {
+        setError("Your session has expired. Please log in again.")
+        navigate("/login")
+      } else {
+        setError(e?.response?.data?.detail || "Failed to refine description. Please try again.")
+      }
+      console.error("Refinement error:", e)
+    } finally {
+      setRefiningDescription(false)
+    }
   }
 
   async function handleSubmit() {
@@ -207,6 +273,11 @@ export default function CreateEventForm({ onCreated }) {
           <div className="max-w-4xl mx-auto">
             {}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6 step-content">
+              {error && (
+                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-red-600 text-sm">{error}</p>
+                </div>
+              )}
               {currentStep === 0 && (
                 <UploadCoverStep 
                   formData={formData} 
@@ -216,10 +287,14 @@ export default function CreateEventForm({ onCreated }) {
               )}
               {currentStep === 1 && (
                 <GeneralInfoStep 
-                  formData={formData} 
+                  formData={formData}
                   updateFormData={updateFormData}
                   fieldErrors={fieldErrors}
                   categories={categories}
+                  onRefineTitle={handleRefineTitle}
+                  onRefineDescription={handleRefineDescription}
+                  refiningTitle={refiningTitle}
+                  refiningDescription={refiningDescription}
                 />
               )}
               {currentStep === 2 && (
@@ -393,20 +468,40 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
   )
 }
 
-function GeneralInfoStep({ formData, updateFormData, fieldErrors, categories }) {
+function GeneralInfoStep({ formData, updateFormData, fieldErrors, categories, onRefineTitle, onRefineDescription, refiningTitle, refiningDescription }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3 mb-6">
         <FontAwesomeIcon icon={faInfo} className="w-6 h-6 text-pink-500" />
         <h2 className="text-2xl font-bold text-gray-900">General information</h2>
-        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Name *
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-semibold text-gray-700">
+                Name *
+              </label>
+              <button
+                onClick={onRefineTitle}
+                disabled={refiningTitle || !formData.title.trim()}
+                className="flex items-center space-x-1 px-2 py-1 text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded hover:from-purple-600 hover:to-pink-600 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Refine and polish your title with AI"
+              >
+                {refiningTitle ? (
+                  <>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                    <span>Refining...</span>
+                  </>
+                ) : (
+                  <>
+                    <FontAwesomeIcon icon={faWandMagicSparkles} className="w-3 h-3" />
+                    <span>Refine</span>
+                  </>
+                )}
+              </button>
+            </div>
             <input
               type="text"
               value={formData.title}
@@ -422,9 +517,29 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, categories }) 
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Description
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-semibold text-gray-700">
+                Description
+              </label>
+              <button
+                onClick={onRefineDescription}
+                disabled={refiningDescription || !formData.description.trim()}
+                className="flex items-center space-x-1 px-2 py-1 text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded hover:from-purple-600 hover:to-pink-600 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Refine and polish your description with AI"
+              >
+                {refiningDescription ? (
+                  <>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                    <span>Refining...</span>
+                  </>
+                ) : (
+                  <>
+                    <FontAwesomeIcon icon={faWandMagicSparkles} className="w-3 h-3" />
+                    <span>Refine</span>
+                  </>
+                )}
+              </button>
+            </div>
             <textarea
               value={formData.description}
               onChange={(e) => updateFormData({ description: e.target.value })}

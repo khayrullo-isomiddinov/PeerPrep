@@ -6,10 +6,10 @@ import secrets
 import string
 
 from app.db import get_session
-from app.models import Group, GroupMember, User
+from app.models import Group, GroupMember, User, MissionSubmission
 from app.schemas.groups import (
     GroupCreate, GroupUpdate, Group as GroupSchema, 
-    GroupMember as GroupMemberSchema
+    GroupMember as GroupMemberSchema, GroupMemberWithUser, LeaderboardEntry
 )
 from app.routers.auth import _get_user_from_token
 
@@ -323,12 +323,12 @@ def delete_group(
     
     return {"message": "Group deleted successfully"}
 
-@router.get("/{group_id}/members", response_model=List[GroupMemberSchema])
+@router.get("/{group_id}/members", response_model=List[GroupMemberWithUser])
 def get_group_members(
     group_id: str,
     session: Session = Depends(get_session)
 ):
-    """Get all members of a group"""
+    """Get all members of a group with user details"""
     
     group = session.exec(select(Group).where(Group.id == group_id)).first()
     if not group:
@@ -339,9 +339,31 @@ def get_group_members(
     
     members = session.exec(
         select(GroupMember).where(GroupMember.group_id == group_id)
+        .order_by(GroupMember.is_leader.desc(), GroupMember.joined_at.asc())
     ).all()
     
-    return members
+    # Get user details for each member
+    user_ids = [m.user_id for m in members]
+    if user_ids:
+        users = session.exec(select(User).where(User.id.in_(user_ids))).all()
+        user_map = {u.id: u for u in users}
+        
+        # Combine member and user data
+        result = []
+        for member in members:
+            user = user_map.get(member.user_id)
+            result.append(GroupMemberWithUser(
+                id=member.id,
+                user_id=member.user_id,
+                group_id=member.group_id,
+                joined_at=member.joined_at,
+                is_leader=member.is_leader,
+                user_email=user.email if user else None,
+                user_name=user.name if user else None
+            ))
+        return result
+    
+    return []
 
 @router.get("/{group_id}/membership")
 def check_membership(
@@ -370,3 +392,68 @@ def check_membership(
         "is_leader": membership.is_leader if membership else False,
         "joined_at": membership.joined_at if membership else None
     }
+
+@router.get("/{group_id}/leaderboard", response_model=List[LeaderboardEntry])
+def get_group_leaderboard(
+    group_id: str,
+    session: Session = Depends(get_session)
+):
+    """Get leaderboard for a group based on mission submissions"""
+    
+    group = session.exec(select(Group).where(Group.id == group_id)).first()
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Group not found"
+        )
+    
+    # Get all approved submissions for this group, ordered by score
+    submissions = session.exec(
+        select(MissionSubmission)
+        .where(
+            MissionSubmission.group_id == group_id,
+            MissionSubmission.is_approved == True,
+            MissionSubmission.score.isnot(None)
+        )
+        .order_by(MissionSubmission.score.desc(), MissionSubmission.submitted_at.asc())
+    ).all()
+    
+    if not submissions:
+        return []
+    
+    # Get user IDs and fetch users
+    user_ids = list(set([s.user_id for s in submissions]))  # Remove duplicates
+    if not user_ids:
+        return []
+    
+    # Fetch users in batch
+    users = session.exec(select(User).where(User.id.in_(user_ids))).all()
+    user_map = {u.id: u for u in users}
+    
+    # Calculate scores and ranks
+    leaderboard = []
+    current_rank = 1
+    previous_score = None
+    
+    for idx, submission in enumerate(submissions):
+        user = user_map.get(submission.user_id)
+        if not user:
+            continue
+        
+        # Handle ties - same score gets same rank
+        if previous_score is not None and submission.score != previous_score:
+            current_rank = idx + 1
+        
+        previous_score = submission.score
+        
+        leaderboard.append(LeaderboardEntry(
+            user_id=user.id,
+            user_email=user.email,
+            score=submission.score or 0,
+            rank=current_rank,
+            submission_id=submission.id,
+            submitted_at=submission.submitted_at,
+            is_approved=submission.is_approved
+        ))
+    
+    return leaderboard

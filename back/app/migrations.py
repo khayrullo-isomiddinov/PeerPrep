@@ -21,7 +21,32 @@ def migrate_add_group_id_to_events():
         # Table might not exist yet, that's okay - init_db will create it
         print(f"Migration note: {e}")
 
+def migrate_add_xp_to_users():
+    """Add xp column to user table if it doesn't exist"""
+    try:
+        with engine.connect() as conn:
+            # Check if user table exists
+            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='user'"))
+            if not result.fetchone():
+                print("User table doesn't exist yet, will be created by init_db")
+                return
+            
+            # Check if xp column exists
+            result = conn.execute(text("PRAGMA table_info(user)"))
+            columns = [row[1] for row in result.fetchall()]
+            
+            if 'xp' not in columns:
+                print("Adding xp column to user table...")
+                conn.execute(text("ALTER TABLE user ADD COLUMN xp INTEGER DEFAULT 0"))
+                conn.commit()
+                print("✓ Added xp column to user table")
+            else:
+                print("✓ xp column already exists in user table")
+    except Exception as e:
+        print(f"Migration note (xp): {e}")
+
 def run_migrations():
     """Run all pending migrations"""
     migrate_add_group_id_to_events()
+    migrate_add_xp_to_users()
 

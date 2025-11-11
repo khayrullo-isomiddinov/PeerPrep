@@ -7,11 +7,13 @@ import {
   faGraduationCap, faBook, faStar, faEdit
 } from "@fortawesome/free-solid-svg-icons"
 import { checkGroupMembership, joinGroup, leaveGroup } from "../../utils/api"
+import { Link } from "react-router-dom"
 
 export default function GroupCard({ group, onDelete, isDeleting = false, canDelete = false, isAuthenticated = false, onEdit }) {
   const [joined, setJoined] = useState(false)
   const [showDetails, setShowDetails] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isLeader, setIsLeader] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -26,8 +28,10 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
     try {
       const membership = await checkGroupMembership(group.id)
       setJoined(!!membership.is_member)
+      setIsLeader(!!membership.is_leader)
     } catch (error) {
       setJoined(false)
+      setIsLeader(false)
     }
   }
 
@@ -186,7 +190,7 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
         </div>
 
         {showDetails && (
-          <div className="mt-4 pt-4 border-top border-gray-200">
+          <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
               <div>
                 <h5 className="font-semibold text-gray-800 mb-2">Group Info</h5>
@@ -197,6 +201,13 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
                 </div>
               </div>
             </div>
+            <Link
+              to={`/groups/${group.id}`}
+              className="block w-full btn-pink text-center"
+            >
+              View Full Details
+              <FontAwesomeIcon icon={faChevronRight} className="ml-2" />
+            </Link>
           </div>
         )}
       </div>

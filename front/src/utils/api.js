@@ -17,10 +17,25 @@ export function setAuthHeader(token) {
 const existing = localStorage.getItem("access_token")
 if (existing) setAuthHeader(existing)
 
+// Request interceptor for debugging
+api.interceptors.request.use(
+  config => {
+    console.log("📤 API Request:", config.method?.toUpperCase(), config.url)
+    console.log("📤 Headers:", config.headers)
+    console.log("📤 Auth header:", config.headers?.Authorization ? "✅ Present" : "❌ Missing")
+    return config
+  },
+  error => {
+    return Promise.reject(error)
+  }
+)
+
 api.interceptors.response.use(
   r => r,
   err => {
+    console.log("📥 API Response Error:", err?.response?.status, err?.response?.data)
     if (err?.response?.status === 401) {
+      console.error("❌ 401 Unauthorized - Clearing token")
       setAuthHeader(null)
     }
     return Promise.reject(err)
@@ -39,6 +54,35 @@ export async function listEvents(params = {}) {
   const { data } = await api.get("events", { params })
   return data
 }
+
+export async function refineEventText(text, fieldType = "general") {
+  // Ensure token is set before making the request
+  const token = localStorage.getItem("access_token")
+  console.log("🔍 Refine text - Token exists:", !!token)
+  console.log("🔍 Refine text - Token preview:", token ? token.substring(0, 20) + "..." : "none")
+  console.log("🔍 Refine text - Current auth header:", api.defaults.headers.common["Authorization"] ? "exists" : "missing")
+  
+  if (token) {
+    setAuthHeader(token)
+    console.log("🔍 Refine text - Auth header set:", api.defaults.headers.common["Authorization"] ? "yes" : "no")
+  } else {
+    console.error("❌ No token found in localStorage!")
+  }
+  
+  try {
+    const { data } = await api.post("events/refine-text", {
+      text,
+      field_type: fieldType
+    })
+    return data.refined_text
+  } catch (error) {
+    console.error("❌ Refine text error:", error)
+    console.error("❌ Error response:", error?.response?.data)
+    console.error("❌ Request headers sent:", error?.config?.headers)
+    throw error
+  }
+}
+
 export async function createEvent(payload) {
   const { data } = await api.post("events", payload)
   return data
@@ -103,6 +147,42 @@ export async function getGroupMembers(id) {
 
 export async function getGroupLeaderboard(id) {
   const { data } = await api.get(`groups/${id}/leaderboard`)
+  return data
+}
+
+// Mission submissions
+export async function submitMission(groupId, payload) {
+  const { data } = await api.post(`groups/${groupId}/missions`, payload)
+  return data
+}
+
+export async function getGroupMissions(groupId) {
+  const { data } = await api.get(`groups/${groupId}/missions`)
+  return data
+}
+
+export async function getMyMissions(groupId) {
+  const { data } = await api.get(`groups/${groupId}/missions/my-submissions`)
+  return data
+}
+
+export async function reviewMission(groupId, submissionId, payload) {
+  const { data } = await api.patch(`groups/${groupId}/missions/${submissionId}`, payload)
+  return data
+}
+
+export async function deleteMission(groupId, submissionId) {
+  await api.delete(`groups/${groupId}/missions/${submissionId}`)
+}
+
+// Badges
+export async function getUserBadge(userId) {
+  const { data } = await api.get(`badges/user/${userId}`)
+  return data
+}
+
+export async function getMyBadge() {
+  const { data } = await api.get("badges/me")
   return data
 }
 

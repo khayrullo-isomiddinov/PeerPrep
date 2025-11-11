@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useCallback } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import GroupList from "../features/groups/GroupList"
 import EditGroupForm from "../features/groups/EditGroupForm"
@@ -6,10 +6,19 @@ import { listGroups, updateGroup } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faFilter, faSearch } from "@fortawesome/free-solid-svg-icons"
+import { getCachedGroups, setCachedGroups } from "../utils/dataCache"
 
 export default function Groups() {
-  const [groups, setGroups] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [params] = useSearchParams()
+  
+  // Check cache first to avoid showing loading state
+  const currentParams = useMemo(() => ({
+    q: params.get('q') || undefined
+  }), [params])
+  
+  const cachedGroups = getCachedGroups(currentParams)
+  const [groups, setGroupsState] = useState(cachedGroups || [])
+  const [loading, setLoading] = useState(!cachedGroups) // Only show loading if no cache
   const [error, setError] = useState("")
   const [editingGroup, setEditingGroup] = useState(null)
   const [showFilters, setShowFilters] = useState(false)
@@ -18,31 +27,49 @@ export default function Groups() {
   const [sortBy, setSortBy] = useState("name")
   const { isAuthenticated, isLoading: authLoading } = useAuth()
 
-  const [params] = useSearchParams()
+  // Wrapper to update both state and cache
+  const setGroups = useCallback((newGroups) => {
+    setGroupsState(newGroups)
+    setCachedGroups(newGroups, currentParams)
+  }, [currentParams])
 
-  useEffect(() => {
-    setSearchQuery(params.get('q') || "")
-    loadGroups()
-  }, [params])
-
-  async function loadGroups() {
-    try {
+  const loadGroups = useCallback(async (showLoading = true) => {
+    if (showLoading) {
       setLoading(true)
+    }
+    try {
       const data = await listGroups()
-      setGroups(data)
+      setGroupsState(data)
+      setCachedGroups(data, currentParams)
       setError("")
     } catch (err) {
       setError("Failed to load groups")
-      setGroups([])
+      setGroupsState([])
+      setCachedGroups([], currentParams)
     } finally {
-      setLoading(false)
+      if (showLoading) {
+        setLoading(false)
+      }
     }
-  }
+  }, [currentParams])
+
+  useEffect(() => {
+    // Check if params changed - if so, check cache for new params
+    const cached = getCachedGroups(currentParams)
+    if (cached) {
+      setGroupsState(cached)
+      setLoading(false)
+    } else {
+      loadGroups()
+    }
+    setSearchQuery(params.get('q') || "")
+  }, [loadGroups, params, currentParams])
 
 
   async function handleUpdateGroup(groupId, updatedData) {
     const data = await updateGroup(groupId, updatedData)
-    setGroups(groups.map(g => (g.id === groupId ? data : g)))
+    const updatedGroups = groups.map(g => (g.id === groupId ? data : g))
+    setGroups(updatedGroups) // This will also update cache
     setEditingGroup(null)
     return data
   }

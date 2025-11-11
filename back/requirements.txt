@@ -9,3 +9,4 @@ passlib[bcrypt]
 python-jose[cryptography]
 email-validator
 argon2-cffi
+openai>=1.0.0

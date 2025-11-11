@@ -8,6 +8,7 @@ import Navbar from "./components/Navbar"
 import Footer from "./components/Footer"
 import Home from "./pages/Home"
 import Groups from "./pages/Groups"
+import GroupDetail from "./pages/GroupDetail"
 import Events from "./pages/Events"
 import CreateEvent from "./pages/CreateEvent"
 import CreateGroup from "./pages/CreateGroup"
@@ -46,6 +47,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/groups" element={<Groups />} />
+          <Route path="/groups/:id" element={<GroupDetail />} />
           <Route path="/groups/create" element={<CreateGroup />} />
           <Route path="/events" element={<Events />} />
           <Route path="/events/create" element={<CreateEvent />} />

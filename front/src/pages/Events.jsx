@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useState, useMemo, useCallback } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
@@ -11,6 +11,7 @@ import {
 import EventList from "../features/events/EventList"
 import { listEvents } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
+import { getCachedEvents, setCachedEvents } from "../utils/dataCache"
 
 const CATEGORIES = [
   { id: "all", name: "All Events", icon: faCalendarAlt, color: "text-gray-600" },
@@ -34,17 +35,27 @@ const TIME_FILTERS = [
 
 export default function Events() {
   const { isAuthenticated } = useAuth()
-  const [events, setEvents] = useState([])
   const [params] = useSearchParams()
-  const [loading, setLoading] = useState(true)
+  
+  // Check cache first to avoid showing loading state
+  const currentParams = useMemo(() => ({
+    q: params.get('q') || undefined,
+    location: params.get('location') || undefined
+  }), [params])
+  
+  const cachedEvents = getCachedEvents(currentParams)
+  const [events, setEvents] = useState(cachedEvents || [])
+  const [loading, setLoading] = useState(!cachedEvents) // Only show loading if no cache
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [selectedTimeFilter, setSelectedTimeFilter] = useState("all")
   const [sortBy, setSortBy] = useState("date")
   const [showFilters, setShowFilters] = useState(false)
 
-  async function load() {
-    setLoading(true)
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setLoading(true)
+    }
     try {
       const q = params.get('q') || undefined
       const location = params.get('location') || undefined
@@ -52,29 +63,41 @@ export default function Events() {
       const data = await listEvents({ q, location })
       console.log('Events loaded:', data)
       setEvents(data)
+      // Cache the data
+      setCachedEvents(data, { q, location })
     } catch (error) {
       console.error("Failed to load events:", error)
     } finally {
-      setLoading(false)
+      if (showLoading) {
+        setLoading(false)
+      }
     }
-  }
-
-  useEffect(() => {
-    load()
-    setSearchQuery(params.get('q') || "")
   }, [params])
 
   useEffect(() => {
+    // Check if params changed - if so, check cache for new params
+    const cached = getCachedEvents(currentParams)
+    if (cached) {
+      setEvents(cached)
+      setLoading(false)
+    } else {
+      load()
+    }
+    setSearchQuery(params.get('q') || "")
+  }, [load, params, currentParams])
+
+  useEffect(() => {
     const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        console.log('Page became visible, refreshing events...')
-        load()
+      if (!document.hidden && events.length > 0) {
+        // Background refresh - don't show loading state if we already have events
+        console.log('Page became visible, refreshing events in background...')
+        load(false) // Don't show loading state
       }
     }
     
     document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
-  }, [])
+  }, [events.length, load])
 
   const filteredAndSortedEvents = useMemo(() => {
     let filtered = events
@@ -151,12 +174,22 @@ export default function Events() {
       }, 400)
       return
     }
-    setEvents(prev => prev.map(e => (e.id === updated.id ? updated : e)))
+    const updatedEvents = events.map(e => (e.id === updated.id ? updated : e))
+    setEvents(updatedEvents)
+    // Update cache
+    const q = params.get('q') || undefined
+    const location = params.get('location') || undefined
+    setCachedEvents(updatedEvents, { q, location })
   }
 
   function handleDelete(eventId) {
     // Remove event from local state immediately for smooth deletion
-    setEvents(prev => prev.filter(e => e.id !== eventId))
+    const updatedEvents = events.filter(e => e.id !== eventId)
+    setEvents(updatedEvents)
+    // Update cache
+    const q = params.get('q') || undefined
+    const location = params.get('location') || undefined
+    setCachedEvents(updatedEvents, { q, location })
   }
 
   return (

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react"
+import { createPortal } from "react-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
   faSearch, faFilter, faUsers, faTrophy,
@@ -261,9 +262,9 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
       )}
 
       {/* Custom Delete Confirmation Modal */}
-      {deleteConfirm && (
+      {deleteConfirm && createPortal(
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ease-out"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ease-out"
           style={{ 
             animation: 'fadeIn 0.3s ease-out',
             top: 0,
@@ -271,8 +272,8 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
             right: 0,
             bottom: 0,
             position: 'fixed',
-            width: '100%',
-            height: '100%',
+            width: '100vw',
+            height: '100vh',
             minHeight: '100vh'
           }}
           onClick={() => setDeleteConfirm(null)}
@@ -318,7 +319,8 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <style>{`

@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom"
-import { useEffect, useRef, useState } from "react"
-import { searchLocations, autocompleteEvents, autocompleteGroups } from "../utils/api"
+import { useEffect, useRef, useState, useMemo } from "react"
+import { searchLocations, autocompleteEvents, autocompleteGroups, listEvents } from "../utils/api"
 
 export default function Home() {
   const navigate = useNavigate()
@@ -12,6 +12,8 @@ export default function Home() {
   const [groupOptions, setGroupOptions] = useState([])
   const [showLocMenu, setShowLocMenu] = useState(false)
   const [showQueryMenu, setShowQueryMenu] = useState(false)
+  const [allEvents, setAllEvents] = useState([])
+  const [loadingEvents, setLoadingEvents] = useState(true)
   const locDebounce = useRef(null)
   const queryDebounce = useRef(null)
 
@@ -68,17 +70,99 @@ export default function Home() {
     }
   }
 
+  useEffect(() => {
+    async function loadEvents() {
+      try {
+        setLoadingEvents(true)
+        const events = await listEvents({ limit: 100 })
+        setAllEvents(events || [])
+      } catch (error) {
+        console.error("Failed to load events:", error)
+        setAllEvents([])
+      } finally {
+        setLoadingEvents(false)
+      }
+    }
+    loadEvents()
+  }, [])
+
+  const nycEvents = useMemo(() => {
+    const now = new Date()
+    return allEvents
+      .filter(e => {
+        const eventDate = new Date(e.starts_at)
+        return eventDate > now && 
+               (e.location?.toLowerCase().includes("new york") || 
+                e.location?.toLowerCase().includes("nyc") ||
+                e.location?.toLowerCase().includes("ny"))
+      })
+      .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))
+      .slice(0, 3)
+  }, [allEvents])
+
+  const upcoming24h = useMemo(() => {
+    const now = new Date()
+    const tomorrow = new Date(now)
+    tomorrow.setHours(tomorrow.getHours() + 24)
+    return allEvents
+      .filter(e => {
+        const eventDate = new Date(e.starts_at)
+        return eventDate > now && eventDate <= tomorrow
+      })
+      .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))
+      .slice(0, 2)
+  }, [allEvents])
+
+  const highlightsThisWeek = useMemo(() => {
+    const now = new Date()
+    const nextWeek = new Date(now)
+    nextWeek.setDate(nextWeek.getDate() + 7)
+    return allEvents
+      .filter(e => {
+        const eventDate = new Date(e.starts_at)
+        return eventDate > now && eventDate <= nextWeek
+      })
+      .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))
+      .slice(0, 1)[0] || null
+  }, [allEvents])
+
+  const moreEvents = useMemo(() => {
+    const now = new Date()
+    const shownIds = new Set([
+      ...nycEvents.map(e => e.id),
+      ...upcoming24h.map(e => e.id),
+      ...(highlightsThisWeek ? [highlightsThisWeek.id] : [])
+    ])
+    return allEvents
+      .filter(e => {
+        const eventDate = new Date(e.starts_at)
+        return eventDate > now && !shownIds.has(e.id)
+      })
+      .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))
+      .slice(0, 3)
+  }, [allEvents, nycEvents, upcoming24h, highlightsThisWeek])
+
+  function formatEventDate(dateString) {
+    const date = new Date(dateString)
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+    return `${days[date.getDay()]}, ${months[date.getMonth()]} ${date.getDate()} | ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+  }
+
+  function getEventImage(event) {
+    const seed = event.title?.toLowerCase().replace(/\s+/g, '-') || 'event'
+    return `https://images.unsplash.com/photo-1492684223066-81342ee5ff30?q=80&w=800&auto=format&fit=crop&seed=${seed}`
+  }
+
   return (
     <div className="min-h-screen tap-safe premium-scrollbar flex flex-col home-light route-transition">
-
-      {}
       <section className="home-hero premium-fade-in">
         <div className="home-hero-bg" />
         <div className="home-hero-inner reveal-up">
           <h1 className="home-hero-title">
             <span>Pick up your</span>
             <span className="accent">wonderful plans</span>
-          </h1>
+          </h1> 
         </div>
         <div className="search-wrap reveal-up" style={{animationDelay:'.06s'}}>
           <div className="home-search premium-scale-in">
@@ -143,131 +227,203 @@ export default function Home() {
         </div>
       </section>
 
-      {}
       <section className="home-section">
         <div className="home-section-inner reveal-up" style={{animationDelay:'.12s'}}>
           <div className="home-section-head">
             <h2 className="home-title">New events in <span className="accent">NYC</span></h2>
-            <button className="btn-ghost-pink pill">View more</button>
+            <Link to="/events?location=New York" className="btn-ghost-pink pill">View more</Link>
           </div>
 
-          <div className="home-card-grid">
-            <article className="event-card">
-              <img src="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?q=80&w=1600&auto=format&fit=crop" alt="Urban Marathon"/>
-              <div className="event-meta">
-                <h3>Urban Marathon</h3>
-                <div className="row"><span className="muted">Monday, June 06 | 06:00 AM</span><span className="price">From $20</span></div>
-                <div className="row muted">New York, NY</div>
-              </div>
-            </article>
-
-            <article className="event-card">
-              <img src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=1600&auto=format&fit=crop" alt="Melody Mania"/>
-              <div className="event-meta">
-                <h3>Melody Mania</h3>
-                <div className="row"><span className="muted">Wednesday, June 24 | 07:00 PM</span><span className="free">Free ticket</span></div>
-                <div className="row muted">New York, NY</div>
-              </div>
-            </article>
-
-            <article className="event-card">
-              <img src="https://images.unsplash.com/photo-1483412033650-1015ddeb83d1?q=80&w=1600&auto=format&fit=crop" alt="Rockin' the Stage"/>
-              <div className="event-meta">
-                <h3>"Rockin' the Stage"</h3>
-                <div className="row"><span className="muted">Monday, March 14 | 04:00 PM</span><span className="price">From $120</span></div>
-                <div className="row muted">New York, NY</div>
-              </div>
-            </article>
-          </div>
+          {loadingEvents ? (
+            <div className="home-card-grid">
+              {[...Array(3)].map((_, i) => (
+                <article key={i} className="event-card premium-loading">
+                  <div className="h-48 bg-gray-200 animate-pulse rounded-t-lg" />
+                  <div className="event-meta p-4">
+                    <div className="h-6 bg-gray-200 rounded animate-pulse mb-2" />
+                    <div className="h-4 bg-gray-200 rounded animate-pulse mb-2" />
+                    <div className="h-4 bg-gray-200 rounded animate-pulse" />
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : nycEvents.length > 0 ? (
+            <div className="home-card-grid">
+              {nycEvents.map((event) => (
+                <Link key={event.id} to={`/events`} className="event-card premium-hover">
+                  <img 
+                    src={getEventImage(event)} 
+                    alt={event.title}
+                    loading="lazy"
+                    decoding="async"
+                    style={{ willChange: 'transform' }}
+                  />
+                  <div className="event-meta">
+                    <h3>{event.title}</h3>
+                    <div className="row">
+                      <span className="muted">{formatEventDate(event.starts_at)}</span>
+                      <span className="free">Free event</span>
+                    </div>
+                    <div className="row muted">{event.location}</div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>No upcoming events in NYC at the moment.</p>
+              <Link to="/events/create" className="text-pink-500 hover:text-pink-600 mt-2 inline-block">
+                Create the first one!
+              </Link>
+            </div>
+          )}
         </div>
       </section>
 
-      {}
       <section className="home-section">
         <div className="home-section-inner reveal-up">
           <div className="home-section-head">
             <h2 className="home-title">Upcoming <span className="accent">in 24h</span></h2>
-            <button className="btn-ghost-pink pill">View more</button>
+            <Link to="/events" className="btn-ghost-pink pill">View more</Link>
           </div>
-          <div className="upcoming-grid">
-            <article className="upcoming-card">
-              <img src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=1600&auto=format&fit=crop" alt="Musical Fusion Festival" />
-              <div className="event-meta">
-                <h3>Musical Fusion Festival</h3>
-                <div className="row"><span className="muted">Monday, June 06 | 06:00 AM</span><span className="price">From $100</span></div>
-                <div className="row muted">New York, NY</div>
-              </div>
-            </article>
-            <article className="upcoming-card">
-              <img src="https://images.unsplash.com/photo-1520975616617-9f8a1fef7c88?q=80&w=1600&auto=format&fit=crop" alt="Business in the United States" />
-              <div className="event-meta">
-                <h3>Business in the United States</h3>
-                <div className="row"><span className="muted">Tuesday, June 07 | 06:00 AM</span><span className="price">From $50</span></div>
-                <div className="row muted">Atlanta</div>
-              </div>
-            </article>
-          </div>
+          {loadingEvents ? (
+            <div className="upcoming-grid">
+              {[...Array(2)].map((_, i) => (
+                <article key={i} className="upcoming-card premium-loading">
+                  <div className="h-48 bg-gray-200 animate-pulse rounded-t-lg" />
+                  <div className="event-meta p-4">
+                    <div className="h-6 bg-gray-200 rounded animate-pulse mb-2" />
+                    <div className="h-4 bg-gray-200 rounded animate-pulse mb-2" />
+                    <div className="h-4 bg-gray-200 rounded animate-pulse" />
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : upcoming24h.length > 0 ? (
+            <div className="upcoming-grid">
+              {upcoming24h.map((event) => (
+                <Link key={event.id} to={`/events`} className="upcoming-card premium-hover">
+                  <img 
+                    src={getEventImage(event)} 
+                    alt={event.title}
+                    loading="lazy"
+                    decoding="async"
+                    style={{ willChange: 'transform' }}
+                  />
+                  <div className="event-meta">
+                    <h3>{event.title}</h3>
+                    <div className="row">
+                      <span className="muted">{formatEventDate(event.starts_at)}</span>
+                      <span className="free">Free event</span>
+                    </div>
+                    <div className="row muted">{event.location}</div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>No events happening in the next 24 hours.</p>
+            </div>
+          )}
         </div>
       </section>
 
-      {}
       <section className="home-section">
         <div className="home-section-inner reveal-up">
           <div className="home-section-head">
             <h2 className="home-title">Highlights <span className="accent">this week</span></h2>
-            <button className="btn-ghost-pink pill">View more</button>
+            <Link to="/events" className="btn-ghost-pink pill">View more</Link>
           </div>
-          <div className="highlight-banner" role="region" aria-label="Highlights">
-            <img className="highlight-img" src="https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?q=80&w=2000&auto=format&fit=crop" alt="An Oil Painting Odyssey" />
-            <div className="highlight-gradient" />
-            <div className="highlight-card">
-              <div className="badge">From $8</div>
-              <h3 className="highlight-title">Brushstrokes & Beyond: An Oil Painting Odyssey</h3>
-              <div className="muted text-sm">Tuesday, June 7 | 06:00 PM</div>
-              <div className="muted text-sm">2678 Forest Ave, San Jose, CA</div>
-              <div className="mt-3">
-                <a className="btn-pink square" href="#">Purchase Ticket</a>
+          {loadingEvents ? (
+            <div className="highlight-banner premium-loading" role="region" aria-label="Highlights">
+              <div className="highlight-img bg-gray-200 animate-pulse" />
+              <div className="highlight-gradient" />
+              <div className="highlight-card">
+                <div className="h-6 bg-gray-200 rounded animate-pulse mb-4" />
+                <div className="h-8 bg-gray-200 rounded animate-pulse mb-2" />
+                <div className="h-4 bg-gray-200 rounded animate-pulse mb-2" />
+                <div className="h-4 bg-gray-200 rounded animate-pulse" />
               </div>
             </div>
-            <button className="highlight-nav prev" aria-label="Previous">‹</button>
-            <button className="highlight-nav next" aria-label="Next">›</button>
-          </div>
+          ) : highlightsThisWeek ? (
+            <div className="highlight-banner" role="region" aria-label="Highlights">
+              <img 
+                className="highlight-img" 
+                src={getEventImage(highlightsThisWeek)} 
+                alt={highlightsThisWeek.title}
+                loading="lazy"
+                decoding="async"
+                style={{ willChange: 'transform' }}
+              />
+              <div className="highlight-gradient" />
+              <div className="highlight-card">
+                <div className="badge">Free event</div>
+                <h3 className="highlight-title">{highlightsThisWeek.title}</h3>
+                <div className="muted text-sm">{formatEventDate(highlightsThisWeek.starts_at)}</div>
+                <div className="muted text-sm">{highlightsThisWeek.location}</div>
+                <div className="mt-3">
+                  <Link to="/events" className="btn-pink square">View Event</Link>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-16 text-gray-500">
+              <p>No highlights this week. Check back soon!</p>
+            </div>
+          )}
         </div>
       </section>
 
-      {}
       <section className="home-section">
         <div className="home-section-inner reveal-up">
           <div className="home-section-head">
             <h2 className="home-title">More events</h2>
-            <button className="btn-ghost-pink pill">View more</button>
+            <Link to="/events" className="btn-ghost-pink pill">View more</Link>
           </div>
-          <div className="home-card-grid">
-            <article className="event-card">
-              <img src="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?q=80&w=1600&auto=format&fit=crop" alt="Marathon"/>
-              <div className="event-meta">
-                <h3>Marathon</h3>
-                <div className="row"><span className="muted">Monday, June 06 | 06:00 AM</span><span className="price">From $10</span></div>
-                <div className="row muted">New York, NY</div>
-              </div>
-            </article>
-            <article className="event-card">
-              <img src="https://images.unsplash.com/photo-1511379938547-c1f69419868d?q=80&w=1600&auto=format&fit=crop" alt="Rock Festival"/>
-              <div className="event-meta">
-                <h3>Rock Festival</h3>
-                <div className="row"><span className="muted">Monday, March 14 | 04:00 PM</span><span className="price">From $100</span></div>
-                <div className="row muted">New York, NY</div>
-              </div>
-            </article>
-            <article className="event-card">
-              <img src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=1600&auto=format&fit=crop" alt="Harmony of Melodies Concert"/>
-              <div className="event-meta">
-                <h3>Harmony of Melodies Concert</h3>
-                <div className="row"><span className="muted">Wednesday, June 24 | 07:00 PM</span><span className="free">Free ticket</span></div>
-                <div className="row muted">New York, NY</div>
-              </div>
-            </article>
-          </div>
+          {loadingEvents ? (
+            <div className="home-card-grid">
+              {[...Array(3)].map((_, i) => (
+                <article key={i} className="event-card premium-loading">
+                  <div className="h-48 bg-gray-200 animate-pulse rounded-t-lg" />
+                  <div className="event-meta p-4">
+                    <div className="h-6 bg-gray-200 rounded animate-pulse mb-2" />
+                    <div className="h-4 bg-gray-200 rounded animate-pulse mb-2" />
+                    <div className="h-4 bg-gray-200 rounded animate-pulse" />
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : moreEvents.length > 0 ? (
+            <div className="home-card-grid">
+              {moreEvents.map((event) => (
+                <Link key={event.id} to={`/events`} className="event-card premium-hover">
+                  <img 
+                    src={getEventImage(event)} 
+                    alt={event.title}
+                    loading="lazy"
+                    decoding="async"
+                    style={{ willChange: 'transform' }}
+                  />
+                  <div className="event-meta">
+                    <h3>{event.title}</h3>
+                    <div className="row">
+                      <span className="muted">{formatEventDate(event.starts_at)}</span>
+                      <span className="free">Free event</span>
+                    </div>
+                    <div className="row muted">{event.location}</div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>No upcoming events at the moment.</p>
+              <Link to="/events/create" className="text-pink-500 hover:text-pink-600 mt-2 inline-block">
+                Create the first one!
+              </Link>
+            </div>
+          )}
         </div>
       </section>
     </div>

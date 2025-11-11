@@ -4,6 +4,7 @@ import Card from "../components/Card"
 import Button from "../components/Button"
 import { useAuth } from "../features/auth/AuthContext"
 import { updateProfile, deleteAccount } from "../utils/api"
+import UserBadge from "../components/UserBadge"
 
 export default function Profile() {
   const { user, isAuthenticated, isLoading, setUser, logout } = useAuth()
@@ -276,18 +277,26 @@ export default function Profile() {
 
               {}
               <div className="flex-1">
-                <h1 className="text-5xl font-bold bg-gradient-to-r from-gray-900 via-pink-600 to-purple-600 bg-clip-text text-transparent mb-3">
-                  {form.name || form.email}
-                </h1>
+                <div className="flex items-center gap-3 mb-3">
+                  <h1 className="text-5xl font-bold bg-gradient-to-r from-gray-900 via-pink-600 to-purple-600 bg-clip-text text-transparent">
+                    {form.name || form.email}
+                  </h1>
+                  {user?.id && <UserBadge userId={user.id} size="md" />}
+                </div>
                 <p className="text-xl text-gray-600 mb-4">{form.email}</p>
-                <div className="flex items-center gap-6 text-sm">
+                <div className="flex items-center gap-6 text-sm flex-wrap">
                   <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-700 rounded-full">
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
                     </svg>
                     {formatMemberSince(form.createdAt) ? `Member since ${formatMemberSince(form.createdAt)}` : "Member"}
                   </div>
-                  {}
+                  {user?.xp !== undefined && (
+                    <div className="flex items-center gap-2 px-3 py-1 bg-purple-100 text-purple-700 rounded-full font-semibold">
+                      <span>⭐</span>
+                      <span>{user.xp || 0} XP</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -587,6 +596,8 @@ export default function Profile() {
                 </div>
               </div>
             </div>
+
+            {}
           </div>
           )}
         </div>
