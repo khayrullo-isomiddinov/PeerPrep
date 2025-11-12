@@ -1,4 +1,3 @@
-// src/features/events/EventCard.jsx
 import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate } from "react-router-dom"
@@ -68,7 +67,6 @@ export default function EventCard({ event, onChanged, onDelete }) {
       await joinEvent(event.id)
       setJoined(true)
       setCount(c => c + 1)
-      // Don't trigger full page reload - just update local state
     } catch (e) {
       setErr(e?.response?.data?.detail || "Join failed")
     } finally {
@@ -83,7 +81,6 @@ export default function EventCard({ event, onChanged, onDelete }) {
       await leaveEvent(event.id)
       setJoined(false)
       setCount(c => Math.max(0, c - 1))
-      // Don't trigger full page reload - just update local state
     } catch (e) {
       setErr(e?.response?.data?.detail || "Leave failed")
     } finally {
@@ -101,12 +98,9 @@ export default function EventCard({ event, onChanged, onDelete }) {
     setBusyDelete(true)
     try {
       await deleteEvent(event.id)
-      // Wait for modal close animation to complete, then update parent
-      // Using multiple animation frames to ensure smooth transition
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setTimeout(() => {
-            // Call onDelete if provided (for direct removal), otherwise use onChanged
             if (onDelete) {
               onDelete(event.id)
             } else {
@@ -198,7 +192,16 @@ export default function EventCard({ event, onChanged, onDelete }) {
       {!editing ? (
         <>
           {}
-          <div className="h-48 bg-gradient-to-br from-blue-500 to-purple-600 relative">
+          <div className="h-48 relative overflow-hidden">
+            {event.cover_image_url ? (
+              <img 
+                src={event.cover_image_url} 
+                alt={event.title}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="h-full bg-gradient-to-br from-blue-500 to-purple-600" />
+            )}
             <div className="absolute inset-0 bg-black/20" />
             <div className="absolute top-4 right-4">
               <button className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors">
@@ -391,7 +394,6 @@ export default function EventCard({ event, onChanged, onDelete }) {
         </div>
       )}
 
-      {/* Custom Delete Confirmation Modal - Rendered via Portal */}
       {showDeleteConfirm && createPortal(
         <div 
           className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ease-out"

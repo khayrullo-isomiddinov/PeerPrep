@@ -20,6 +20,7 @@ class Event(EventBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True, index=True)
     created_by: int = Field(index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    cover_image_url: Optional[str] = None
 
 class GroupBase(SQLModel):
     name: str
@@ -70,7 +71,7 @@ class MissionSubmission(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     group_id: str = Field(index=True, foreign_key="group.id")
     user_id: int = Field(index=True, foreign_key="user.id")
-    submission_url: str  # URL to video/proof
+    submission_url: str
     submission_text: Optional[str] = None
     submitted_at: datetime = Field(default_factory=datetime.utcnow)
     is_approved: bool = False

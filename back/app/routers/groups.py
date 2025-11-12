@@ -12,6 +12,8 @@ from app.schemas.groups import (
     GroupMember as GroupMemberSchema, GroupMemberWithUser, LeaderboardEntry
 )
 from app.routers.auth import _get_user_from_token
+from app.services.ai import generate_image
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/groups", tags=["groups"])
 
@@ -101,6 +103,34 @@ def list_groups(
     
     groups = session.exec(query).all()
     return groups
+
+class ImageGenerationRequest(BaseModel):
+    prompt: str
+
+@router.options("/generate-image")
+async def options_generate_image():
+    """Handle CORS preflight for image generation"""
+    return {}
+
+@router.post("/generate-image")
+async def generate_cover_image(
+    request: ImageGenerationRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(_get_user_from_token)
+):
+    """
+    Generate a cover image from a text prompt using AI.
+    Returns a base64-encoded image data URL.
+    """
+    try:
+        if not request.prompt or not request.prompt.strip():
+            raise HTTPException(status_code=400, detail="Prompt cannot be empty")
+        
+        image_data_url = await generate_image(request.prompt.strip())
+        return {"image_url": image_data_url}
+    except Exception as e:
+        print(f"Image generation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate image: {str(e)}")
 
 @router.get("/autocomplete")
 def autocomplete_groups(
@@ -342,13 +372,11 @@ def get_group_members(
         .order_by(GroupMember.is_leader.desc(), GroupMember.joined_at.asc())
     ).all()
     
-    # Get user details for each member
     user_ids = [m.user_id for m in members]
     if user_ids:
         users = session.exec(select(User).where(User.id.in_(user_ids))).all()
         user_map = {u.id: u for u in users}
         
-        # Combine member and user data
         result = []
         for member in members:
             user = user_map.get(member.user_id)
@@ -407,7 +435,6 @@ def get_group_leaderboard(
             detail="Group not found"
         )
     
-    # Get all approved submissions for this group, ordered by score
     submissions = session.exec(
         select(MissionSubmission)
         .where(
@@ -421,16 +448,13 @@ def get_group_leaderboard(
     if not submissions:
         return []
     
-    # Get user IDs and fetch users
-    user_ids = list(set([s.user_id for s in submissions]))  # Remove duplicates
+    user_ids = list(set([s.user_id for s in submissions]))
     if not user_ids:
         return []
     
-    # Fetch users in batch
     users = session.exec(select(User).where(User.id.in_(user_ids))).all()
     user_map = {u.id: u for u in users}
     
-    # Calculate scores and ranks
     leaderboard = []
     current_rank = 1
     previous_score = None
@@ -440,7 +464,6 @@ def get_group_leaderboard(
         if not user:
             continue
         
-        # Handle ties - same score gets same rank
         if previous_score is not None and submission.score != previous_score:
             current_rank = idx + 1
         

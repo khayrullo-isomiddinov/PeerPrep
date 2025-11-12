@@ -92,7 +92,7 @@ def _get_user_from_token(
 
 @router.get("/me")
 def me(response: Response, current_user: User = Depends(_get_user_from_token)):
-    response.headers["Cache-Control"] = "private, max-age=300"  # Cache for 5 minutes
+    response.headers["Cache-Control"] = "private, max-age=300"
     return {
         "id": current_user.id,
         "email": current_user.email,
@@ -114,7 +114,6 @@ def update_profile(
     if profile_data.bio is not None:
         current_user.bio = profile_data.bio
     if profile_data.photo_url is not None:
-        # Allow empty string to clear photo, or set new photo
         current_user.photo_url = profile_data.photo_url if profile_data.photo_url else None
     
     session.add(current_user)

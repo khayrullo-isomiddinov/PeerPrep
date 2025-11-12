@@ -5,7 +5,6 @@ from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 import json
 
-# Initialize OpenAI client
 _client = None
 
 def get_openai_client() -> OpenAI:
@@ -21,7 +20,6 @@ async def test_connection() -> bool:
     """Test OpenAI API connection"""
     try:
         client = get_openai_client()
-        # Simple test call
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -53,7 +51,6 @@ async def generate_event_suggestions(
     """
     client = get_openai_client()
     
-    # Build context string
     context_parts = []
     
     if user_context.get("groups"):
@@ -77,12 +74,10 @@ async def generate_event_suggestions(
     
     context_str = "\n\n".join(context_parts) if context_parts else "No specific context available."
     
-    # Calculate optimal date range (next 2-4 weeks, avoiding weekends if possible)
     today = datetime.now()
     min_date = (today + timedelta(days=3)).strftime("%Y-%m-%d")
     max_date = (today + timedelta(days=28)).strftime("%Y-%m-%d")
     
-    # Build the prompt
     prompt = f"""You are an AI assistant helping students create engaging study events on PeerPrep, a platform for peer learning and collaboration.
 
 User Context:
@@ -122,7 +117,7 @@ Example format:
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",  # Using gpt-4o-mini for cost efficiency, can upgrade to gpt-4 if needed
+            model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
@@ -130,41 +125,34 @@ Example format:
                 },
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.8,  # Higher creativity
+            temperature=0.8,
             max_tokens=1500,
-            response_format={"type": "json_object"}  # Force JSON response
+            response_format={"type": "json_object"}
         )
         
         content = response.choices[0].message.content.strip()
         
-        # Parse JSON response
         try:
-            # Handle if response is wrapped in markdown code blocks
             if content.startswith("```"):
                 content = content.split("```")[1]
                 if content.startswith("json"):
                     content = content[4:]
                 content = content.strip()
             
-            # Try parsing as direct JSON object with "suggestions" key, or as array
             parsed = json.loads(content)
             
-            # Handle different response formats
             if isinstance(parsed, list):
                 suggestions = parsed
             elif isinstance(parsed, dict) and "suggestions" in parsed:
                 suggestions = parsed["suggestions"]
             elif isinstance(parsed, dict):
-                # If it's a single object, wrap it
                 suggestions = [parsed]
             else:
                 suggestions = []
             
-            # Validate and clean suggestions
             validated_suggestions = []
             for sug in suggestions[:num_suggestions]:
                 if all(key in sug for key in ["title", "description", "suggested_date", "suggested_time", "location_suggestion", "capacity_suggestion", "category"]):
-                    # Ensure capacity is reasonable
                     sug["capacity_suggestion"] = max(5, min(20, int(sug.get("capacity_suggestion", 10))))
                     validated_suggestions.append(sug)
             
@@ -197,7 +185,6 @@ async def refine_text(
     """
     client = get_openai_client()
     
-    # Build context-aware prompt with explicit instructions
     if field_type == "title":
         instruction = """You are a creative copywriter specializing in study group titles. 
 
@@ -248,7 +235,6 @@ CRITICAL RULES:
 4. Be creative and varied - no generic templates
 5. Make it more polished while preserving their voice and message"""
     
-    # Add some randomness to prompt to get different results each time
     import random
     style_hints = [
         "Use creative wordplay and make it memorable",
@@ -284,7 +270,7 @@ Think like a creative copywriter. Return ONLY the refined text. No quotes, no ex
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",  # Using gpt-4o for better creativity and understanding
+            model="gpt-4o",
             messages=[
                 {
                     "role": "system",
@@ -292,13 +278,12 @@ Think like a creative copywriter. Return ONLY the refined text. No quotes, no ex
                 },
                 {"role": "user", "content": prompt}
             ],
-            temperature=1.2,  # Higher temperature for maximum creativity and variation
+            temperature=1.2,
             max_tokens=500
         )
         
         refined_text = response.choices[0].message.content.strip()
         
-        # Remove quotes if the AI wrapped it
         if refined_text.startswith('"') and refined_text.endswith('"'):
             refined_text = refined_text[1:-1]
         elif refined_text.startswith("'") and refined_text.endswith("'"):
@@ -309,4 +294,38 @@ Think like a creative copywriter. Return ONLY the refined text. No quotes, no ex
     except Exception as e:
         print(f"OpenAI API error during text refinement: {e}")
         raise Exception(f"Failed to refine text: {str(e)}")
+
+async def generate_image(prompt: str) -> str:
+    """
+    Generate an image from a text prompt using OpenAI's DALL-E API.
+    
+    Args:
+        prompt: The text description of the image to generate
+        
+    Returns:
+        Base64-encoded image data URL (data:image/png;base64,...)
+    """
+    client = get_openai_client()
+    
+    enhanced_prompt = f"""Create a professional, engaging cover image for a study group or educational event. 
+The image should be: modern, clean, visually appealing, suitable for a study platform, and represent: {prompt}.
+Style: professional, educational, inspiring, with good composition and colors that work well as a cover image."""
+    
+    try:
+        response = client.images.generate(
+            model="dall-e-3",
+            prompt=enhanced_prompt,
+            size="1024x1024",
+            quality="standard",
+            n=1,
+            response_format="b64_json"
+        )
+        
+        image_b64 = response.data[0].b64_json
+        
+        return f"data:image/png;base64,{image_b64}"
+        
+    except Exception as e:
+        print(f"OpenAI DALL-E API error: {e}")
+        raise Exception(f"Failed to generate image: {str(e)}")
 

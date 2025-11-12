@@ -6,7 +6,7 @@ from app.models import Event, User, EventAttendee, Group, GroupMember
 from app.schemas.events import EventCreate, EventRead, EventUpdate
 from app.routers.auth import _get_user_from_token
 from app.routers.badges import award_xp_for_event
-from app.services.ai import generate_event_suggestions, refine_text
+from app.services.ai import generate_event_suggestions, refine_text, generate_image
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 
@@ -47,7 +47,7 @@ def list_events(
     if location:
         like_loc = f"%{location}%"
         query = query.where(Event.location.ilike(like_loc))
-    query = query.order_by(Event.starts_at).limit(limit).offset(offset)
+    query = query.order_by(Event.created_at.desc()).limit(limit).offset(offset)
     return session.exec(query).all()
 
 @router.get("/autocomplete")
@@ -125,7 +125,6 @@ def join_event(event_id: int, session: Session = Depends(get_session), current_u
     session.add(rec)
     session.commit()
     
-    # Award XP if event has already passed (user joining a past event)
     from datetime import datetime
     if evt.starts_at < datetime.utcnow():
         award_xp_for_event(current_user.id, event_id, session)
@@ -159,7 +158,6 @@ async def get_ai_event_suggestions(
     Gathers user's groups, recent events, and preferences to create personalized suggestions.
     """
     try:
-        # Gather user's groups
         memberships = session.exec(
             select(GroupMember).where(GroupMember.user_id == current_user.id)
         ).all()
@@ -178,14 +176,13 @@ async def get_ai_event_suggestions(
             }
             groups_context.append(group_data)
         
-        # Gather recent events user attended (last 30 days)
         thirty_days_ago = datetime.utcnow() - timedelta(days=30)
         attendee_records = session.exec(
             select(EventAttendee).where(EventAttendee.user_id == current_user.id)
         ).all()
         
         recent_events_context = []
-        for attendee in attendee_records[:10]:  # Check up to 10 most recent
+        for attendee in attendee_records[:10]:
             event = session.get(Event, attendee.event_id)
             if event and event.starts_at >= thirty_days_ago:
                 recent_events_context.append({
@@ -196,7 +193,6 @@ async def get_ai_event_suggestions(
                 if len(recent_events_context) >= 5:
                     break
         
-        # Build user context
         user_context = {
             "groups": groups_context,
             "recent_events": recent_events_context
@@ -205,7 +201,6 @@ async def get_ai_event_suggestions(
         if preferred_location:
             user_context["preferred_location"] = preferred_location
         
-        # Generate AI suggestions
         suggestions = await generate_event_suggestions(
             user_context=user_context,
             num_suggestions=num_suggestions
@@ -220,7 +215,7 @@ async def get_ai_event_suggestions(
 
 class TextRefinementRequest(BaseModel):
     text: str
-    field_type: str = "general"  # "title" or "description"
+    field_type: str = "general"
     context: Optional[str] = None
 
 @router.post("/refine-text")
@@ -235,20 +230,17 @@ async def refine_event_text(
     Takes the user's text and returns an improved, polished version.
     """
     try:
-        # Debug logging
         print(f"🔍 Refine text - Authorization header received: {authorization[:50] if authorization else 'None'}...")
         print(f"🔍 Refine text - Current user: {current_user.email if current_user else 'None'}")
         if not request.text or not request.text.strip():
             raise HTTPException(status_code=400, detail="Text cannot be empty")
         
-        # Get user context for better refinement (optional)
         context_parts = []
         memberships = session.exec(
             select(GroupMember).where(GroupMember.user_id == current_user.id)
         ).all()
         
         if memberships:
-            # Get first group's field for context
             first_membership = memberships[0]
             group = session.get(Group, first_membership.group_id)
             if group:
@@ -256,11 +248,9 @@ async def refine_event_text(
                 if group.exam:
                     context_parts.append(f"Exam: {group.exam}")
         
-        # Don't pass context to avoid AI adding unrelated topics
-        # The AI should only work with what the user explicitly wrote
         refined = await refine_text(
             text=request.text,
-            context=None,  # Removed context to prevent AI from adding unrelated topics
+            context=None,
             field_type=request.field_type
         )
         
@@ -270,3 +260,31 @@ async def refine_event_text(
         raise HTTPException(status_code=500, detail=f"AI service configuration error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to refine text: {str(e)}")
+
+class ImageGenerationRequest(BaseModel):
+    prompt: str
+
+@router.options("/generate-image")
+async def options_generate_image():
+    """Handle CORS preflight for image generation"""
+    return {}
+
+@router.post("/generate-image")
+async def generate_cover_image(
+    request: ImageGenerationRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(_get_user_from_token)
+):
+    """
+    Generate a cover image from a text prompt using AI.
+    Returns a base64-encoded image data URL.
+    """
+    try:
+        if not request.prompt or not request.prompt.strip():
+            raise HTTPException(status_code=400, detail="Prompt cannot be empty")
+        
+        image_data_url = await generate_image(request.prompt.strip())
+        return {"image_url": image_data_url}
+    except Exception as e:
+        print(f"Image generation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate image: {str(e)}")

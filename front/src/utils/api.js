@@ -17,7 +17,6 @@ export function setAuthHeader(token) {
 const existing = localStorage.getItem("access_token")
 if (existing) setAuthHeader(existing)
 
-// Request interceptor for debugging
 api.interceptors.request.use(
   config => {
     console.log("📤 API Request:", config.method?.toUpperCase(), config.url)
@@ -56,7 +55,6 @@ export async function listEvents(params = {}) {
 }
 
 export async function refineEventText(text, fieldType = "general") {
-  // Ensure token is set before making the request
   const token = localStorage.getItem("access_token")
   console.log("🔍 Refine text - Token exists:", !!token)
   console.log("🔍 Refine text - Token preview:", token ? token.substring(0, 20) + "..." : "none")
@@ -87,6 +85,15 @@ export async function createEvent(payload) {
   const { data } = await api.post("events", payload)
   return data
 }
+
+export async function generateCoverImage(prompt) {
+  const token = localStorage.getItem("access_token")
+  if (token) {
+    setAuthHeader(token)
+  }
+  const { data } = await api.post("events/generate-image", { prompt })
+  return data.image_url
+}
 export async function updateEvent(id, patch) {
   const { data } = await api.patch(`events/${id}`, patch)
   return data
@@ -113,6 +120,15 @@ export async function listGroups(params = {}) {
 export async function createGroup(payload) {
   const { data } = await api.post("groups", payload)
   return data
+}
+
+export async function generateGroupCoverImage(prompt) {
+  const token = localStorage.getItem("access_token")
+  if (token) {
+    setAuthHeader(token)
+  }
+  const { data } = await api.post("groups/generate-image", { prompt })
+  return data.image_url
 }
 
 export async function getGroup(id) {
@@ -150,7 +166,6 @@ export async function getGroupLeaderboard(id) {
   return data
 }
 
-// Mission submissions
 export async function submitMission(groupId, payload) {
   const { data } = await api.post(`groups/${groupId}/missions`, payload)
   return data
@@ -175,7 +190,6 @@ export async function deleteMission(groupId, submissionId) {
   await api.delete(`groups/${groupId}/missions/${submissionId}`)
 }
 
-// Badges
 export async function getUserBadge(userId) {
   const { data } = await api.get(`badges/user/${userId}`)
   return data
@@ -191,7 +205,6 @@ export async function deleteGroup(id) {
   return data
 }
 
-// Profile API functions
 export async function getProfile() {
   const { data } = await api.get("auth/me")
   return data

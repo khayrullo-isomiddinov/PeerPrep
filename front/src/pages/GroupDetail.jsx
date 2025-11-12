@@ -124,7 +124,6 @@ export default function GroupDetail() {
     <div className="min-h-screen tap-safe premium-scrollbar bg-white route-transition">
       <div className="nav-spacer" />
       
-      {/* Hero Section */}
       <section className="relative w-full">
         <div className="h-64 md:h-80 relative overflow-hidden">
           {group.cover_image_url ? (
@@ -181,13 +180,10 @@ export default function GroupDetail() {
         </div>
       </section>
 
-      {/* Main Content */}
       <main className="home-section">
         <div className="home-section-inner">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Left Column - Main Info */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Description */}
               {group.description && (
                 <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 premium-fade-in">
                   <h2 className="text-xl font-bold text-gray-900 mb-3">About</h2>
@@ -195,7 +191,6 @@ export default function GroupDetail() {
                 </section>
               )}
 
-              {/* Mission Info */}
               {group.mission_title && (
                 <section className="bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-200 rounded-2xl p-6 premium-fade-in">
                   <div className="flex items-start gap-4">
@@ -226,17 +221,14 @@ export default function GroupDetail() {
                 </section>
               )}
 
-              {/* Members Section */}
               <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 premium-fade-in">
                 <GroupMembersList groupId={group.id} />
               </section>
 
-              {/* Leaderboard */}
               <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 premium-fade-in">
                 <GroupLeaderboard groupId={group.id} />
               </section>
 
-              {/* Mission Submissions */}
               {isAuthenticated && (joined || canDelete) && (
                 <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 premium-fade-in">
                   <MissionSubmissionsList groupId={group.id} isLeader={isLeader || canDelete} />
@@ -244,9 +236,7 @@ export default function GroupDetail() {
               )}
             </div>
 
-            {/* Right Column - Sidebar */}
             <div className="space-y-6">
-              {/* Join/Leave Button */}
               {!canDelete && (
                 <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 premium-fade-in">
                   {isAuthenticated ? (
@@ -274,7 +264,6 @@ export default function GroupDetail() {
                 </section>
               )}
 
-              {/* Group Stats */}
               <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 premium-fade-in">
                 <h3 className="text-lg font-bold text-gray-900 mb-4">Group Stats</h3>
                 <div className="space-y-4">
@@ -307,5 +296,6 @@ export default function GroupDetail() {
     </div>
   )
 }
+
 
 

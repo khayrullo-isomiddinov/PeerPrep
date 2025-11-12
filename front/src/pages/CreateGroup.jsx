@@ -5,7 +5,7 @@ import {
   faInfo, faEye, faChevronRight, faCheck,
   faImage, faUpload, faTrash, faWandMagicSparkles
 } from "@fortawesome/free-solid-svg-icons"
-import { createGroup, refineEventText } from "../utils/api"
+import { createGroup, refineEventText, generateGroupCoverImage } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
 
 const STEPS = [
@@ -24,7 +24,7 @@ export default function CreateGroup() {
     exam: "",
     description: "",
     deadline: "",
-    capacity: 10,
+    capacity: 4,
     coverImage: null
   })
   const [loading, setLoading] = useState(false)
@@ -61,6 +61,7 @@ export default function CreateGroup() {
     const errs = {}
     switch (step) {
       case 0:
+        if (!formData.coverImage) errs.coverImage = "Cover image is required"
         break
       case 1:
         if (!formData.name.trim()) errs.name = "Group name is required"
@@ -69,6 +70,7 @@ export default function CreateGroup() {
       case 2:
         if (!formData.name.trim()) errs.name = "Group name is required"
         if (!formData.field.trim()) errs.field = "Field of study is required"
+        if (!formData.coverImage) errs.coverImage = "Cover image is required"
         break
     }
     return errs
@@ -80,7 +82,7 @@ export default function CreateGroup() {
   }
 
   function canCreateGroup() {
-    return formData.name.trim() && formData.field.trim()
+    return formData.name.trim() && formData.field.trim() && formData.coverImage
   }
 
   function nextStep() {
@@ -224,6 +226,7 @@ export default function CreateGroup() {
     const errs = {}
     if (!formData.name.trim()) errs.name = "Group name is required"
     if (!formData.field.trim()) errs.field = "Field of study is required"
+    if (!formData.coverImage) errs.coverImage = "Cover image is required"
 
     setFieldErrors(errs)
     if (Object.keys(errs).length > 0) return
@@ -239,47 +242,58 @@ export default function CreateGroup() {
 
     setLoading(true)
     try {
-      const payload = {
-        name: formData.name.trim(),
-        field: formData.field.trim(),
-        exam: formData.exam.trim() || null,
-        description: formData.description.trim() || null,
-        deadline: formData.deadline ? new Date(formData.deadline).toISOString() : null,
-        capacity: formData.capacity,
-      }
-
-      if (formData.coverImage) {
-        const reader = new FileReader()
-        reader.onload = async () => {
+      const reader = new FileReader()
+      reader.onload = async () => {
+        try {
           const tokenBeforeApi = localStorage.getItem("access_token")
           if (!tokenBeforeApi) {
             setError("Your session has expired. Please log in again.")
             setTimeout(() => {
               navigate("/login", { replace: true })
             }, 2000)
+            setLoading(false)
             return
           }
 
-          payload.cover_image_url = reader.result
-          await createGroup(payload)
-          navigate("/groups", { replace: true })
+          const capacity = typeof formData.capacity === 'number' && formData.capacity >= 2 && formData.capacity <= 50
+            ? formData.capacity
+            : 4
+
+          const payload = {
+            name: formData.name.trim(),
+            field: formData.field.trim(),
+            exam: formData.exam.trim() || null,
+            description: formData.description.trim() || null,
+            deadline: formData.deadline ? new Date(formData.deadline).toISOString() : null,
+            capacity: capacity,
+            cover_image_url: reader.result
+          }
+
+          const newGroup = await createGroup(payload)
+          navigate("/groups", { 
+            replace: true,
+            state: { newGroup }
+          })
+        } catch (e) {
+          setLoading(false)
+          if (e?.response?.status === 401) {
+            setError("Your session has expired. Please log in again.")
+            setTimeout(() => {
+              navigate("/login", { replace: true })
+            }, 2000)
+          } else {
+            setError(e?.response?.data?.detail || "Failed to create group")
+          }
         }
-        reader.readAsDataURL(formData.coverImage)
-      } else {
-        await createGroup(payload)
-        navigate("/groups", { replace: true })
       }
+      reader.onerror = () => {
+        setLoading(false)
+        setError("Failed to read cover image. Please try again.")
+      }
+      reader.readAsDataURL(formData.coverImage)
     } catch (e) {
-      if (e?.response?.status === 401) {
-        setError("Your session has expired. Please log in again.")
-        setTimeout(() => {
-          navigate("/login", { replace: true })
-        }, 2000)
-      } else {
-        setError(e?.response?.data?.detail || "Failed to create group")
-      }
-    } finally {
       setLoading(false)
+      setError(e?.response?.data?.detail || "Failed to create group")
     }
   }
 
@@ -341,7 +355,7 @@ export default function CreateGroup() {
                     const stepIndex = STEPS.findIndex(s => s.id === step.id)
                     const isActive = stepIndex === currentStep
                     const isCompleted = stepIndex < currentStep && (
-                      stepIndex === 0 ||
+                      (stepIndex === 0 && formData.coverImage) ||
                       (stepIndex === 1 && formData.name.trim() && formData.field.trim())
                     )
 
@@ -451,6 +465,10 @@ export default function CreateGroup() {
 
 function CoverImageStep({ formData, updateFormData, fieldErrors }) {
   const [dragActive, setDragActive] = useState(false)
+  const [mode, setMode] = useState("upload")
+  const [aiPrompt, setAiPrompt] = useState("")
+  const [generating, setGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState("")
 
   const handleDrag = (e) => {
     e.preventDefault()
@@ -483,16 +501,71 @@ function CoverImageStep({ formData, updateFormData, fieldErrors }) {
 
   const removeImage = () => {
     updateFormData({ coverImage: null })
+    setAiPrompt("")
+    setGenerateError("")
+  }
+
+  async function handleGenerateImage() {
+    if (!aiPrompt.trim()) {
+      setGenerateError("Please enter a prompt to generate an image")
+      return
+    }
+
+    setGenerating(true)
+    setGenerateError("")
+    try {
+      const imageUrl = await generateGroupCoverImage(aiPrompt.trim())
+      const response = await fetch(imageUrl)
+      const blob = await response.blob()
+      const file = new File([blob], "ai-generated-cover.png", { type: "image/png" })
+      updateFormData({ coverImage: file })
+    } catch (e) {
+      console.error("Image generation error:", e)
+      setGenerateError(e?.response?.data?.detail || "Failed to generate image. Please try again.")
+    } finally {
+      setGenerating(false)
+    }
   }
 
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Upload Group Cover</h2>
-        <p className="text-gray-600">Choose a cover image that represents your study group</p>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Upload Group Cover *</h2>
+        <p className="text-gray-600">Upload a cover image or generate one with AI to represent your study group (required)</p>
       </div>
 
-      <div className="max-w-md mx-auto">
+      <div className="flex items-center justify-center space-x-4 mb-6">
+        <button
+          onClick={() => {
+            setMode("upload")
+            setGenerateError("")
+          }}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            mode === "upload"
+              ? "bg-pink-500 text-white"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          }`}
+        >
+          Upload Image
+        </button>
+        <button
+          onClick={() => {
+            setMode("generate")
+            setGenerateError("")
+          }}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
+            mode === "generate"
+              ? "bg-pink-500 text-white"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          }`}
+        >
+          <FontAwesomeIcon icon={faWandMagicSparkles} className="w-4 h-4" />
+          <span>Generate with AI</span>
+        </button>
+      </div>
+
+      {mode === "upload" ? (
+        <div className="max-w-md mx-auto">
         {formData.coverImage ? (
           <div className="relative">
             <img
@@ -532,7 +605,87 @@ function CoverImageStep({ formData, updateFormData, fieldErrors }) {
             <p className="text-sm text-gray-500 mt-2">PNG, JPG, GIF up to 10MB</p>
           </div>
         )}
-      </div>
+        </div>
+      ) : (
+        <div className="border-2 border-dashed border-gray-300 rounded-xl p-8">
+          <div className="space-y-4">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <FontAwesomeIcon icon={faWandMagicSparkles} className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Generate Cover Image with AI</h3>
+              <p className="text-gray-600 text-sm">Describe the image you want, and AI will create it for you</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Image Prompt *
+              </label>
+              <textarea
+                value={aiPrompt}
+                onChange={(e) => {
+                  setAiPrompt(e.target.value)
+                  setGenerateError("")
+                }}
+                placeholder="e.g., A modern illustration of ADA programming language with code snippets and syntax highlighting"
+                rows={4}
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
+                  generateError ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                Be specific about what you want. Include subject, style, and any important details.
+              </p>
+              {generateError && (
+                <p className="mt-2 text-sm text-red-600">{generateError}</p>
+              )}
+            </div>
+
+            <button
+              onClick={handleGenerateImage}
+              disabled={generating || !aiPrompt.trim()}
+              className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+            >
+              {generating ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  <span>Generating image...</span>
+                </>
+              ) : (
+                <>
+                  <FontAwesomeIcon icon={faWandMagicSparkles} className="w-5 h-5" />
+                  <span>Generate Image</span>
+                </>
+              )}
+            </button>
+
+            {formData.coverImage && (
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <p className="text-sm text-gray-600 mb-4">
+                  {mode === "generate" ? "Generated image preview:" : "Current cover image:"}
+                </p>
+                <div className="relative">
+                  <img
+                    src={URL.createObjectURL(formData.coverImage)}
+                    alt="Cover preview"
+                    className="w-full max-h-64 object-cover rounded-lg border-2 border-gray-200"
+                  />
+                  <button
+                    onClick={removeImage}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-2 hover:bg-red-600 transition-colors"
+                    title="Remove image"
+                  >
+                    <FontAwesomeIcon icon={faTrash} className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  You can generate a new image or switch to upload mode to use a different image
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {fieldErrors.coverImage && (
         <p className="text-red-500 text-sm text-center">{fieldErrors.coverImage}</p>
@@ -542,6 +695,12 @@ function CoverImageStep({ formData, updateFormData, fieldErrors }) {
 }
 
 function GeneralInfoStep({ formData, updateFormData, fieldErrors, fieldOptions, onRefineName, onRefineDescription, refiningName, refiningDescription }) {
+  const [capacityInput, setCapacityInput] = useState(String(formData.capacity || 4))
+
+  useEffect(() => {
+    setCapacityInput(String(formData.capacity || 4))
+  }, [formData.capacity])
+
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3 mb-6">
@@ -677,8 +836,28 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, fieldOptions, 
               type="number"
               min="2"
               max="50"
-              value={formData.capacity}
-              onChange={(e) => updateFormData({ capacity: parseInt(e.target.value) || 10 })}
+              value={capacityInput}
+              onChange={(e) => {
+                const value = e.target.value
+                setCapacityInput(value)
+                if (value !== "") {
+                  const num = parseInt(value, 10)
+                  if (!isNaN(num) && num >= 2 && num <= 50) {
+                    updateFormData({ capacity: num })
+                  }
+                }
+              }}
+              onBlur={(e) => {
+                const value = e.target.value
+                const num = parseInt(value, 10)
+                if (value === "" || isNaN(num) || num < 2 || num > 50) {
+                  const validCapacity = 4
+                  setCapacityInput(String(validCapacity))
+                  updateFormData({ capacity: validCapacity })
+                } else {
+                  updateFormData({ capacity: num })
+                }
+              }}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
             />
           </div>
@@ -707,9 +886,9 @@ function ReviewCreateStep({ formData, updateFormData, error }) {
         </div>
       )}
 
-      {formData.coverImage && (
-        <div className="bg-gray-50 rounded-xl p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Cover Image</h3>
+      <div className="bg-gray-50 rounded-xl p-6 mb-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Cover Image *</h3>
+        {formData.coverImage ? (
           <div className="max-w-md mx-auto">
             <img
               src={URL.createObjectURL(formData.coverImage)}
@@ -717,8 +896,10 @@ function ReviewCreateStep({ formData, updateFormData, error }) {
               className="w-full h-48 object-cover rounded-lg border-2 border-gray-200"
             />
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="text-red-500 text-sm">Cover image is required</p>
+        )}
+      </div>
 
       <div className="bg-gray-50 rounded-xl p-6 space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

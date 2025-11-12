@@ -100,7 +100,6 @@ export default function GroupMembersList({ groupId }) {
       </h5>
       
       <div className="space-y-4">
-        {/* Leaders */}
         {leaders.length > 0 && (
           <div>
             <h6 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Leaders</h6>
@@ -142,7 +141,6 @@ export default function GroupMembersList({ groupId }) {
           </div>
         )}
 
-        {/* Regular Members */}
         {regularMembers.length > 0 && (
           <div>
             <h6 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">

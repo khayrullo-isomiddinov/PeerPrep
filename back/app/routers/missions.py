@@ -31,7 +31,6 @@ def submit_mission(
 ):
     """Submit a mission completion for a group"""
     
-    # Verify group exists
     group = session.exec(select(Group).where(Group.id == group_id)).first()
     if not group:
         raise HTTPException(
@@ -39,7 +38,6 @@ def submit_mission(
             detail="Group not found"
         )
     
-    # Verify user is a member of the group
     membership = session.exec(
         select(GroupMember).where(
             GroupMember.group_id == group_id,
@@ -53,7 +51,6 @@ def submit_mission(
             detail="You must be a member of the group to submit missions"
         )
     
-    # Check if user already has a pending submission
     existing = session.exec(
         select(MissionSubmission).where(
             MissionSubmission.group_id == group_id,
@@ -68,7 +65,6 @@ def submit_mission(
             detail="You already have a pending submission. Please wait for it to be reviewed."
         )
     
-    # Create submission
     submission = MissionSubmission(
         group_id=group_id,
         user_id=current_user.id,
@@ -101,7 +97,6 @@ def list_submissions(
     except:
         pass
     
-    # Verify group exists
     group = session.exec(select(Group).where(Group.id == group_id)).first()
     if not group:
         raise HTTPException(
@@ -109,7 +104,6 @@ def list_submissions(
             detail="Group not found"
         )
     
-    # Check if user is a leader (leaders can see all submissions)
     is_leader = False
     if current_user:
         membership = session.exec(
@@ -121,7 +115,6 @@ def list_submissions(
         ).first()
         is_leader = membership is not None
     
-    # If leader, show all submissions. Otherwise, only show approved ones
     query = select(MissionSubmission).where(MissionSubmission.group_id == group_id)
     if not is_leader:
         query = query.where(MissionSubmission.is_approved == True)
@@ -139,7 +132,6 @@ def get_my_submissions(
 ):
     """Get current user's submissions for a group"""
     
-    # Verify group exists
     group = session.exec(select(Group).where(Group.id == group_id)).first()
     if not group:
         raise HTTPException(
@@ -166,7 +158,6 @@ def review_submission(
 ):
     """Review a mission submission (approve/reject, add score and feedback) - only group leaders"""
     
-    # Verify group exists
     group = session.exec(select(Group).where(Group.id == group_id)).first()
     if not group:
         raise HTTPException(
@@ -174,7 +165,6 @@ def review_submission(
             detail="Group not found"
         )
     
-    # Verify user is a group leader
     membership = session.exec(
         select(GroupMember).where(
             GroupMember.group_id == group_id,
@@ -189,7 +179,6 @@ def review_submission(
             detail="Only group leaders can review submissions"
         )
     
-    # Get submission
     submission = session.exec(
         select(MissionSubmission).where(
             MissionSubmission.id == submission_id,
@@ -203,14 +192,12 @@ def review_submission(
             detail="Submission not found"
         )
     
-    # Update submission
     if review_data.is_approved is not None:
         was_approved = submission.is_approved
         submission.is_approved = review_data.is_approved
         if review_data.is_approved:
             submission.approved_by = current_user.id
             submission.approved_at = datetime.utcnow()
-            # Award XP if this is a new approval (wasn't approved before)
             if not was_approved:
                 award_xp_for_submission(submission.user_id, session)
         else:
@@ -238,7 +225,6 @@ def delete_submission(
 ):
     """Delete a mission submission - only the submitter or group leader"""
     
-    # Get submission
     submission = session.exec(
         select(MissionSubmission).where(
             MissionSubmission.id == submission_id,
@@ -252,7 +238,6 @@ def delete_submission(
             detail="Submission not found"
         )
     
-    # Check if user is the submitter or a group leader
     is_submitter = submission.user_id == current_user.id
     
     is_leader = False

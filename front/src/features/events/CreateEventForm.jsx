@@ -6,7 +6,7 @@ import {
   faChevronLeft, faCalendarAlt, faClock, faUsers, faGraduationCap,
   faBook, faTrash, faUpload, faCheck, faWandMagicSparkles
 } from "@fortawesome/free-solid-svg-icons"
-import { createEvent, refineEventText } from "../../utils/api"
+import { createEvent, refineEventText, generateCoverImage } from "../../utils/api"
 
 const STEPS = [
   { id: 'cover', title: 'Upload cover', icon: faImage, section: 'EVENT INFORMATION' },
@@ -28,7 +28,7 @@ export default function CreateEventForm({ onCreated }) {
     state: "",
     country: "",
     capacity: 8,
-    kind: "one_off", // Default to one_off, only show option for group events
+    kind: "one_off",
     coverImage: null,
     albumImages: []
   })
@@ -48,6 +48,7 @@ export default function CreateEventForm({ onCreated }) {
     const errs = {}
     switch (step) {
       case 0: 
+        if (!formData.coverImage) errs.coverImage = "Cover image is required"
         break
       case 1: 
         if (!formData.title.trim()) errs.title = "Title is required"
@@ -59,6 +60,13 @@ export default function CreateEventForm({ onCreated }) {
         if (!formData.address.trim()) errs.address = "Address is required"
         if (!formData.city.trim()) errs.city = "City is required"
         break
+      case 3:
+        if (!formData.coverImage) errs.coverImage = "Cover image is required"
+        if (!formData.title.trim()) errs.title = "Title is required"
+        if (!formData.category) errs.category = "Category is required"
+        if (!formData.startsAt) errs.startsAt = "Start date/time is required"
+        if (!formData.location.trim()) errs.location = "Location is required"
+        break
     }
     return errs
   }
@@ -66,6 +74,10 @@ export default function CreateEventForm({ onCreated }) {
   function canProceedToNext() {
     const errs = validateStep(currentStep)
     return Object.keys(errs).length === 0
+  }
+
+  function canPublishEvent() {
+    return formData.title.trim() && formData.category && formData.startsAt && formData.location.trim() && formData.coverImage
   }
 
   function nextStep() {
@@ -90,7 +102,6 @@ export default function CreateEventForm({ onCreated }) {
       return
     }
     
-    // Check if user is logged in
     const token = localStorage.getItem("access_token")
     if (!token) {
       setError("Please log in to use AI refinement.")
@@ -122,7 +133,6 @@ export default function CreateEventForm({ onCreated }) {
       return
     }
     
-    // Check if user is logged in
     const token = localStorage.getItem("access_token")
     if (!token) {
       setError("Please log in to use AI refinement.")
@@ -150,31 +160,52 @@ export default function CreateEventForm({ onCreated }) {
 
   async function handleSubmit() {
     setError("")
-    const errs = validateStep(currentStep)
+    const errs = {}
+    if (!formData.title.trim()) errs.title = "Title is required"
+    if (!formData.category) errs.category = "Category is required"
+    if (!formData.startsAt) errs.startsAt = "Start date/time is required"
+    if (!formData.location.trim()) errs.location = "Location is required"
+    if (!formData.coverImage) errs.coverImage = "Cover image is required"
+
     setFieldErrors(errs)
     if (Object.keys(errs).length > 0) return
 
     setLoading(true)
     try {
-      const payload = {
-        title: formData.title.trim(),
-        starts_at: new Date(formData.startsAt).toISOString(),
-        location: formData.location.trim(),
-        capacity: Number(formData.capacity),
-        description: formData.description?.trim() || null,
-        group_id: null,
-        kind: formData.kind
+      const reader = new FileReader()
+      reader.onload = async () => {
+        try {
+          const payload = {
+            title: formData.title.trim(),
+            starts_at: new Date(formData.startsAt).toISOString(),
+            location: formData.location.trim(),
+            capacity: Number(formData.capacity),
+            description: formData.description?.trim() || null,
+            group_id: null,
+            kind: "one_off",
+            cover_image_url: reader.result
+          }
+          console.log('Creating event with payload:', payload)
+          const evt = await createEvent(payload)
+          console.log('Event created successfully:', evt)
+          onCreated?.(evt)
+          navigate("/events", {
+            state: { newEvent: evt }
+          })
+        } catch (e) {
+          setLoading(false)
+          console.error('Event creation failed:', e)
+          setError(e?.response?.data?.detail || "Failed to create event")
+        }
       }
-      console.log('Creating event with payload:', payload)
-      const evt = await createEvent(payload)
-      console.log('Event created successfully:', evt)
-      onCreated?.(evt)
-      navigate("/events")
+      reader.onerror = () => {
+        setLoading(false)
+        setError("Failed to read cover image. Please try again.")
+      }
+      reader.readAsDataURL(formData.coverImage)
     } catch (e) {
-      console.error('Event creation failed:', e)
-      setError(e?.response?.data?.detail || "Failed to create event")
-    } finally {
       setLoading(false)
+      setError(e?.response?.data?.detail || "Failed to create event")
     }
   }
 
@@ -202,7 +233,7 @@ export default function CreateEventForm({ onCreated }) {
         {}
         <div className="w-80 bg-white border-r border-gray-200 p-6 step-sidebar">
           <div className="mb-8">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Create a Study Group</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Create a Study Event</h1>
             <div className="text-sm text-gray-500 mb-1">
               Last update: {lastUpdate.toLocaleDateString('en-US', { 
                 weekday: 'long', 
@@ -235,7 +266,11 @@ export default function CreateEventForm({ onCreated }) {
                   {steps.map((step, index) => {
                     const stepIndex = STEPS.findIndex(s => s.id === step.id)
                     const isActive = stepIndex === currentStep
-                    const isCompleted = stepIndex < currentStep
+                    const isCompleted = stepIndex < currentStep && (
+                      (stepIndex === 0 && formData.coverImage) ||
+                      (stepIndex === 1 && formData.title.trim() && formData.category) ||
+                      (stepIndex === 2 && formData.startsAt && formData.location.trim())
+                    )
                     
                     return (
                       <button
@@ -342,10 +377,10 @@ export default function CreateEventForm({ onCreated }) {
                 ) : (
               <button
                     onClick={handleSubmit}
-                    disabled={loading || !canProceedToNext()}
+                    disabled={loading || !canPublishEvent()}
                     className="px-6 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                   >
-                    <span>{loading ? "Publishing..." : "Publish Study Group"}</span>
+                    <span>{loading ? "Publishing..." : "Publish Event"}</span>
                     <FontAwesomeIcon icon={faChevronRight} className="w-4 h-4" />
               </button>
                 )}
@@ -360,6 +395,10 @@ export default function CreateEventForm({ onCreated }) {
 
 function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
   const [dragActive, setDragActive] = useState(false)
+  const [mode, setMode] = useState("upload")
+  const [aiPrompt, setAiPrompt] = useState("")
+  const [generating, setGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState("")
 
   const handleDrag = (e) => {
     e.preventDefault()
@@ -392,27 +431,82 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
 
   const removeImage = () => {
     updateFormData({ coverImage: null })
+    setAiPrompt("")
+    setGenerateError("")
+  }
+
+  async function handleGenerateImage() {
+    if (!aiPrompt.trim()) {
+      setGenerateError("Please enter a prompt to generate an image")
+      return
+    }
+
+    setGenerating(true)
+    setGenerateError("")
+    try {
+      const imageUrl = await generateCoverImage(aiPrompt.trim())
+      const response = await fetch(imageUrl)
+      const blob = await response.blob()
+      const file = new File([blob], "ai-generated-cover.png", { type: "image/png" })
+      updateFormData({ coverImage: file })
+    } catch (e) {
+      console.error("Image generation error:", e)
+      setGenerateError(e?.response?.data?.detail || "Failed to generate image. Please try again.")
+    } finally {
+      setGenerating(false)
+    }
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3 mb-6">
         <FontAwesomeIcon icon={faImage} className="w-6 h-6 text-pink-500" />
-        <h2 className="text-2xl font-bold text-gray-900">Upload cover</h2>
+        <h2 className="text-2xl font-bold text-gray-900">Upload cover *</h2>
       </div>
       
       <p className="text-gray-600 mb-6">
-        Upload a cover image to capture your study group's focus and attract participants.
+        Upload a cover image or generate one with AI to capture your event's focus and attract participants (required).
       </p>
 
-      <div className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-        dragActive ? 'border-pink-400 bg-pink-50' : 'border-gray-300 hover:border-pink-400'
-      }`}
-      onDragEnter={handleDrag}
-      onDragLeave={handleDrag}
-      onDragOver={handleDrag}
-      onDrop={handleDrop}>
-        {formData.coverImage ? (
+      <div className="flex items-center space-x-4 mb-6">
+        <button
+          onClick={() => {
+            setMode("upload")
+            setGenerateError("")
+          }}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            mode === "upload"
+              ? "bg-pink-500 text-white"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          }`}
+        >
+          Upload Image
+        </button>
+        <button
+          onClick={() => {
+            setMode("generate")
+            setGenerateError("")
+          }}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
+            mode === "generate"
+              ? "bg-pink-500 text-white"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          }`}
+        >
+          <FontAwesomeIcon icon={faWandMagicSparkles} className="w-4 h-4" />
+          <span>Generate with AI</span>
+        </button>
+      </div>
+
+      {mode === "upload" ? (
+        <div className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+          dragActive ? 'border-pink-400 bg-pink-50' : 'border-gray-300 hover:border-pink-400'
+        }`}
+        onDragEnter={handleDrag}
+        onDragLeave={handleDrag}
+        onDragOver={handleDrag}
+        onDrop={handleDrop}>
+          {formData.coverImage ? (
           <div className="space-y-4">
             <img 
               src={URL.createObjectURL(formData.coverImage)}
@@ -445,8 +539,8 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
               <FontAwesomeIcon icon={faUpload} className="w-8 h-8 text-pink-500" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Upload cover image</h3>
-              <p className="text-gray-600 mb-4">Drag and drop or click to browse</p>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Upload cover image *</h3>
+              <p className="text-gray-600 mb-4">Drag and drop or click to browse (required)</p>
               <label className="bg-pink-500 text-white px-6 py-2 rounded-lg hover:bg-pink-600 transition-colors font-medium cursor-pointer">
                 Choose File
                 <input
@@ -458,8 +552,88 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
               </label>
             </div>
           </div>
-        )}
-      </div>
+          )}
+        </div>
+      ) : (
+        <div className="border-2 border-dashed border-gray-300 rounded-xl p-8">
+          <div className="space-y-4">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <FontAwesomeIcon icon={faWandMagicSparkles} className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Generate Cover Image with AI</h3>
+              <p className="text-gray-600 text-sm">Describe the image you want, and AI will create it for you</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Image Prompt *
+              </label>
+              <textarea
+                value={aiPrompt}
+                onChange={(e) => {
+                  setAiPrompt(e.target.value)
+                  setGenerateError("")
+                }}
+                placeholder="e.g., A modern illustration of ADA programming language with code snippets and syntax highlighting"
+                rows={4}
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
+                  generateError ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                Be specific about what you want. Include subject, style, and any important details.
+              </p>
+              {generateError && (
+                <p className="mt-2 text-sm text-red-600">{generateError}</p>
+              )}
+            </div>
+
+            <button
+              onClick={handleGenerateImage}
+              disabled={generating || !aiPrompt.trim()}
+              className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+            >
+              {generating ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  <span>Generating image...</span>
+                </>
+              ) : (
+                <>
+                  <FontAwesomeIcon icon={faWandMagicSparkles} className="w-5 h-5" />
+                  <span>Generate Image</span>
+                </>
+              )}
+            </button>
+
+            {formData.coverImage && (
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <p className="text-sm text-gray-600 mb-4">
+                  {mode === "generate" ? "Generated image preview:" : "Current cover image:"}
+                </p>
+                <div className="relative">
+                  <img
+                    src={URL.createObjectURL(formData.coverImage)}
+                    alt="Cover preview"
+                    className="w-full max-h-64 object-cover rounded-lg border-2 border-gray-200"
+                  />
+                  <button
+                    onClick={removeImage}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-2 hover:bg-red-600 transition-colors"
+                    title="Remove image"
+                  >
+                    <FontAwesomeIcon icon={faTrash} className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  You can generate a new image or switch to upload mode to use a different image
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {fieldErrors.coverImage && (
         <p className="text-red-500 text-sm text-center">{fieldErrors.coverImage}</p>
@@ -774,23 +948,6 @@ function LocationTimeStep({ formData, updateFormData, fieldErrors }) {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Event Type
-              </label>
-              <div className="space-y-2">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={formData.kind === "group"}
-                    onChange={(e) => updateFormData({ kind: e.target.checked ? "group" : "one_off" })}
-                    className="mr-3"
-                  />
-                  <span className="text-sm">This is an ongoing study group event</span>
-                </label>
-                <p className="text-xs text-gray-500 ml-6">Leave unchecked for a one-time event (default)</p>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -815,6 +972,21 @@ function ReviewPublishStep({ formData, updateFormData, error }) {
           <p className="text-red-600 text-sm">{error}</p>
         </div>
       )}
+
+      <div className="bg-gray-50 rounded-xl p-6 mb-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Cover Image *</h3>
+        {formData.coverImage ? (
+          <div className="max-w-md mx-auto">
+            <img
+              src={URL.createObjectURL(formData.coverImage)}
+              alt="Event cover preview"
+              className="w-full h-48 object-cover rounded-lg border-2 border-gray-200"
+            />
+          </div>
+        ) : (
+          <p className="text-red-500 text-sm">Cover image is required</p>
+        )}
+      </div>
 
       <div className="bg-gray-50 rounded-xl p-6 space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

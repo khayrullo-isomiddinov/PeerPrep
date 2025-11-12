@@ -1,8 +1,7 @@
 import { Routes, Route } from "react-router-dom"
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faSpinner } from "@fortawesome/free-solid-svg-icons"
-import { initParallax } from "./utils/parallax"
 import ScrollProgressBar from "./components/ScrollProgressBar"
 import Navbar from "./components/Navbar"
 import Footer from "./components/Footer"
@@ -21,7 +20,6 @@ export default function App() {
   const { isLoading } = useAuth()
   
   useEffect(() => {
-    try { initParallax() } catch (e) { console.error(e) }
     import("./utils/toast.jsx").then(m => m.ensureToastContainer()).catch(() => {})
   }, [])
 

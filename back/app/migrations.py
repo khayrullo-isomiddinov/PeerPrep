@@ -6,9 +6,8 @@ def migrate_add_group_id_to_events():
     """Add group_id column to event table if it doesn't exist"""
     try:
         with engine.connect() as conn:
-            # Check if column exists using SQLite pragma
             result = conn.execute(text("PRAGMA table_info(event)"))
-            columns = [row[1] for row in result.fetchall()]  # Column name is at index 1
+            columns = [row[1] for row in result.fetchall()]
             
             if 'group_id' not in columns:
                 print("Adding group_id column to event table...")
@@ -18,20 +17,17 @@ def migrate_add_group_id_to_events():
             else:
                 print("✓ group_id column already exists in event table")
     except Exception as e:
-        # Table might not exist yet, that's okay - init_db will create it
         print(f"Migration note: {e}")
 
 def migrate_add_xp_to_users():
     """Add xp column to user table if it doesn't exist"""
     try:
         with engine.connect() as conn:
-            # Check if user table exists
             result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='user'"))
             if not result.fetchone():
                 print("User table doesn't exist yet, will be created by init_db")
                 return
             
-            # Check if xp column exists
             result = conn.execute(text("PRAGMA table_info(user)"))
             columns = [row[1] for row in result.fetchall()]
             

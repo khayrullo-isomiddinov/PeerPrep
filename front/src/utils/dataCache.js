@@ -1,6 +1,3 @@
-// Simple in-memory cache for events and groups data
-// This persists data across route changes to prevent unnecessary reloads
-
 const cache = {
   events: null,
   eventsParams: null,
@@ -8,13 +5,12 @@ const cache = {
   groups: null,
   groupsParams: null,
   groupsTimestamp: null,
-  CACHE_DURATION: 5 * 60 * 1000, // 5 minutes
+  CACHE_DURATION: 5 * 60 * 1000,
 }
 
 export function getCachedEvents(params) {
   const paramsKey = JSON.stringify(params || {})
   
-  // Check if we have cached data with matching params
   if (
     cache.events &&
     cache.eventsParams === paramsKey &&
@@ -36,7 +32,6 @@ export function setCachedEvents(events, params) {
 export function getCachedGroups(params) {
   const paramsKey = JSON.stringify(params || {})
   
-  // Check if we have cached data with matching params
   if (
     cache.groups &&
     cache.groupsParams === paramsKey &&
@@ -63,5 +58,6 @@ export function clearCache() {
   cache.groupsParams = null
   cache.groupsTimestamp = null
 }
+
 
 

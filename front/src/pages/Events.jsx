@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useSearchParams, useLocation } from "react-router-dom"
 import { Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { 
@@ -36,8 +36,8 @@ const TIME_FILTERS = [
 export default function Events() {
   const { isAuthenticated } = useAuth()
   const [params] = useSearchParams()
+  const location = useLocation()
   
-  // Check cache first to avoid showing loading state
   const currentParams = useMemo(() => ({
     q: params.get('q') || undefined,
     location: params.get('location') || undefined
@@ -45,7 +45,7 @@ export default function Events() {
   
   const cachedEvents = getCachedEvents(currentParams)
   const [events, setEvents] = useState(cachedEvents || [])
-  const [loading, setLoading] = useState(!cachedEvents) // Only show loading if no cache
+  const [loading, setLoading] = useState(!cachedEvents)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [selectedTimeFilter, setSelectedTimeFilter] = useState("all")
@@ -63,7 +63,6 @@ export default function Events() {
       const data = await listEvents({ q, location })
       console.log('Events loaded:', data)
       setEvents(data)
-      // Cache the data
       setCachedEvents(data, { q, location })
     } catch (error) {
       console.error("Failed to load events:", error)
@@ -75,23 +74,33 @@ export default function Events() {
   }, [params])
 
   useEffect(() => {
-    // Check if params changed - if so, check cache for new params
     const cached = getCachedEvents(currentParams)
-    if (cached) {
+    if (location.state?.newEvent) {
+      const newEvent = location.state.newEvent
+      setEvents(prevEvents => {
+        const existingEvents = cached || prevEvents
+        const filteredEvents = existingEvents.filter(e => e.id !== newEvent.id)
+        const updatedEvents = [newEvent, ...filteredEvents]
+        setCachedEvents(updatedEvents, { q: params.get('q') || undefined, location: params.get('location') || undefined })
+        return updatedEvents
+      })
+      setLoading(false)
+      load(false)
+      window.history.replaceState({}, document.title)
+    } else if (cached) {
       setEvents(cached)
       setLoading(false)
     } else {
       load()
     }
     setSearchQuery(params.get('q') || "")
-  }, [load, params, currentParams])
+  }, [load, params, currentParams, location.state])
 
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden && events.length > 0) {
-        // Background refresh - don't show loading state if we already have events
         console.log('Page became visible, refreshing events in background...')
-        load(false) // Don't show loading state
+        load(false)
       }
     }
     
@@ -168,7 +177,6 @@ export default function Events() {
 
   function onChanged(updated) {
     if (!updated) {
-      // For deletions, reload after delay to prevent flash
       setTimeout(() => {
         load()
       }, 400)
@@ -176,17 +184,14 @@ export default function Events() {
     }
     const updatedEvents = events.map(e => (e.id === updated.id ? updated : e))
     setEvents(updatedEvents)
-    // Update cache
     const q = params.get('q') || undefined
     const location = params.get('location') || undefined
     setCachedEvents(updatedEvents, { q, location })
   }
 
   function handleDelete(eventId) {
-    // Remove event from local state immediately for smooth deletion
     const updatedEvents = events.filter(e => e.id !== eventId)
     setEvents(updatedEvents)
-    // Update cache
     const q = params.get('q') || undefined
     const location = params.get('location') || undefined
     setCachedEvents(updatedEvents, { q, location })

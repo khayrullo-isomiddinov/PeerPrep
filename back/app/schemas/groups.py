@@ -7,7 +7,7 @@ class GroupCreate(BaseModel):
     field: str = Field(..., min_length=1, max_length=50, description="Field of study")
     exam: Optional[str] = Field(None, max_length=100, description="Upcoming exam")
     description: Optional[str] = Field(None, max_length=500, description="Group description")
-    cover_image_url: Optional[str] = Field(None, description="Cover image URL")
+    cover_image_url: str = Field(..., description="Cover image URL")
     deadline: Optional[datetime] = Field(None, description="Group deadline")
     capacity: int = Field(10, ge=1, le=100, description="Maximum participants")
 

@@ -54,7 +54,6 @@ export default function MissionSubmissionsList({ groupId, isLeader = false }) {
       await reviewMission(groupId, submissionId, payload)
       setReviewing(null)
       setReviewData({ score: "", feedback: "" })
-      // Force reload after a short delay to ensure backend has updated
       setTimeout(() => {
         loadSubmissions()
       }, 300)
@@ -135,7 +134,6 @@ export default function MissionSubmissionsList({ groupId, isLeader = false }) {
         </div>
       )}
 
-      {/* Leader: Pending submissions to review */}
       {isLeader && pendingSubmissions.length > 0 && (
         <div>
           <h6 className="text-sm font-semibold text-gray-700 mb-3">Pending Reviews ({pendingSubmissions.length})</h6>
@@ -228,7 +226,6 @@ export default function MissionSubmissionsList({ groupId, isLeader = false }) {
         </div>
       )}
 
-      {/* My submissions - Always show this section if user is authenticated */}
       {user && (
         <div>
           <h6 className="text-sm font-semibold text-gray-700 mb-3">
@@ -300,7 +297,6 @@ export default function MissionSubmissionsList({ groupId, isLeader = false }) {
         </div>
       )}
 
-      {/* Approved submissions (public view) */}
       {!isLeader && submissions.length > 0 && (
         <div>
           <h6 className="text-sm font-semibold text-gray-700 mb-3">Approved Submissions ({submissions.length})</h6>

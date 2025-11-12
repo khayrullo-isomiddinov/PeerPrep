@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react"
-import { Link, useSearchParams } from "react-router-dom"
+import { Link, useSearchParams, useLocation } from "react-router-dom"
 import GroupList from "../features/groups/GroupList"
 import EditGroupForm from "../features/groups/EditGroupForm"
 import { listGroups, updateGroup } from "../utils/api"
@@ -10,15 +10,15 @@ import { getCachedGroups, setCachedGroups } from "../utils/dataCache"
 
 export default function Groups() {
   const [params] = useSearchParams()
+  const location = useLocation()
   
-  // Check cache first to avoid showing loading state
   const currentParams = useMemo(() => ({
     q: params.get('q') || undefined
   }), [params])
   
   const cachedGroups = getCachedGroups(currentParams)
   const [groups, setGroupsState] = useState(cachedGroups || [])
-  const [loading, setLoading] = useState(!cachedGroups) // Only show loading if no cache
+  const [loading, setLoading] = useState(!cachedGroups)
   const [error, setError] = useState("")
   const [editingGroup, setEditingGroup] = useState(null)
   const [showFilters, setShowFilters] = useState(false)
@@ -27,7 +27,6 @@ export default function Groups() {
   const [sortBy, setSortBy] = useState("name")
   const { isAuthenticated, isLoading: authLoading } = useAuth()
 
-  // Wrapper to update both state and cache
   const setGroups = useCallback((newGroups) => {
     setGroupsState(newGroups)
     setCachedGroups(newGroups, currentParams)
@@ -54,22 +53,33 @@ export default function Groups() {
   }, [currentParams])
 
   useEffect(() => {
-    // Check if params changed - if so, check cache for new params
     const cached = getCachedGroups(currentParams)
-    if (cached) {
+    if (location.state?.newGroup) {
+      const newGroup = location.state.newGroup
+      setGroupsState(prevGroups => {
+        const existingGroups = cached || prevGroups
+        const filteredGroups = existingGroups.filter(g => g.id !== newGroup.id)
+        const updatedGroups = [newGroup, ...filteredGroups]
+        setCachedGroups(updatedGroups, currentParams)
+        return updatedGroups
+      })
+      setLoading(false)
+      loadGroups(false)
+      window.history.replaceState({}, document.title)
+    } else if (cached) {
       setGroupsState(cached)
       setLoading(false)
     } else {
       loadGroups()
     }
     setSearchQuery(params.get('q') || "")
-  }, [loadGroups, params, currentParams])
+  }, [loadGroups, params, currentParams, location.state])
 
 
   async function handleUpdateGroup(groupId, updatedData) {
     const data = await updateGroup(groupId, updatedData)
     const updatedGroups = groups.map(g => (g.id === groupId ? data : g))
-    setGroups(updatedGroups) // This will also update cache
+    setGroups(updatedGroups)
     setEditingGroup(null)
     return data
   }

@@ -24,7 +24,6 @@ export function AuthProvider({ children }) {
         setUser(response.data)
         setIsLoading(false)
       } catch (error) {
-        // Token is invalid, clear it
         localStorage.removeItem("access_token")
         setToken(null)
         setUser(null)

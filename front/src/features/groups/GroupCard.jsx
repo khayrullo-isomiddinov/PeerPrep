@@ -22,7 +22,7 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
     } else {
       setJoined(false)
     }
-  }, [isAuthenticated, canDelete]) // Removed group.id from dependencies to prevent unnecessary re-checks
+  }, [isAuthenticated, canDelete])
 
   async function checkMembershipStatus() {
     try {
@@ -47,14 +47,11 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
       if (joined) {
         await leaveGroup(group.id)
         setJoined(false)
-        // Update local state immediately - no need to re-check membership
       } else {
         await joinGroup(group.id)
         setJoined(true)
-        // Update local state immediately - no need to re-check membership
       }
     } catch (error) {
-      // If the API call fails, revert the state change
       setJoined(!joined)
       console.error('Join/Leave failed:', error)
     } finally {

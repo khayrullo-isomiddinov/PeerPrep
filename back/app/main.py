@@ -16,7 +16,6 @@ from app.routers import badges as badges_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    # Run migrations
     try:
         from app.migrations import run_migrations
         run_migrations()

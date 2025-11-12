@@ -65,8 +65,6 @@ export default function Navbar() {
               )}
             </div>
 
-            {}
-            {/* Middle section - always present to maintain grid structure */}
             <div style={{ gridColumn: '2', justifySelf: 'center' }}>
               {isAuthenticated && (
                 <ul className="nav-tabs">
@@ -77,7 +75,6 @@ export default function Navbar() {
               )}
             </div>
 
-            {}
             <div className="nav-right gap-2" style={{ gridColumn: '3', justifySelf: 'end' }}>
               {isLoading ? (
                 <div className="flex items-center gap-2">
@@ -86,7 +83,6 @@ export default function Navbar() {
                 </div>
               ) : (
                 <>
-                  {/* Unauthenticated buttons */}
                   {!isAuthenticated && (
                     <div className="flex items-center gap-2">
                       <Link to="/login" className="btn-ghost-pink">Log in</Link>
@@ -94,7 +90,6 @@ export default function Navbar() {
                     </div>
                   )}
                   
-                  {/* Authenticated content */}
                   {isAuthenticated && (
                     <div className="relative inline-flex items-center gap-2">
                   {}

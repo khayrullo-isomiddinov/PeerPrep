@@ -1,10 +1,6 @@
 import { useEffect, useState } from "react"
 import { getUserBadge } from "../utils/api"
 
-/**
- * Simple badge component that displays a user's badge based on their accepted submissions
- * Shows next to user names throughout the app
- */
 export default function UserBadge({ userId, size = "sm" }) {
   const [badge, setBadge] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -34,14 +30,12 @@ export default function UserBadge({ userId, size = "sm" }) {
     return null
   }
 
-  // Size classes
   const sizeClasses = {
     sm: "text-sm",
     md: "text-base",
     lg: "text-lg"
   }
 
-  // Color classes for badge background
   const colorClasses = {
     green: "bg-green-100 text-green-700 border-green-300",
     blue: "bg-blue-100 text-blue-700 border-blue-300",

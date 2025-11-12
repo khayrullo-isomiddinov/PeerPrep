@@ -10,11 +10,9 @@ from datetime import datetime
 
 router = APIRouter(prefix="/badges", tags=["badges"])
 
-# XP values for different activities
-XP_PER_APPROVED_SUBMISSION = 50  # 50 XP per approved mission submission
-XP_PER_EVENT_ATTENDED = 30  # 30 XP per event attended (after event date passes)
+XP_PER_APPROVED_SUBMISSION = 50
+XP_PER_EVENT_ATTENDED = 30
 
-# Badge definitions based on total XP
 BADGE_LEVELS = [
     {"name": "Beginner", "min_xp": 0, "icon": "🌱", "color": "green"},
     {"name": "Learner", "min_xp": 200, "icon": "📚", "color": "blue"},
@@ -37,7 +35,6 @@ def award_xp_for_event(user_id: int, event_id: int, session: Session):
     event = session.exec(select(Event).where(Event.id == event_id)).first()
     
     if user and event:
-        # Only award XP if event has passed
         if event.starts_at < datetime.utcnow():
             user.xp = (user.xp or 0) + XP_PER_EVENT_ATTENDED
             session.add(user)
@@ -51,9 +48,8 @@ def get_user_badge_level(user_id: int, session: Session) -> Optional[dict]:
     
     total_xp = user.xp or 0
     
-    # Find the highest badge level the user qualifies for
     badge_level = None
-    for level in reversed(BADGE_LEVELS):  # Start from highest
+    for level in reversed(BADGE_LEVELS):
         if total_xp >= level["min_xp"]:
             badge_level = level
             break
@@ -76,11 +72,9 @@ def get_user_badge(
     
     badge_level = get_user_badge_level(user_id, session)
     
-    # Get user's total XP
     user = session.exec(select(User).where(User.id == user_id)).first()
     total_xp = user.xp or 0 if user else 0
     
-    # Count total accepted submissions
     total_submissions = session.exec(
         select(func.count(MissionSubmission.id)).where(
             MissionSubmission.user_id == user_id,
@@ -88,7 +82,6 @@ def get_user_badge(
         )
     ).one()
     
-    # Count events attended (past events only)
     events_attended = session.exec(
         select(func.count(EventAttendee.id)).where(
             EventAttendee.user_id == user_id
