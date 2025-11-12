@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faTrophy, faMedal, faAward, faCrown } from "@fortawesome/free-solid-svg-icons"
 import { getGroupLeaderboard } from "../../utils/api"
@@ -85,9 +86,10 @@ export default function GroupLeaderboard({ groupId }) {
         {leaderboard.map((entry, index) => {
           const isCurrentUser = user && entry.user_id === user.id
           return (
-            <div
+            <Link
               key={entry.submission_id}
-              className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all hover:shadow-lg ${
+              to={`/profile/${entry.user_id}`}
+              className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all hover:shadow-lg cursor-pointer ${
                 getRankBg(entry.rank)
               } ${isCurrentUser ? 'ring-2 ring-pink-500 ring-offset-2' : ''}`}
             >
@@ -111,7 +113,7 @@ export default function GroupLeaderboard({ groupId }) {
                 <div className="text-3xl font-bold bg-gradient-to-br from-gray-700 to-gray-900 bg-clip-text text-transparent">{entry.score}</div>
                 <div className="text-xs text-gray-500 font-medium">points</div>
               </div>
-            </div>
+            </Link>
           )
         })}
       </div>

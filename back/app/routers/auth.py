@@ -130,6 +130,24 @@ def update_profile(
         "created_at": current_user.created_at.isoformat(),
     }
 
+@router.get("/user/{user_id}")
+def get_user_profile(user_id: int, session: Session = Depends(get_session)):
+    """Get user profile by ID (public endpoint)"""
+    user = session.exec(select(User).where(User.id == user_id)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return {
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "bio": user.bio,
+        "photo_url": user.photo_url,
+        "is_verified": user.is_verified,
+        "created_at": user.created_at.isoformat(),
+        "xp": user.xp or 0,
+    }
+
 @router.delete("/account")
 def delete_account(
     current_user: User = Depends(_get_user_from_token),

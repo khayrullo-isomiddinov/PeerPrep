@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react"
+import { Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faUsers, faCrown, faUser, faCalendar } from "@fortawesome/free-solid-svg-icons"
 import { getGroupMembers } from "../../utils/api"
 import { useAuth } from "../auth/AuthContext"
 import UserBadge from "../../components/UserBadge"
 
-export default function GroupMembersList({ groupId }) {
+export default function GroupMembersList({ groupId, presence = [] }) {
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -93,17 +94,24 @@ export default function GroupMembersList({ groupId }) {
             <div className="space-y-3">
               {leaders.map(member => {
                 const isCurrentUser = user && member.user_id === user.id
+                const userPresence = presence.find(p => p.id === member.user_id)
+                const isOnline = userPresence?.is_online || false
                 return (
-                  <div
+                  <Link
                     key={member.id}
-                    className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all hover:shadow-md ${
+                    to={`/profile/${member.user_id}`}
+                    className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all hover:shadow-md cursor-pointer ${
                       isCurrentUser 
                         ? "bg-gradient-to-r from-pink-50 to-pink-100 border-pink-300 ring-2 ring-pink-400 ring-offset-1" 
-                        : "bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-300"
+                        : "bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-300 hover:border-yellow-400"
                     }`}
                   >
-                    <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 text-white shadow-md">
+                    <div className="relative flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 text-white shadow-md">
                       <FontAwesomeIcon icon={faCrown} className="text-lg" />
+                      {/* Online Status Indicator */}
+                      <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white ${
+                        isOnline ? 'bg-green-500' : 'bg-gray-400'
+                      }`} title={isOnline ? 'Online' : 'Offline'} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -121,7 +129,7 @@ export default function GroupMembersList({ groupId }) {
                         <span>Joined {formatRelativeDate(member.joined_at)}</span>
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 )
               })}
             </div>
@@ -137,21 +145,28 @@ export default function GroupMembersList({ groupId }) {
             <div className="space-y-3">
               {regularMembers.map(member => {
                 const isCurrentUser = user && member.user_id === user.id
+                const userPresence = presence.find(p => p.id === member.user_id)
+                const isOnline = userPresence?.is_online || false
                 return (
-                  <div
+                  <Link
                     key={member.id}
-                    className={`flex items-center gap-4 p-4 rounded-xl border transition-all hover:shadow-md ${
+                    to={`/profile/${member.user_id}`}
+                    className={`flex items-center gap-4 p-4 rounded-xl border transition-all hover:shadow-md cursor-pointer ${
                       isCurrentUser 
                         ? "bg-gradient-to-r from-pink-50 to-pink-100 border-pink-300 ring-2 ring-pink-400 ring-offset-1" 
                         : "bg-white border-gray-200 hover:border-gray-300"
                     }`}
                   >
-                    <div className={`flex items-center justify-center w-12 h-12 rounded-full shadow-sm ${
+                    <div className={`relative flex items-center justify-center w-12 h-12 rounded-full shadow-sm ${
                       isCurrentUser 
                         ? "bg-gradient-to-br from-pink-400 to-pink-600 text-white" 
                         : "bg-gradient-to-br from-gray-100 to-gray-200 text-gray-600"
                     }`}>
                       <FontAwesomeIcon icon={faUser} className="text-lg" />
+                      {/* Online Status Indicator */}
+                      <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white ${
+                        isOnline ? 'bg-green-500' : 'bg-gray-400'
+                      }`} title={isOnline ? 'Online' : 'Offline'} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -166,7 +181,7 @@ export default function GroupMembersList({ groupId }) {
                         <span>Joined {formatRelativeDate(member.joined_at)}</span>
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 )
               })}
             </div>

@@ -1,15 +1,15 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { createPortal } from "react-dom"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { 
   faCalendarAlt, faMapMarkerAlt, faUsers, faClock, 
   faEdit, faTrash, faUserPlus, faUserMinus, faCheck, faStar,
   faGraduationCap, faBook, faMicroscope, faCode,
-  faMusic, faPalette, faDumbbell, faHeartbeat
+  faMusic, faPalette, faDumbbell, faHeartbeat, faChevronRight, faImage, faUpload, faTimes
 } from "@fortawesome/free-solid-svg-icons"
 import Button from "../../components/Button"
-import { deleteEvent, getAttendees, joinEvent, leaveEvent, updateEvent } from "../../utils/api"
+import { deleteEvent, getAttendees, joinEvent, leaveEvent, updateEvent, generateCoverImage } from "../../utils/api"
 import { useAuth } from "../auth/AuthContext"
 
 export default function EventCard({ event, onChanged, onDelete }) {
@@ -34,6 +34,12 @@ export default function EventCard({ event, onChanged, onDelete }) {
   const [location, setLocation] = useState(event.location)
   const [capacity, setCapacity] = useState(event.capacity)
   const [description, setDescription] = useState(event.description || "")
+  const [coverImageFile, setCoverImageFile] = useState(null)
+  const [coverImagePreview, setCoverImagePreview] = useState(null)
+  const [coverMode, setCoverMode] = useState("upload")
+  const [aiPrompt, setAiPrompt] = useState("")
+  const [generatingCover, setGeneratingCover] = useState(false)
+  const fileInputRef = useRef(null)
 
   async function loadAttendees() {
     try {
@@ -55,6 +61,10 @@ export default function EventCard({ event, onChanged, onDelete }) {
     setLocation(event.location)
     setCapacity(event.capacity)
     setDescription(event.description || "")
+    setCoverImageFile(null)
+    setCoverImagePreview(null)
+    setAiPrompt("")
+    setCoverMode("upload")
     loadAttendees()
   }, [event.id, mine])
 
@@ -126,8 +136,25 @@ export default function EventCard({ event, onChanged, onDelete }) {
         capacity: Number(capacity),
         description,
       }
+
+      // If a new cover image was selected, convert it to base64
+      if (coverImageFile) {
+        const reader = new FileReader()
+        await new Promise((resolve, reject) => {
+          reader.onload = () => {
+            patch.cover_image_url = reader.result
+            resolve()
+          }
+          reader.onerror = reject
+          reader.readAsDataURL(coverImageFile)
+        })
+      }
+
       const updated = await updateEvent(event.id, patch)
       setEditing(false)
+      setCoverImageFile(null)
+      setCoverImagePreview(null)
+      setAiPrompt("")
       onChanged?.(updated)
     } catch (e) {
       setErr(e?.response?.data?.detail || "Update failed")
@@ -143,6 +170,42 @@ export default function EventCard({ event, onChanged, onDelete }) {
     setLocation(event.location)
     setCapacity(event.capacity)
     setDescription(event.description || "")
+    setCoverImageFile(null)
+    setCoverImagePreview(null)
+    setAiPrompt("")
+    setCoverMode("upload")
+  }
+
+  function handleCoverImageSelect(e) {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0]
+      if (file.type.startsWith('image/')) {
+        setCoverImageFile(file)
+        setCoverImagePreview(URL.createObjectURL(file))
+      }
+    }
+  }
+
+  async function handleGenerateCoverImage() {
+    if (!aiPrompt.trim()) {
+      setErr("Please enter a prompt to generate an image")
+      return
+    }
+
+    setGeneratingCover(true)
+    setErr("")
+    try {
+      const imageUrl = await generateCoverImage(aiPrompt.trim())
+      const response = await fetch(imageUrl)
+      const blob = await response.blob()
+      const file = new File([blob], "ai-generated-cover.png", { type: "image/png" })
+      setCoverImageFile(file)
+      setCoverImagePreview(URL.createObjectURL(file))
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Failed to generate image. Please try again.")
+    } finally {
+      setGeneratingCover(false)
+    }
   }
 
   const getCategoryIcon = (title, description) => {
@@ -188,29 +251,29 @@ export default function EventCard({ event, onChanged, onDelete }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden premium-hover">
+    <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden premium-hover hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 backdrop-blur-sm">
       {!editing ? (
         <>
           {}
-          <div className="h-48 relative overflow-hidden">
+          <div className="h-52 relative overflow-hidden group">
             {event.cover_image_url ? (
               <img 
                 src={event.cover_image_url} 
                 alt={event.title}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
               />
             ) : (
-              <div className="h-full bg-gradient-to-br from-blue-500 to-purple-600" />
+              <div className="h-full bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 group-hover:from-blue-600 group-hover:via-purple-600 group-hover:to-pink-600 transition-all duration-500" />
             )}
-            <div className="absolute inset-0 bg-black/20" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
             <div className="absolute top-4 right-4">
               <button className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors">
                 <FontAwesomeIcon icon={faStar} className="w-4 h-4" />
               </button>
             </div>
-            <div className="absolute bottom-4 left-4">
-              <h3 className="text-xl font-bold text-white mb-1">{event.title}</h3>
-              <p className="text-pink-200 text-sm">From Free</p>
+            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 via-black/50 to-transparent">
+              <h3 className="text-xl font-bold text-white mb-1 drop-shadow-lg">{event.title}</h3>
+              <p className="text-pink-200 text-sm drop-shadow-md">From Free</p>
             </div>
             {mine && (
               <div className="absolute top-4 left-4">
@@ -229,7 +292,7 @@ export default function EventCard({ event, onChanged, onDelete }) {
           </div>
           
           {}
-          <div className="p-6">
+          <div className="p-6 bg-white/95 backdrop-blur-sm">
             <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
               <div className="flex items-center gap-2">
                 <FontAwesomeIcon icon={faCalendarAlt} className="w-4 h-4" />
@@ -261,6 +324,17 @@ export default function EventCard({ event, onChanged, onDelete }) {
                   Group Event
                 </span>
               )}
+            </div>
+
+            {}
+            <div className="mb-4">
+              <Link
+                to={`/events/${event.id}`}
+                className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium transition-colors text-sm"
+              >
+                <span>View Full Details</span>
+                <FontAwesomeIcon icon={faChevronRight} className="w-3 h-3" />
+              </Link>
             </div>
 
             {}
@@ -330,6 +404,158 @@ export default function EventCard({ event, onChanged, onDelete }) {
       ) : (
         <div className="p-6 space-y-4">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Event</h3>
+          
+          {/* Cover Image Section */}
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-gray-700">Cover Image</label>
+            
+            {/* Mode Toggle */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCoverMode("upload")}
+                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  coverMode === "upload"
+                    ? "bg-pink-500 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+                disabled={busySave}
+              >
+                Upload
+              </button>
+              <button
+                type="button"
+                onClick={() => setCoverMode("generate")}
+                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  coverMode === "generate"
+                    ? "bg-pink-500 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+                disabled={busySave}
+              >
+                Generate with AI
+              </button>
+            </div>
+
+            {/* Current Cover Image Preview */}
+            {!coverImagePreview && event.cover_image_url && (
+              <div className="relative">
+                <img
+                  src={event.cover_image_url}
+                  alt="Current cover"
+                  className="w-full h-32 object-cover rounded-lg border-2 border-gray-200"
+                />
+                <p className="text-xs text-gray-500 mt-1">Current cover image</p>
+              </div>
+            )}
+
+            {/* Upload Mode */}
+            {coverMode === "upload" && (
+              <div className="space-y-2">
+                {coverImagePreview ? (
+                  <div className="space-y-2">
+                    <img
+                      src={coverImagePreview}
+                      alt="New cover preview"
+                      className="w-full h-32 object-cover rounded-lg border-2 border-pink-300"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCoverImageFile(null)
+                          setCoverImagePreview(null)
+                          if (fileInputRef.current) fileInputRef.current.click()
+                        }}
+                        className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium"
+                        disabled={busySave}
+                      >
+                        Change
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCoverImageFile(null)
+                          setCoverImagePreview(null)
+                        }}
+                        className="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 text-sm font-medium"
+                        disabled={busySave}
+                      >
+                        <FontAwesomeIcon icon={faTimes} className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="block border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-pink-400 transition-colors">
+                    <FontAwesomeIcon icon={faUpload} className="w-6 h-6 text-gray-400 mb-2" />
+                    <p className="text-sm text-gray-600">Click to upload new cover image</p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleCoverImageSelect}
+                      className="hidden"
+                      disabled={busySave}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
+
+            {/* Generate Mode */}
+            {coverMode === "generate" && (
+              <div className="space-y-2">
+                <textarea
+                  value={aiPrompt}
+                  onChange={e => setAiPrompt(e.target.value)}
+                  placeholder="Describe the cover image you want (e.g., A modern study group meeting in a library)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-sm text-gray-900 bg-white"
+                  rows={2}
+                  disabled={busySave || generatingCover}
+                />
+                <button
+                  type="button"
+                  onClick={handleGenerateCoverImage}
+                  disabled={busySave || generatingCover || !aiPrompt.trim()}
+                  className="w-full px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg hover:from-pink-600 hover:to-purple-700 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {generatingCover ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <FontAwesomeIcon icon={faImage} className="w-4 h-4" />
+                      Generate Image
+                    </>
+                  )}
+                </button>
+                {coverImagePreview && (
+                  <div className="mt-2">
+                    <img
+                      src={coverImagePreview}
+                      alt="Generated cover preview"
+                      className="w-full h-32 object-cover rounded-lg border-2 border-pink-300"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCoverImageFile(null)
+                        setCoverImagePreview(null)
+                        setAiPrompt("")
+                      }}
+                      className="mt-2 w-full px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 text-sm font-medium"
+                      disabled={busySave}
+                    >
+                      Remove Generated Image
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <input 
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input text-gray-900 bg-white" 
             value={title} 

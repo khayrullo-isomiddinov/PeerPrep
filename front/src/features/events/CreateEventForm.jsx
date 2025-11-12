@@ -4,7 +4,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { 
   faImage, faInfo, faMapMarkerAlt, faEye, faChevronRight, 
   faChevronLeft, faCalendarAlt, faClock, faUsers, faGraduationCap,
-  faBook, faTrash, faUpload, faCheck, faWandMagicSparkles
+  faBook, faTrash, faUpload, faCheck, faWandMagicSparkles, faTimes
 } from "@fortawesome/free-solid-svg-icons"
 import { createEvent, refineEventText, generateCoverImage } from "../../utils/api"
 
@@ -30,7 +30,8 @@ export default function CreateEventForm({ onCreated }) {
     capacity: 8,
     kind: "one_off",
     coverImage: null,
-    albumImages: []
+    albumImages: [],
+    studyMaterials: []
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -175,6 +176,11 @@ export default function CreateEventForm({ onCreated }) {
       const reader = new FileReader()
       reader.onload = async () => {
         try {
+          // Convert study materials to JSON
+          const studyMaterialsJson = formData.studyMaterials.length > 0
+            ? JSON.stringify(formData.studyMaterials)
+            : null
+
           const payload = {
             title: formData.title.trim(),
             starts_at: new Date(formData.startsAt).toISOString(),
@@ -183,7 +189,8 @@ export default function CreateEventForm({ onCreated }) {
             description: formData.description?.trim() || null,
             group_id: null,
             kind: "one_off",
-            cover_image_url: reader.result
+            cover_image_url: reader.result,
+            study_materials: studyMaterialsJson
           }
           console.log('Creating event with payload:', payload)
           const evt = await createEvent(payload)
@@ -746,21 +753,178 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, categories, on
             )}
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Study Materials
-            </label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-              <div className="space-y-2">
-                <FontAwesomeIcon icon={faUpload} className="w-8 h-8 text-gray-400 mx-auto" />
-                <p className="text-sm text-gray-600">Upload study materials, notes, or resources</p>
-                <button className="text-pink-500 hover:text-pink-600 text-sm font-medium">
-                  + Add files
+          <StudyMaterialsSection 
+            formData={formData} 
+            updateFormData={updateFormData} 
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StudyMaterialsSection({ formData, updateFormData }) {
+  const [dragActive, setDragActive] = useState(false)
+
+  const handleDrag = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true)
+    } else if (e.type === "dragleave") {
+      setDragActive(false)
+    }
+  }
+
+  const handleDrop = async (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
+    
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      await processFiles(Array.from(e.dataTransfer.files))
+    }
+  }
+
+  const handleFileInput = async (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      await processFiles(Array.from(e.target.files))
+    }
+  }
+
+  async function processFiles(files) {
+    const newMaterials = []
+    
+    for (const file of files) {
+      // Check file size (max 10MB per file)
+      if (file.size > 10 * 1024 * 1024) {
+        alert(`${file.name} is too large. Maximum file size is 10MB.`)
+        continue
+      }
+
+      try {
+        const fileData = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result)
+          reader.onerror = reject
+          reader.readAsDataURL(file)
+        })
+
+        newMaterials.push({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          data: fileData
+        })
+      } catch (error) {
+        console.error(`Failed to process ${file.name}:`, error)
+        alert(`Failed to process ${file.name}. Please try again.`)
+      }
+    }
+
+    if (newMaterials.length > 0) {
+      updateFormData({ 
+        studyMaterials: [...formData.studyMaterials, ...newMaterials] 
+      })
+    }
+  }
+
+  function removeMaterial(index) {
+    const updated = formData.studyMaterials.filter((_, i) => i !== index)
+    updateFormData({ studyMaterials: updated })
+  }
+
+  function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  }
+
+  function getFileIcon(type) {
+    if (type?.includes('pdf')) return '📄'
+    if (type?.includes('word') || type?.includes('document')) return '📝'
+    if (type?.includes('excel') || type?.includes('spreadsheet')) return '📊'
+    if (type?.includes('image')) return '🖼️'
+    if (type?.includes('video')) return '🎥'
+    if (type?.includes('audio')) return '🎵'
+    if (type?.includes('zip') || type?.includes('archive')) return '📦'
+    return '📎'
+  }
+
+  return (
+    <div>
+      <label className="block text-sm font-semibold text-gray-700 mb-2">
+        Study Materials <span className="text-gray-400 font-normal">(Optional)</span>
+      </label>
+      <div 
+        className={`border-2 border-dashed rounded-lg p-6 transition-colors ${
+          dragActive 
+            ? 'border-pink-400 bg-pink-50' 
+            : 'border-gray-300 hover:border-pink-400'
+        }`}
+        onDragEnter={handleDrag}
+        onDragLeave={handleDrag}
+        onDragOver={handleDrag}
+        onDrop={handleDrop}
+      >
+        {formData.studyMaterials.length > 0 ? (
+          <div className="space-y-3">
+            {formData.studyMaterials.map((material, index) => (
+              <div 
+                key={index}
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
+              >
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="text-2xl flex-shrink-0">{getFileIcon(material.type)}</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{material.name}</p>
+                    <p className="text-xs text-gray-500">{formatFileSize(material.size)}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => removeMaterial(index)}
+                  className="ml-3 text-red-500 hover:text-red-700 transition-colors flex-shrink-0"
+                  title="Remove file"
+                >
+                  <FontAwesomeIcon icon={faTimes} className="w-4 h-4" />
                 </button>
               </div>
-            </div>
+            ))}
+            <label className="block mt-4">
+              <div className="flex items-center justify-center gap-2 text-pink-500 hover:text-pink-600 text-sm font-medium cursor-pointer">
+                <FontAwesomeIcon icon={faUpload} className="w-4 h-4" />
+                <span>Add more files</span>
+              </div>
+              <input
+                type="file"
+                multiple
+                onChange={handleFileInput}
+                className="hidden"
+              />
+            </label>
           </div>
-        </div>
+        ) : (
+          <div className="text-center space-y-3">
+            <FontAwesomeIcon icon={faUpload} className="w-8 h-8 text-gray-400 mx-auto" />
+            <div>
+              <p className="text-sm text-gray-600 mb-2">Upload study materials, notes, or resources</p>
+              <p className="text-xs text-gray-500 mb-4">Supports PDFs, documents, images, and more (max 10MB per file)</p>
+            </div>
+            <label className="inline-block">
+              <span className="bg-pink-500 text-white px-6 py-2 rounded-lg hover:bg-pink-600 transition-colors text-sm font-medium cursor-pointer inline-flex items-center gap-2">
+                <FontAwesomeIcon icon={faUpload} className="w-4 h-4" />
+                Choose Files
+              </span>
+              <input
+                type="file"
+                multiple
+                onChange={handleFileInput}
+                className="hidden"
+              />
+            </label>
+            <p className="text-xs text-gray-400 mt-2">or drag and drop files here</p>
+          </div>
+        )}
       </div>
     </div>
   )

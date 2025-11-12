@@ -112,6 +112,45 @@ export async function getAttendees(id) {
   return data
 }
 
+export async function getEvent(id) {
+  const { data } = await api.get(`events/${id}`)
+  return data
+}
+
+export async function getEventAttendeesWithDetails(id) {
+  const { data } = await api.get(`events/${id}/attendees/details`)
+  return data
+}
+
+export async function getEventMessages(eventId) {
+  const { data } = await api.get(`events/${eventId}/messages`)
+  return data
+}
+
+export async function postEventMessage(eventId, content) {
+  const { data } = await api.post(`events/${eventId}/messages?content=${encodeURIComponent(content)}`)
+  return data
+}
+
+export async function deleteEventMessage(eventId, messageId) {
+  const { data } = await api.delete(`events/${eventId}/messages/${messageId}`)
+  return data
+}
+
+export async function setEventTypingStatus(eventId) {
+  await api.post(`events/${eventId}/typing`)
+}
+
+export async function getEventTypingStatus(eventId) {
+  const { data } = await api.get(`events/${eventId}/typing`)
+  return data
+}
+
+export async function getEventPresence(eventId) {
+  const { data } = await api.get(`events/${eventId}/presence`)
+  return data
+}
+
 export async function listGroups(params = {}) {
   const { data } = await api.get("groups", { params })
   return data
@@ -210,6 +249,11 @@ export async function getProfile() {
   return data
 }
 
+export async function getUserProfile(userId) {
+  const { data } = await api.get(`auth/user/${userId}`)
+  return data
+}
+
 export async function updateProfile(profileData) {
   const { data } = await api.put("auth/profile", profileData)
   return data
@@ -233,4 +277,80 @@ export async function autocompleteEvents(query) {
 export async function autocompleteGroups(query) {
   const { data } = await api.get("groups/autocomplete", { params: { q: query } })
   return data 
+}
+
+export async function followUser(userId) {
+  const { data } = await api.post(`follows/${userId}`)
+  return data
+}
+
+export async function unfollowUser(userId) {
+  const { data } = await api.delete(`follows/${userId}`)
+  return data
+}
+
+export async function getFollowStatus(userId) {
+  const { data } = await api.get(`follows/${userId}/status`)
+  return data
+}
+
+export async function getFollowers(userId) {
+  const { data } = await api.get(`follows/${userId}/followers`)
+  return data
+}
+
+export async function getFollowing(userId) {
+  const { data } = await api.get(`follows/${userId}/following`)
+  return data
+}
+
+export async function getFollowCounts(userId) {
+  const { data } = await api.get(`follows/${userId}/counts`)
+  return data
+}
+
+export async function getGroupMessages(groupId) {
+  const { data } = await api.get(`groups/${groupId}/messages`)
+  return data
+}
+
+export async function postGroupMessage(groupId, content) {
+  const { data } = await api.post(`groups/${groupId}/messages?content=${encodeURIComponent(content)}`)
+  return data
+}
+
+export async function setGroupTypingStatus(groupId) {
+  await api.post(`groups/${groupId}/typing`)
+}
+
+export async function getGroupTypingStatus(groupId) {
+  const { data } = await api.get(`groups/${groupId}/typing`)
+  return data
+}
+
+export async function getGroupPresence(groupId) {
+  const { data } = await api.get(`groups/${groupId}/presence`)
+  return data
+}
+
+export async function markEventMessageRead(eventId, messageId) {
+  await api.post(`events/${eventId}/messages/${messageId}/read`)
+}
+
+export async function markGroupMessageRead(groupId, messageId) {
+  await api.post(`groups/${groupId}/messages/${messageId}/read`)
+}
+
+export async function addEventMessageReaction(eventId, messageId, emoji) {
+  const { data } = await api.post(`events/${eventId}/messages/${messageId}/reactions`, null, {
+    params: { emoji }
+  })
+  return data
+}
+
+export async function addGroupMessageReaction(groupId, messageId, emoji) {
+  const { data } = await api.post(`groups/${groupId}/messages/${messageId}/reactions`, null, {
+    params: { emoji }
+  })
+  return data
 }

@@ -5,7 +5,7 @@ import EditGroupForm from "../features/groups/EditGroupForm"
 import { listGroups, updateGroup } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { faFilter, faSearch } from "@fortawesome/free-solid-svg-icons"
+import { faArrowsRotate, faSearch } from "@fortawesome/free-solid-svg-icons"
 import { getCachedGroups, setCachedGroups } from "../utils/dataCache"
 
 export default function Groups() {
@@ -21,10 +21,7 @@ export default function Groups() {
   const [loading, setLoading] = useState(!cachedGroups)
   const [error, setError] = useState("")
   const [editingGroup, setEditingGroup] = useState(null)
-  const [showFilters, setShowFilters] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedField, setSelectedField] = useState("all")
-  const [sortBy, setSortBy] = useState("name")
   const { isAuthenticated, isLoading: authLoading } = useAuth()
 
   const setGroups = useCallback((newGroups) => {
@@ -84,43 +81,22 @@ export default function Groups() {
     return data
   }
 
-  const fields = useMemo(() => {
-    const s = new Set(groups.map(g => g.field).filter(Boolean))
-    return ["all", ...Array.from(s).sort()]
-  }, [groups])
-
   const filteredGroups = useMemo(() => {
-    let filtered = groups
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
-      filtered = filtered.filter(g =>
-        (g.name || "").toLowerCase().includes(q) ||
-        (g.description || "").toLowerCase().includes(q) ||
-        (g.field || "").toLowerCase().includes(q) ||
-        (g.exam || "").toLowerCase().includes(q)
-      )
+    if (!searchQuery.trim()) {
+      return groups
     }
-    if (selectedField !== "all") {
-      filtered = filtered.filter(g => g.field === selectedField)
-    }
-    filtered = [...filtered]
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case "name":
-          return (a.name || "").localeCompare(b.name || "")
-        case "members":
-          return (b.members || 0) - (a.members || 0)
-        case "created":
-          return new Date(b.created_at || 0) - new Date(a.created_at || 0)
-        default:
-          return 0
-      }
-    })
-    return filtered
-  }, [groups, searchQuery, selectedField, sortBy])
+    const q = searchQuery.toLowerCase()
+    return groups.filter(g =>
+      (g.name || "").toLowerCase().includes(q) ||
+      (g.description || "").toLowerCase().includes(q) ||
+      (g.field || "").toLowerCase().includes(q) ||
+      (g.exam || "").toLowerCase().includes(q)
+    )
+  }, [groups, searchQuery])
+
 
   return (
-    <div className="min-h-screen tap-safe premium-scrollbar bg-white route-transition">
+    <div className="min-h-screen tap-safe premium-scrollbar bg-gradient-to-br from-gray-50 via-slate-50 to-blue-50/30 route-transition">
       <div className="nav-spacer" />
       <section className="events-hero premium-fade-in">
         <div className="events-hero-bg" />
@@ -137,70 +113,14 @@ export default function Groups() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
-            <button onClick={() => setShowFilters(v => !v)} className="filter-btn">
-              <FontAwesomeIcon icon={faFilter} className="mr-2" />
-              Filters
-            </button>
           </div>
         </div>
       </section>
 
-      {showFilters && (
-        <section className="home-section">
-          <div className="home-section-inner">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 premium-fade-in">
-              <div className="space-y-4 sm:space-y-6">
-                <div>
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Categories</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {fields.map(field => (
-                      <button
-                        key={field}
-                        onClick={() => setSelectedField(field)}
-                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                          selectedField === field
-                            ? 'bg-pink-500 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        {field === 'all' ? 'All' : field}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Sort by</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { id: "name", name: "Name" },
-                      { id: "members", name: "Members" },
-                      { id: "created", name: "Created" }
-                    ].map(option => (
-                      <button
-                        key={option.id}
-                        onClick={() => setSortBy(option.id)}
-                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                          sortBy === option.id
-                            ? 'bg-pink-500 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        {option.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      <main className="home-section">
-        <div className="home-section-inner">
+      <section className="container-page section">
+        <div className="space-y-8">
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 premium-scale-in">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 premium-scale-in">
               <div className="flex items-start gap-3">
                 <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                   <svg className="w-4 h-4 text-white" viewBox="0 0 20 20" fill="currentColor">
@@ -215,39 +135,64 @@ export default function Groups() {
             </div>
           )}
 
-          {loading ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-16 text-center premium-scale-in">
-              <div className="mx-auto mb-4 rounded-full h-12 w-12 border-2 border-pink-200 border-t-pink-500 animate-spin" />
-              <p className="text-gray-600 text-lg">Loading groups...</p>
+          <div className="flex items-center justify-between">
+            <h2 className="text-3xl font-bold text-gray-900">Study Groups</h2>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => loadGroups()}
+                className="text-gray-500 hover:text-gray-700 font-medium flex items-center gap-2"
+              >
+                <FontAwesomeIcon icon={faArrowsRotate} className="w-4 h-4" />
+                Refresh
+              </button>
             </div>
-          ) : (
-            <div className="space-y-8">
-              <section className="premium-fade-in">
-                <h2 className="home-title">All <span className="accent">Groups</span></h2>
-                <GroupList groups={filteredGroups} setGroups={setGroups} onEdit={setEditingGroup} showFilters={false} />
-              </section>
-              
-              {!isAuthenticated && !authLoading && (
-                <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center premium-scale-in">
-                  <div className="max-w-md mx-auto">
-                    <div className="w-16 h-16 rounded-full bg-pink-100 flex items-center justify-center mx-auto mb-6">
-                      <svg className="w-8 h-8 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-2xl font-bold mb-3 text-gray-900">Want to Join Groups?</h3>
-                    <p className="text-gray-600 mb-6">Sign up or log in to join study groups and connect with other learners.</p>
-                    <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                      <Link to="/login" className="btn-pink-pill text-center">Log In</Link>
-                      <Link to="/register" className="btn-secondary text-center">Sign Up</Link>
-                    </div>
+          </div>
+
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200/60 p-6 premium-loading">
+                  <div className="animate-pulse space-y-4">
+                    <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                    <div className="h-3 bg-gray-200 rounded w-2/3"></div>
                   </div>
-                </section>
+                </div>
+              ))}
+            </div>
+          ) : filteredGroups.length > 0 ? (
+            <GroupList groups={filteredGroups} setGroups={setGroups} onEdit={setEditingGroup} showFilters={false} />
+          ) : (
+            <div className="text-center py-16">
+              <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <FontAwesomeIcon icon={faUsers} className="w-12 h-12 text-gray-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">No groups found</h3>
+              <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                {searchQuery
+                  ? "Try adjusting your search to find more groups."
+                  : "Be the first to create an amazing study group!"
+                }
+              </p>
+              {isAuthenticated && (
+                <Link 
+                  to="/groups/create"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-pink-500 text-white rounded-xl hover:bg-pink-600 transition-colors font-medium"
+                >
+                  <FontAwesomeIcon icon={faUsers} className="w-4 h-4" />
+                  Create Group
+                </Link>
+              )}
+              {!isAuthenticated && !authLoading && (
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <Link to="/login" className="btn-pink-pill text-center">Log In</Link>
+                  <Link to="/register" className="btn-secondary text-center">Sign Up</Link>
+                </div>
               )}
             </div>
           )}
         </div>
-      </main>
+      </section>
 
       {editingGroup && (
         <EditGroupForm

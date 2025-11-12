@@ -60,10 +60,9 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
 
   async function handleDeleteGroup(groupId) {
     if (!user) { alert("You must be logged in to delete groups"); return }
-    if (!confirm("Delete this group? This cannot be undone.")) return
     setDeletingGroups(prev => new Set(prev).add(groupId))
     try {
-      await deleteGroup(groupId)
+      // GroupCard handles the confirmation modal, so we just remove it from the list
       setGroups(groups.filter(g => g.id !== groupId))
     } catch (error) {
       const msg = error?.response?.data?.detail || "Failed to delete group"

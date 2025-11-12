@@ -9,6 +9,7 @@ import Home from "./pages/Home"
 import Groups from "./pages/Groups"
 import GroupDetail from "./pages/GroupDetail"
 import Events from "./pages/Events"
+import EventDetail from "./pages/EventDetail"
 import CreateEvent from "./pages/CreateEvent"
 import CreateGroup from "./pages/CreateGroup"
 import Profile from "./pages/Profile"
@@ -48,8 +49,10 @@ export default function App() {
           <Route path="/groups/:id" element={<GroupDetail />} />
           <Route path="/groups/create" element={<CreateGroup />} />
           <Route path="/events" element={<Events />} />
+          <Route path="/events/:id" element={<EventDetail />} />
           <Route path="/events/create" element={<CreateEvent />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/profile/:userId" element={<Profile />} />
           <Route path="/register" element={<RegisterForm />} />
           <Route path="/login" element={<LoginForm />} />
         </Routes>

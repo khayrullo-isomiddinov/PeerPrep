@@ -41,8 +41,121 @@ def migrate_add_xp_to_users():
     except Exception as e:
         print(f"Migration note (xp): {e}")
 
+def migrate_add_study_materials_to_events():
+    """Add study_materials column to event table if it doesn't exist"""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("PRAGMA table_info(event)"))
+            columns = [row[1] for row in result.fetchall()]
+            
+            if 'study_materials' not in columns:
+                print("Adding study_materials column to event table...")
+                conn.execute(text("ALTER TABLE event ADD COLUMN study_materials TEXT"))
+                conn.commit()
+                print("✓ Added study_materials column to event table")
+            else:
+                print("✓ study_materials column already exists in event table")
+    except Exception as e:
+        print(f"Migration note: {e}")
+
+def migrate_add_event_messages():
+    """Add event_message table if it doesn't exist"""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='eventmessage'"))
+            if not result.fetchone():
+                print("Creating event_message table...")
+                # Table will be created by SQLModel if it doesn't exist
+                from app.models import EventMessage
+                from sqlmodel import SQLModel
+                SQLModel.metadata.create_all(engine)
+                print("✓ Event message table created")
+            else:
+                print("✓ Event message table already exists")
+    except Exception as e:
+        print(f"Migration note (event_messages): {e}")
+
+def migrate_add_group_messages():
+    """Add group_message table if it doesn't exist"""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='groupmessage'"))
+            if not result.fetchone():
+                print("Creating group_message table...")
+                # Table will be created by SQLModel if it doesn't exist
+                from app.models import GroupMessage
+                from sqlmodel import SQLModel
+                SQLModel.metadata.create_all(engine)
+                print("✓ Group message table created")
+            else:
+                print("✓ Group message table already exists")
+    except Exception as e:
+        print(f"Migration note (group_messages): {e}")
+
+def migrate_add_is_deleted_to_event_messages():
+    """Add is_deleted column to eventmessage table if it doesn't exist"""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='eventmessage'"))
+            if not result.fetchone():
+                print("Event message table doesn't exist yet, will be created by init_db")
+                return
+            
+            result = conn.execute(text("PRAGMA table_info(eventmessage)"))
+            columns = [row[1] for row in result.fetchall()]
+            
+            if 'is_deleted' not in columns:
+                print("Adding is_deleted column to eventmessage table...")
+                conn.execute(text("ALTER TABLE eventmessage ADD COLUMN is_deleted INTEGER DEFAULT 0"))
+                conn.commit()
+                print("✓ Added is_deleted column to eventmessage table")
+            else:
+                print("✓ is_deleted column already exists in eventmessage table")
+    except Exception as e:
+        print(f"Migration note (is_deleted): {e}")
+
+def migrate_add_message_reads():
+    """Add messageread table if it doesn't exist"""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='messageread'"))
+            if not result.fetchone():
+                print("Creating messageread table...")
+                # Table will be created by SQLModel if it doesn't exist
+                from app.models import MessageRead
+                from sqlmodel import SQLModel
+                SQLModel.metadata.create_all(engine)
+                print("✓ Message read table created")
+            else:
+                print("✓ Message read table already exists")
+    except Exception as e:
+        print(f"Migration note (message_reads): {e}")
+
+def migrate_add_message_reactions():
+    """Add messagereaction table if it doesn't exist"""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='messagereaction'"))
+            if not result.fetchone():
+                print("Creating messagereaction table...")
+                # Table will be created by SQLModel if it doesn't exist
+                from app.models import MessageReaction
+                from sqlmodel import SQLModel
+                SQLModel.metadata.create_all(engine)
+                print("✓ Message reaction table created")
+            else:
+                print("✓ Message reaction table already exists")
+    except Exception as e:
+        print(f"Migration note (message_reactions): {e}")
+
 def run_migrations():
     """Run all pending migrations"""
     migrate_add_group_id_to_events()
     migrate_add_xp_to_users()
+    migrate_add_study_materials_to_events()
+    migrate_add_event_messages()
+    migrate_add_group_messages()
+    migrate_add_is_deleted_to_event_messages()
+    migrate_add_message_reads()
+    migrate_add_message_reactions()
 
