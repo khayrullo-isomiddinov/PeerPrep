@@ -228,12 +228,12 @@ export default function Events() {
       {}
       {showFilters && (
         <section className="container-page section">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="space-y-6 premium-fade-in">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+            <div className="space-y-4 sm:space-y-6 premium-fade-in">
               {}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Categories</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Categories</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
                   {CATEGORIES.map(category => (
                     <button
                       key={category.id}
@@ -256,7 +256,7 @@ export default function Events() {
 
               {}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">When</h3>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">When</h3>
                 <div className="flex flex-wrap gap-2">
                   {TIME_FILTERS.map(filter => (
                     <button
@@ -276,8 +276,8 @@ export default function Events() {
 
               {}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Sort by</h3>
-                <div className="flex gap-2">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Sort by</h3>
+                <div className="flex flex-wrap gap-2">
                   {[
                     { id: "date", name: "Date" },
                     { id: "popularity", name: "Popularity" },

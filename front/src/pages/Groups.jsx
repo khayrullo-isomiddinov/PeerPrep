@@ -148,10 +148,10 @@ export default function Groups() {
       {showFilters && (
         <section className="home-section">
           <div className="home-section-inner">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 premium-fade-in">
-              <div className="space-y-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 premium-fade-in">
+              <div className="space-y-4 sm:space-y-6">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Categories</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Categories</h3>
                   <div className="flex flex-wrap gap-2">
                     {fields.map(field => (
                       <button
@@ -170,8 +170,8 @@ export default function Groups() {
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Sort by</h3>
-                  <div className="flex gap-2">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Sort by</h3>
+                  <div className="flex flex-wrap gap-2">
                     {[
                       { id: "name", name: "Name" },
                       { id: "members", name: "Members" },

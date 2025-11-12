@@ -52,14 +52,10 @@ export default function GroupLeaderboard({ groupId }) {
 
   if (loading) {
     return (
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <h5 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-          <FontAwesomeIcon icon={faTrophy} className="text-yellow-500" />
-          Leaderboard
-        </h5>
-        <div className="space-y-2">
+      <div className="text-center py-12">
+        <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />
+            <div key={i} className="h-16 bg-gray-100 rounded-xl animate-pulse" />
           ))}
         </div>
       </div>
@@ -68,49 +64,35 @@ export default function GroupLeaderboard({ groupId }) {
 
   if (error) {
     return (
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <h5 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-          <FontAwesomeIcon icon={faTrophy} className="text-yellow-500" />
-          Leaderboard
-        </h5>
-        <p className="text-sm text-gray-500">{error}</p>
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <p className="text-sm text-red-700">{error}</p>
       </div>
     )
   }
 
   if (leaderboard.length === 0) {
     return (
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <h5 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-          <FontAwesomeIcon icon={faTrophy} className="text-yellow-500" />
-          Leaderboard
-        </h5>
-        <div className="bg-gray-50 rounded-lg p-6 text-center">
-          <FontAwesomeIcon icon={faTrophy} className="text-gray-300 text-3xl mb-2" />
-          <p className="text-sm text-gray-500">No submissions yet. Be the first to complete a mission!</p>
-        </div>
+      <div className="bg-gray-50 rounded-xl p-8 text-center border border-gray-200">
+        <FontAwesomeIcon icon={faTrophy} className="text-gray-300 text-4xl mb-3" />
+        <p className="text-sm text-gray-500 font-medium">No submissions yet. Be the first to complete a mission!</p>
       </div>
     )
   }
 
   return (
-    <div className="mt-4 pt-4 border-t border-gray-200">
-      <h5 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-        <FontAwesomeIcon icon={faTrophy} className="text-yellow-500" />
-        Leaderboard
-      </h5>
-      <div className="space-y-2">
+    <div>
+      <div className="space-y-3">
         {leaderboard.map((entry, index) => {
           const isCurrentUser = user && entry.user_id === user.id
           return (
             <div
               key={entry.submission_id}
-              className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all ${
+              className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all hover:shadow-lg ${
                 getRankBg(entry.rank)
               } ${isCurrentUser ? 'ring-2 ring-pink-500 ring-offset-2' : ''}`}
             >
-              <div className={`flex items-center justify-center w-10 h-10 rounded-full ${getRankColor(entry.rank)}`}>
-                <FontAwesomeIcon icon={getRankIcon(entry.rank)} className="text-xl" />
+              <div className={`flex items-center justify-center w-12 h-12 rounded-full shadow-md ${getRankColor(entry.rank)}`}>
+                <FontAwesomeIcon icon={getRankIcon(entry.rank)} className="text-2xl" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -126,8 +108,8 @@ export default function GroupLeaderboard({ groupId }) {
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-2xl font-bold text-gray-700">{entry.score}</div>
-                <div className="text-xs text-gray-500">points</div>
+                <div className="text-3xl font-bold bg-gradient-to-br from-gray-700 to-gray-900 bg-clip-text text-transparent">{entry.score}</div>
+                <div className="text-xs text-gray-500 font-medium">points</div>
               </div>
             </div>
           )

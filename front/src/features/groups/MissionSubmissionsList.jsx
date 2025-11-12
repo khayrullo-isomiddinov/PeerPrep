@@ -89,31 +89,25 @@ export default function MissionSubmissionsList({ groupId, isLeader = false }) {
 
   if (loading) {
     return (
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <div className="text-center py-8">
-          <div className="mx-auto mb-4 rounded-full h-12 w-12 border-2 border-pink-200 border-t-pink-500 animate-spin" />
-          <p className="text-gray-600">Loading submissions...</p>
-        </div>
+      <div className="text-center py-12">
+        <div className="mx-auto mb-4 rounded-full h-12 w-12 border-2 border-pink-200 border-t-pink-500 animate-spin" />
+        <p className="text-gray-600">Loading submissions...</p>
       </div>
     )
   }
 
   return (
-    <div className="mt-4 pt-4 border-t border-gray-200 space-y-6">
-      <div className="flex items-center justify-between">
-        <h5 className="font-semibold text-gray-800 flex items-center gap-2">
-          <FontAwesomeIcon icon={faStar} className="text-yellow-500" />
-          Mission Submissions
-        </h5>
-        {!hasPendingSubmission && !showForm && (
+    <div className="space-y-6">
+      {!hasPendingSubmission && !showForm && (
+        <div className="flex justify-end mb-2">
           <button
             onClick={() => setShowForm(true)}
             className="btn-pink text-sm px-4 py-2"
           >
             Submit Mission
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">

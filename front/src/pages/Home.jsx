@@ -14,6 +14,8 @@ export default function Home() {
   const [showQueryMenu, setShowQueryMenu] = useState(false)
   const [allEvents, setAllEvents] = useState([])
   const [loadingEvents, setLoadingEvents] = useState(true)
+  const [userCity, setUserCity] = useState("NYC")
+  const [detectingCity, setDetectingCity] = useState(true)
   const locDebounce = useRef(null)
   const queryDebounce = useRef(null)
 
@@ -70,6 +72,71 @@ export default function Home() {
     }
   }
 
+  // Detect user's city
+  useEffect(() => {
+    async function detectCity() {
+      try {
+        setDetectingCity(true)
+        
+        // Try browser geolocation first
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            async (position) => {
+              try {
+                // Use reverse geocoding to get city
+                const response = await fetch(
+                  `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${position.coords.latitude}&longitude=${position.coords.longitude}&localityLanguage=en`
+                )
+                const data = await response.json()
+                if (data.city) {
+                  setUserCity(data.city)
+                } else if (data.locality) {
+                  setUserCity(data.locality)
+                }
+              } catch (error) {
+                console.error("Geocoding error:", error)
+                // Fallback to IP-based detection
+                detectCityByIP()
+              } finally {
+                setDetectingCity(false)
+              }
+            },
+            () => {
+              // Geolocation denied or failed, use IP-based detection
+              detectCityByIP()
+            },
+            { timeout: 5000 }
+          )
+        } else {
+          // No geolocation support, use IP-based detection
+          detectCityByIP()
+        }
+      } catch (error) {
+        console.error("City detection error:", error)
+        setDetectingCity(false)
+      }
+    }
+
+    async function detectCityByIP() {
+      try {
+        const response = await fetch('https://ipapi.co/json/')
+        const data = await response.json()
+        if (data.city) {
+          setUserCity(data.city)
+        } else if (data.region) {
+          setUserCity(data.region)
+        }
+      } catch (error) {
+        console.error("IP geolocation error:", error)
+        // Keep default NYC
+      } finally {
+        setDetectingCity(false)
+      }
+    }
+
+    detectCity()
+  }, [])
+
   useEffect(() => {
     async function loadEvents() {
       try {
@@ -86,19 +153,37 @@ export default function Home() {
     loadEvents()
   }, [])
 
-  const nycEvents = useMemo(() => {
+  const localEvents = useMemo(() => {
     const now = new Date()
+    if (!userCity || userCity === "NYC") {
+      // Fallback to NYC matching for backward compatibility
+      return allEvents
+        .filter(e => {
+          const eventDate = new Date(e.starts_at)
+          return eventDate > now && 
+                 (e.location?.toLowerCase().includes("new york") || 
+                  e.location?.toLowerCase().includes("nyc") ||
+                  e.location?.toLowerCase().includes("ny"))
+        })
+        .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))
+        .slice(0, 3)
+    }
+    
+    // Filter by detected city
+    const cityLower = userCity.toLowerCase()
     return allEvents
       .filter(e => {
         const eventDate = new Date(e.starts_at)
-        return eventDate > now && 
-               (e.location?.toLowerCase().includes("new york") || 
-                e.location?.toLowerCase().includes("nyc") ||
-                e.location?.toLowerCase().includes("ny"))
+        if (eventDate <= now) return false
+        
+        const locationLower = e.location?.toLowerCase() || ""
+        // Check if location contains the city name
+        return locationLower.includes(cityLower) ||
+               locationLower.includes(cityLower.split(' ')[0]) // Handle multi-word cities
       })
       .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))
       .slice(0, 3)
-  }, [allEvents])
+  }, [allEvents, userCity])
 
   const upcoming24h = useMemo(() => {
     const now = new Date()
@@ -129,7 +214,7 @@ export default function Home() {
   const moreEvents = useMemo(() => {
     const now = new Date()
     const shownIds = new Set([
-      ...nycEvents.map(e => e.id),
+      ...localEvents.map(e => e.id),
       ...upcoming24h.map(e => e.id),
       ...(highlightsThisWeek ? [highlightsThisWeek.id] : [])
     ])
@@ -140,7 +225,7 @@ export default function Home() {
       })
       .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))
       .slice(0, 3)
-  }, [allEvents, nycEvents, upcoming24h, highlightsThisWeek])
+  }, [allEvents, localEvents, upcoming24h, highlightsThisWeek])
 
   function formatEventDate(dateString) {
     const date = new Date(dateString)
@@ -160,20 +245,20 @@ export default function Home() {
         <div className="home-hero-bg" />
         <div className="home-hero-inner reveal-up">
           <h1 className="home-hero-title">
-            <span>Pick up your</span>
-            <span className="accent">wonderful plans</span>
+            <span>Your Wonderful</span>
+            <span className="accent">study circle</span>
           </h1> 
         </div>
         <div className="search-wrap reveal-up" style={{animationDelay:'.06s'}}>
           <div className="home-search premium-scale-in">
             <div className="field" style={{position:'relative'}}>
-              <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#ec4899" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z" stroke="#ec4899" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" className="flex-shrink-0"><path fill="#ec4899" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z" stroke="#ec4899" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
               <input
                 value={query}
                 onChange={e => { setQuery(e.target.value); setShowQueryMenu(true) }}
                 onFocus={() => setShowQueryMenu(true)}
                 onBlur={() => setTimeout(() => setShowQueryMenu(false), 150)}
-                placeholder={type === 'events' ? "Find the event you're interested in" : "Find a mission group"}
+                placeholder={type === 'events' ? "Search events..." : "Search groups..."}
                 className="home-search-input"
               />
               {showQueryMenu && ((type === 'events' && eventOptions.length > 0) || (type === 'groups' && groupOptions.length > 0)) && (
@@ -194,13 +279,13 @@ export default function Home() {
             </div>
             <div className="divider" />
             <div className="field" style={{position:'relative'}}>
-              <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#ec4899" d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" className="flex-shrink-0"><path fill="#ec4899" d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
               <input
                 value={location}
                 onChange={e => { setLocation(e.target.value); setShowLocMenu(true) }}
                 onFocus={() => setShowLocMenu(true)}
                 onBlur={() => setTimeout(() => setShowLocMenu(false), 150)}
-                placeholder="Search location (events only)"
+                placeholder={type === 'events' ? "Location" : "Location (events only)"}
                 disabled={type !== 'events'}
                 className="home-search-input"
               />
@@ -216,7 +301,7 @@ export default function Home() {
               )}
             </div>
             <div className="divider" />
-            <div className="field">
+            <div className="field field-select">
               <select value={type} onChange={e => setType(e.target.value)} className="home-search-select">
                 <option value="events">Events</option>
                 <option value="groups">Groups</option>
@@ -230,11 +315,11 @@ export default function Home() {
       <section className="home-section">
         <div className="home-section-inner reveal-up" style={{animationDelay:'.12s'}}>
           <div className="home-section-head">
-            <h2 className="home-title">New events in <span className="accent">NYC</span></h2>
-            <Link to="/events?location=New York" className="btn-ghost-pink pill">View more</Link>
+            <h2 className="home-title">New events in <span className="accent">{detectingCity ? "your city" : userCity}</span></h2>
+            <Link to={`/events?location=${encodeURIComponent(userCity)}`} className="btn-ghost-pink pill">View more</Link>
           </div>
 
-          {loadingEvents ? (
+          {loadingEvents || detectingCity ? (
             <div className="home-card-grid">
               {[...Array(3)].map((_, i) => (
                 <article key={i} className="event-card premium-loading">
@@ -247,9 +332,9 @@ export default function Home() {
                 </article>
               ))}
             </div>
-          ) : nycEvents.length > 0 ? (
+          ) : localEvents.length > 0 ? (
             <div className="home-card-grid">
-              {nycEvents.map((event) => (
+              {localEvents.map((event) => (
                 <Link key={event.id} to={`/events`} className="event-card premium-hover">
                   <img 
                     src={getEventImage(event)} 
@@ -271,7 +356,7 @@ export default function Home() {
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500">
-              <p>No upcoming events in NYC at the moment.</p>
+              <p>No upcoming events in {userCity} at the moment.</p>
               <Link to="/events/create" className="text-pink-500 hover:text-pink-600 mt-2 inline-block">
                 Create the first one!
               </Link>

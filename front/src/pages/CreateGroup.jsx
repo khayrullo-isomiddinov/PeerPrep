@@ -318,8 +318,9 @@ export default function CreateGroup() {
 
   return (
     <div className="min-h-screen bg-gray-50 group-creation-form">
-      <div className="flex">
-        <div className="w-80 bg-white border-r border-gray-200 p-6 step-sidebar">
+      <div className="nav-spacer" />
+      <div className="flex flex-col lg:flex-row">
+        <div className="w-full lg:w-80 bg-white border-r-0 lg:border-r border-b lg:border-b-0 border-gray-200 p-4 lg:p-6 step-sidebar">
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Study Group</h1>
             <div className="text-sm text-gray-500 mb-1">
@@ -388,9 +389,9 @@ export default function CreateGroup() {
           </div>
         </div>
 
-        <div className="flex-1 p-8">
+        <div className="flex-1 p-4 lg:p-8">
           <div className="max-w-4xl mx-auto">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6 step-content">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 lg:p-8 mb-6 step-content">
               {currentStep === 0 && (
                 <CoverImageStep
                   formData={formData}
@@ -419,18 +420,18 @@ export default function CreateGroup() {
               )}
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
               <button
                 onClick={cancel}
-                className="text-gray-500 hover:text-gray-700 font-medium"
+                className="text-gray-500 hover:text-gray-700 font-medium text-center sm:text-left"
               >
                 ✕ Cancel
               </button>
 
-              <div className="flex items-center space-x-4">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:space-x-4">
                 <button
                   onClick={saveDraft}
-                  className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                  className="w-full sm:w-auto px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
                 >
                   Save draft
                 </button>
@@ -439,7 +440,7 @@ export default function CreateGroup() {
                   <button
                     onClick={nextStep}
                     disabled={!canProceedToNext()}
-                    className="px-6 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                    className="w-full sm:w-auto px-6 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                   >
                     <span>Next</span>
                     <FontAwesomeIcon icon={faChevronRight} className="w-4 h-4" />
@@ -448,7 +449,7 @@ export default function CreateGroup() {
                   <button
                     onClick={handleSubmit}
                     disabled={loading || !canCreateGroup()}
-                    className="px-6 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                    className="w-full sm:w-auto px-6 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                   >
                     <span>{loading ? "Creating..." : "Create Study Group"}</span>
                     <FontAwesomeIcon icon={faChevronRight} className="w-4 h-4" />

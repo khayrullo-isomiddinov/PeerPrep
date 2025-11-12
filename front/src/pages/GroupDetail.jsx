@@ -145,8 +145,8 @@ export default function GroupDetail() {
                 <FontAwesomeIcon icon={faArrowLeft} />
                 <span>Back to Groups</span>
               </Link>
-              <h1 className="text-4xl md:text-5xl font-extrabold text-white mb-2">{group.name}</h1>
-              <div className="flex flex-wrap items-center gap-4 text-white/90 text-sm">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold text-white mb-2">{group.name}</h1>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-white/90 text-xs sm:text-sm">
                 <div className="flex items-center gap-2">
                   <FontAwesomeIcon icon={faGraduationCap} />
                   <span>{group.field}</span>
@@ -180,37 +180,75 @@ export default function GroupDetail() {
         </div>
       </section>
 
-      <main className="home-section">
+      <main className="home-section bg-gray-50">
         <div className="home-section-inner">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Quick Actions Bar */}
+          <div className="mb-6 premium-fade-in">
+            {!canDelete && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6">
+                {isAuthenticated ? (
+                  <button
+                    onClick={handleJoinLeave}
+                    disabled={isLoading}
+                    className={`w-full sm:w-auto sm:min-w-[200px] flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl font-semibold transition-all ${
+                      joined
+                        ? "bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300"
+                        : "bg-gradient-to-r from-pink-500 to-pink-600 text-white hover:from-pink-600 hover:to-pink-700 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+                    } disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none`}
+                  >
+                    <FontAwesomeIcon icon={joined ? faUser : faUsers} className="text-lg" />
+                    <span>{isLoading ? (joined ? "Leaving..." : "Joining...") : (joined ? "Leave Group" : "Join Group")}</span>
+                  </button>
+                ) : (
+                  <Link
+                    to="/login"
+                    className="w-full sm:w-auto sm:min-w-[200px] flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl font-semibold bg-gradient-to-r from-pink-500 to-pink-600 text-white hover:from-pink-600 hover:to-pink-700 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all"
+                  >
+                    <FontAwesomeIcon icon={faUsers} className="text-lg" />
+                    <span>Join Group</span>
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+            {/* Main Content */}
             <div className="lg:col-span-2 space-y-6">
+              {/* About Section */}
               {group.description && (
-                <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 premium-fade-in">
-                  <h2 className="text-xl font-bold text-gray-900 mb-3">About</h2>
-                  <p className="text-gray-700 leading-relaxed">{group.description}</p>
+                <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 lg:p-8 premium-fade-in">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+                      <FontAwesomeIcon icon={faBook} className="text-white text-lg" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-900">About This Group</h2>
+                  </div>
+                  <p className="text-gray-700 leading-relaxed text-base">{group.description}</p>
                 </section>
               )}
 
+              {/* Mission Section */}
               {group.mission_title && (
-                <section className="bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-200 rounded-2xl p-6 premium-fade-in">
+                <section className="bg-gradient-to-br from-yellow-50 via-orange-50 to-pink-50 border-2 border-yellow-200 rounded-2xl p-6 lg:p-8 premium-fade-in shadow-md">
                   <div className="flex items-start gap-4">
-                    <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-xl flex-shrink-0">
-                      <FontAwesomeIcon icon={faTrophy} className="text-white text-xl" />
+                    <div className="flex items-center justify-center w-14 h-14 bg-gradient-to-br from-yellow-400 via-orange-500 to-pink-500 rounded-xl flex-shrink-0 shadow-lg">
+                      <FontAwesomeIcon icon={faTrophy} className="text-white text-2xl" />
                     </div>
                     <div className="flex-1">
-                      <h2 className="text-xl font-bold text-orange-900 mb-2">{group.mission_title}</h2>
+                      <h2 className="text-2xl font-bold text-orange-900 mb-3">{group.mission_title}</h2>
                       {group.mission_description && (
-                        <p className="text-orange-700 mb-3">{group.mission_description}</p>
+                        <p className="text-orange-800 leading-relaxed mb-4">{group.mission_description}</p>
                       )}
-                      <div className="flex flex-wrap items-center gap-4 text-orange-600 text-sm">
+                      <div className="flex flex-wrap items-center gap-4 text-orange-700 text-sm font-medium">
                         {group.mission_capacity != null && (
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/60 rounded-lg">
                             <FontAwesomeIcon icon={faUsers} />
                             <span>{group.mission_capacity} max participants</span>
                           </div>
                         )}
                         {group.mission_badge_name && (
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/60 rounded-lg">
                             <FontAwesomeIcon icon={faStar} />
                             <span>Badge: {group.mission_badge_name}</span>
                           </div>
@@ -221,70 +259,97 @@ export default function GroupDetail() {
                 </section>
               )}
 
-              <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 premium-fade-in">
+              {/* Members Section */}
+              <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 lg:p-8 premium-fade-in">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center">
+                    <FontAwesomeIcon icon={faUsers} className="text-white text-lg" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-900">Members</h2>
+                </div>
                 <GroupMembersList groupId={group.id} />
               </section>
 
-              <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 premium-fade-in">
+              {/* Leaderboard Section */}
+              <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 lg:p-8 premium-fade-in">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-xl flex items-center justify-center">
+                    <FontAwesomeIcon icon={faTrophy} className="text-white text-lg" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-900">Leaderboard</h2>
+                </div>
                 <GroupLeaderboard groupId={group.id} />
               </section>
 
+              {/* Mission Submissions Section */}
               {isAuthenticated && (joined || canDelete) && (
-                <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 premium-fade-in">
+                <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 lg:p-8 premium-fade-in">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center">
+                      <FontAwesomeIcon icon={faStar} className="text-white text-lg" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-900">Mission Submissions</h2>
+                  </div>
                   <MissionSubmissionsList groupId={group.id} isLeader={isLeader || canDelete} />
                 </section>
               )}
             </div>
 
+            {/* Sidebar */}
             <div className="space-y-6">
-              {!canDelete && (
-                <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 premium-fade-in">
-                  {isAuthenticated ? (
-                    <button
-                      onClick={handleJoinLeave}
-                      disabled={isLoading}
-                      className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all ${
-                        joined
-                          ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                          : "bg-pink-500 text-white hover:bg-pink-600 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
-                      } disabled:opacity-50 disabled:cursor-not-allowed`}
-                    >
-                      <FontAwesomeIcon icon={joined ? faUser : faUsers} />
-                      <span>{isLoading ? (joined ? "Leaving..." : "Joining...") : (joined ? "Leave Group" : "Join Group")}</span>
-                    </button>
-                  ) : (
-                    <Link
-                      to="/login"
-                      className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold bg-pink-500 text-white hover:bg-pink-600 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all"
-                    >
-                      <FontAwesomeIcon icon={faUsers} />
-                      <span>Join Group</span>
-                    </Link>
-                  )}
-                </section>
-              )}
+              {/* Group Stats Card */}
+              <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 premium-fade-in sticky top-24">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                    <FontAwesomeIcon icon={faGraduationCap} className="text-white text-lg" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900">Group Info</h3>
+                </div>
+                <div className="space-y-5">
+                  <div className="pb-4 border-b border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-600 flex items-center gap-2">
+                        <FontAwesomeIcon icon={faUsers} className="text-blue-500" />
+                        Members
+                      </span>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-2xl font-bold text-gray-900">{group.members || 0}</span>
+                      <span className="text-sm text-gray-500">/ {group.capacity || 10}</span>
+                    </div>
+                    <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-gradient-to-r from-blue-500 to-cyan-600 h-2 rounded-full transition-all"
+                        style={{ width: `${Math.min(((group.members || 0) / (group.capacity || 10)) * 100, 100)}%` }}
+                      />
+                    </div>
+                  </div>
 
-              <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 premium-fade-in">
-                <h3 className="text-lg font-bold text-gray-900 mb-4">Group Stats</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Members</span>
-                    <span className="font-semibold text-gray-900">{group.members || 0} / {group.capacity || 10}</span>
+                  <div className="pb-4 border-b border-gray-200">
+                    <div className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-2">
+                      <FontAwesomeIcon icon={faGraduationCap} className="text-purple-500" />
+                      Field of Study
+                    </div>
+                    <span className="text-base font-semibold text-gray-900">{group.field}</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Field</span>
-                    <span className="font-semibold text-gray-900">{group.field}</span>
-                  </div>
+
                   {group.exam && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Exam</span>
-                      <span className="font-semibold text-gray-900">{group.exam}</span>
+                    <div className="pb-4 border-b border-gray-200">
+                      <div className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-2">
+                        <FontAwesomeIcon icon={faBook} className="text-green-500" />
+                        Exam/Certification
+                      </div>
+                      <span className="text-base font-semibold text-gray-900">{group.exam}</span>
                     </div>
                   )}
+
                   {group.deadline && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Deadline</span>
-                      <span className="font-semibold text-gray-900">{formatDate(group.deadline)}</span>
+                    <div>
+                      <div className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-2">
+                        <FontAwesomeIcon icon={faCalendar} className="text-orange-500" />
+                        Deadline
+                      </div>
+                      <span className="text-base font-semibold text-gray-900">{formatDate(group.deadline)}</span>
                     </div>
                   )}
                 </div>

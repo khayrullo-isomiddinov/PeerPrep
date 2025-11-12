@@ -5,6 +5,7 @@ import { useAuth } from "../features/auth/AuthContext"
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [createMenuOpen, setCreateMenuOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const { isAuthenticated, user, logout, isLoading } = useAuth()
   const loc = useLocation()
   const navigate = useNavigate()
@@ -13,6 +14,7 @@ export default function Navbar() {
   useEffect(() => {
     setMenuOpen(false)
     setCreateMenuOpen(false)
+    setMobileMenuOpen(false)
   }, [loc.pathname])
 
   useEffect(() => {
@@ -20,13 +22,20 @@ export default function Navbar() {
       if (createMenuRef.current && !createMenuRef.current.contains(event.target)) {
         setCreateMenuOpen(false)
       }
+      // Close mobile menu when clicking outside
+      const mobileMenu = document.querySelector('.lg\\:hidden.fixed')
+      if (mobileMenuOpen && mobileMenu && !mobileMenu.contains(event.target) && !event.target.closest('button[aria-label="Menu"]')) {
+        setMobileMenuOpen(false)
+      }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside)
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
     }
-  }, [])
+  }, [mobileMenuOpen])
 
   function handleLogout() {
     logout()
@@ -65,7 +74,7 @@ export default function Navbar() {
               )}
             </div>
 
-            <div style={{ gridColumn: '2', justifySelf: 'center' }}>
+            <div style={{ gridColumn: '2', justifySelf: 'center' }} className="hidden lg:block">
               {isAuthenticated && (
                 <ul className="nav-tabs">
                   <li><NavLink to="/" end className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}>Explore</NavLink></li>
@@ -74,6 +83,24 @@ export default function Navbar() {
                 </ul>
               )}
             </div>
+            
+            {/* Mobile menu button */}
+            {isAuthenticated && (
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="lg:hidden nav-bell hover:bg-pink-50 hover:border-pink-200 transition-colors"
+                style={{ gridColumn: '2', justifySelf: 'center' }}
+                aria-label="Menu"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" className="text-pink-600">
+                  {mobileMenuOpen ? (
+                    <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                  ) : (
+                    <path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+                  )}
+                </svg>
+              </button>
+            )}
 
             <div className="nav-right gap-2" style={{ gridColumn: '3', justifySelf: 'end' }}>
               {isLoading ? (
@@ -195,6 +222,44 @@ export default function Navbar() {
           </div>
         </div>
       </nav>
+
+      {/* Mobile menu */}
+      {isAuthenticated && mobileMenuOpen && (
+        <div className="lg:hidden fixed left-0 right-0 bg-white border-b border-gray-200 shadow-lg z-50" style={{ top: 'calc(64px + env(safe-area-inset-top))' }}>
+          <div className="container-page py-4">
+            <ul className="space-y-2">
+              <li>
+                <NavLink 
+                  to="/" 
+                  end 
+                  className={({isActive}) => `block px-4 py-3 rounded-lg font-medium transition-colors ${isActive ? 'bg-pink-50 text-pink-600' : 'text-gray-700 hover:bg-gray-50'}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Explore
+                </NavLink>
+              </li>
+              <li>
+                <NavLink 
+                  to="/groups" 
+                  className={({isActive}) => `block px-4 py-3 rounded-lg font-medium transition-colors ${isActive ? 'bg-pink-50 text-pink-600' : 'text-gray-700 hover:bg-gray-50'}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Groups
+                </NavLink>
+              </li>
+              <li>
+                <NavLink 
+                  to="/events" 
+                  className={({isActive}) => `block px-4 py-3 rounded-lg font-medium transition-colors ${isActive ? 'bg-pink-50 text-pink-600' : 'text-gray-700 hover:bg-gray-50'}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Upcoming Events
+                </NavLink>
+              </li>
+            </ul>
+          </div>
+        </div>
+      )}
 
       <div className="nav-spacer" />
     </>

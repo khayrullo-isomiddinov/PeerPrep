@@ -53,38 +53,26 @@ export default function GroupMembersList({ groupId }) {
 
   if (loading) {
     return (
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <div className="text-center py-8">
-          <div className="mx-auto mb-4 rounded-full h-12 w-12 border-2 border-pink-200 border-t-pink-500 animate-spin" />
-          <p className="text-gray-600">Loading members...</p>
-        </div>
+      <div className="text-center py-12">
+        <div className="mx-auto mb-4 rounded-full h-12 w-12 border-2 border-pink-200 border-t-pink-500 animate-spin" />
+        <p className="text-gray-600">Loading members...</p>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <h5 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-          <FontAwesomeIcon icon={faUsers} className="text-blue-500" />
-          Members
-        </h5>
-        <p className="text-sm text-gray-500">{error}</p>
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <p className="text-sm text-red-700">{error}</p>
       </div>
     )
   }
 
   if (members.length === 0) {
     return (
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <h5 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-          <FontAwesomeIcon icon={faUsers} className="text-blue-500" />
-          Members
-        </h5>
-        <div className="bg-gray-50 rounded-lg p-6 text-center">
-          <FontAwesomeIcon icon={faUsers} className="text-gray-300 text-3xl mb-2" />
-          <p className="text-sm text-gray-500">No members yet.</p>
-        </div>
+      <div className="bg-gray-50 rounded-xl p-8 text-center border border-gray-200">
+        <FontAwesomeIcon icon={faUsers} className="text-gray-300 text-4xl mb-3" />
+        <p className="text-sm text-gray-500 font-medium">No members yet.</p>
       </div>
     )
   }
@@ -93,29 +81,28 @@ export default function GroupMembersList({ groupId }) {
   const regularMembers = members.filter(m => !m.is_leader)
 
   return (
-    <div className="mt-4 pt-4 border-t border-gray-200">
-      <h5 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-        <FontAwesomeIcon icon={faUsers} className="text-blue-500" />
-        Members ({members.length})
-      </h5>
+    <div>
       
-      <div className="space-y-4">
+      <div className="space-y-5">
         {leaders.length > 0 && (
           <div>
-            <h6 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Leaders</h6>
-            <div className="space-y-2">
+            <h6 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+              <FontAwesomeIcon icon={faCrown} className="text-yellow-500" />
+              Leaders ({leaders.length})
+            </h6>
+            <div className="space-y-3">
               {leaders.map(member => {
                 const isCurrentUser = user && member.user_id === user.id
                 return (
                   <div
                     key={member.id}
-                    className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all ${
+                    className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all hover:shadow-md ${
                       isCurrentUser 
-                        ? "bg-pink-50 border-pink-200 ring-2 ring-pink-500 ring-offset-2" 
-                        : "bg-yellow-50 border-yellow-200"
+                        ? "bg-gradient-to-r from-pink-50 to-pink-100 border-pink-300 ring-2 ring-pink-400 ring-offset-1" 
+                        : "bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-300"
                     }`}
                   >
-                    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-yellow-100 text-yellow-600">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 text-white shadow-md">
                       <FontAwesomeIcon icon={faCrown} className="text-lg" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -143,23 +130,26 @@ export default function GroupMembersList({ groupId }) {
 
         {regularMembers.length > 0 && (
           <div>
-            <h6 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+            <h6 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+              <FontAwesomeIcon icon={faUsers} className="text-blue-500" />
               Members {leaders.length > 0 && `(${regularMembers.length})`}
             </h6>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {regularMembers.map(member => {
                 const isCurrentUser = user && member.user_id === user.id
                 return (
                   <div
                     key={member.id}
-                    className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                    className={`flex items-center gap-4 p-4 rounded-xl border transition-all hover:shadow-md ${
                       isCurrentUser 
-                        ? "bg-pink-50 border-pink-200 ring-2 ring-pink-500 ring-offset-2" 
-                        : "bg-white border-gray-200"
+                        ? "bg-gradient-to-r from-pink-50 to-pink-100 border-pink-300 ring-2 ring-pink-400 ring-offset-1" 
+                        : "bg-white border-gray-200 hover:border-gray-300"
                     }`}
                   >
-                    <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                      isCurrentUser ? "bg-pink-100 text-pink-600" : "bg-gray-100 text-gray-600"
+                    <div className={`flex items-center justify-center w-12 h-12 rounded-full shadow-sm ${
+                      isCurrentUser 
+                        ? "bg-gradient-to-br from-pink-400 to-pink-600 text-white" 
+                        : "bg-gradient-to-br from-gray-100 to-gray-200 text-gray-600"
                     }`}>
                       <FontAwesomeIcon icon={faUser} className="text-lg" />
                     </div>
