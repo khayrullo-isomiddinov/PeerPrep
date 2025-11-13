@@ -141,6 +141,65 @@ export default function MissionSubmissionsList({ groupId, isLeader = false }) {
                       <span className="font-medium text-gray-800">User ID: {submission.user_id}</span>
                       <span className="text-xs text-gray-500">• {formatDate(submission.submitted_at)}</span>
                     </div>
+                    
+                    {/* Quality Analysis Results */}
+                    {submission.quality_scores && (
+                      <div className="mb-3 p-3 bg-white rounded-lg border border-gray-200">
+                        <div className="flex items-center gap-2 mb-2">
+                          <FontAwesomeIcon icon={faStar} className="text-purple-500" />
+                          <span className="text-sm font-semibold text-gray-900">AI Quality Analysis</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Overall Score</div>
+                            <div className="text-lg font-bold text-purple-600">
+                              {submission.quality_scores.overall_score?.toFixed(1) || submission.score || 0}/100
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Completeness</div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 bg-gray-200 rounded-full h-2">
+                                <div
+                                  className="bg-green-500 h-2 rounded-full"
+                                  style={{ width: `${(submission.quality_scores.completeness || 0) * 100}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-gray-600">
+                                {((submission.quality_scores.completeness || 0) * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-xs">
+                          <div>
+                            <div className="text-gray-600">Detail</div>
+                            <div className="font-medium text-gray-900">
+                              {((submission.quality_scores.detail_level || 0) * 100).toFixed(0)}%
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-gray-600">Relevance</div>
+                            <div className="font-medium text-gray-900">
+                              {((submission.quality_scores.relevance || 0) * 100).toFixed(0)}%
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-gray-600">Effort</div>
+                            <div className="font-medium text-gray-900">
+                              {((submission.quality_scores.effort_indicators || 0) * 100).toFixed(0)}%
+                            </div>
+                          </div>
+                        </div>
+                        {submission.auto_feedback && (
+                          <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+                            <div className="text-xs font-medium text-blue-900 mb-1">AI Feedback:</div>
+                            <div className="text-xs text-blue-700">{submission.auto_feedback}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
                     <a
                       href={submission.submission_url}
                       target="_blank"
@@ -252,6 +311,35 @@ export default function MissionSubmissionsList({ groupId, isLeader = false }) {
                       )}
                       <span className="text-xs text-gray-500 ml-auto">• {formatDate(submission.submitted_at)}</span>
                     </div>
+                    
+                    {/* Quality Analysis for My Submissions */}
+                    {submission.quality_scores && (
+                      <div className="mb-2 p-2 bg-white rounded border border-gray-200">
+                        <div className="flex items-center gap-2 mb-1">
+                          <FontAwesomeIcon icon={faStar} className="text-purple-500 text-xs" />
+                          <span className="text-xs font-semibold text-gray-900">Quality Score: {submission.quality_scores.overall_score?.toFixed(1) || submission.score || 0}/100</span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1 text-xs">
+                          <div>
+                            <div className="text-gray-500">Complete</div>
+                            <div className="font-medium">{((submission.quality_scores.completeness || 0) * 100).toFixed(0)}%</div>
+                          </div>
+                          <div>
+                            <div className="text-gray-500">Detail</div>
+                            <div className="font-medium">{((submission.quality_scores.detail_level || 0) * 100).toFixed(0)}%</div>
+                          </div>
+                          <div>
+                            <div className="text-gray-500">Relevant</div>
+                            <div className="font-medium">{((submission.quality_scores.relevance || 0) * 100).toFixed(0)}%</div>
+                          </div>
+                          <div>
+                            <div className="text-gray-500">Effort</div>
+                            <div className="font-medium">{((submission.quality_scores.effort_indicators || 0) * 100).toFixed(0)}%</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
                     <a
                       href={submission.submission_url}
                       target="_blank"

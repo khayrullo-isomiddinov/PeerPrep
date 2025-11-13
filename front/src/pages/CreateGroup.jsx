@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
@@ -61,7 +61,7 @@ export default function CreateGroup() {
     const errs = {}
     switch (step) {
       case 0:
-        if (!formData.coverImage) errs.coverImage = "Cover image is required"
+        // Cover image is optional
         break
       case 1:
         if (!formData.name.trim()) errs.name = "Group name is required"
@@ -70,7 +70,6 @@ export default function CreateGroup() {
       case 2:
         if (!formData.name.trim()) errs.name = "Group name is required"
         if (!formData.field.trim()) errs.field = "Field of study is required"
-        if (!formData.coverImage) errs.coverImage = "Cover image is required"
         break
     }
     return errs
@@ -82,7 +81,7 @@ export default function CreateGroup() {
   }
 
   function canCreateGroup() {
-    return formData.name.trim() && formData.field.trim() && formData.coverImage
+    return formData.name.trim() && formData.field.trim()
   }
 
   function nextStep() {
@@ -226,7 +225,6 @@ export default function CreateGroup() {
     const errs = {}
     if (!formData.name.trim()) errs.name = "Group name is required"
     if (!formData.field.trim()) errs.field = "Field of study is required"
-    if (!formData.coverImage) errs.coverImage = "Cover image is required"
 
     setFieldErrors(errs)
     if (Object.keys(errs).length > 0) return
@@ -242,58 +240,59 @@ export default function CreateGroup() {
 
     setLoading(true)
     try {
-      const reader = new FileReader()
-      reader.onload = async () => {
+      const tokenBeforeApi = localStorage.getItem("access_token")
+      if (!tokenBeforeApi) {
+        setError("Your session has expired. Please log in again.")
+        setTimeout(() => {
+          navigate("/login", { replace: true })
+        }, 2000)
+        setLoading(false)
+        return
+      }
+
+      const capacity = typeof formData.capacity === 'number' && formData.capacity >= 2 && formData.capacity <= 50
+        ? formData.capacity
+        : 4
+
+      let coverImageUrl = null
+      if (formData.coverImage) {
         try {
-          const tokenBeforeApi = localStorage.getItem("access_token")
-          if (!tokenBeforeApi) {
-            setError("Your session has expired. Please log in again.")
-            setTimeout(() => {
-              navigate("/login", { replace: true })
-            }, 2000)
-            setLoading(false)
-            return
-          }
-
-          const capacity = typeof formData.capacity === 'number' && formData.capacity >= 2 && formData.capacity <= 50
-            ? formData.capacity
-            : 4
-
-          const payload = {
-            name: formData.name.trim(),
-            field: formData.field.trim(),
-            exam: formData.exam.trim() || null,
-            description: formData.description.trim() || null,
-            deadline: formData.deadline ? new Date(formData.deadline).toISOString() : null,
-            capacity: capacity,
-            cover_image_url: reader.result
-          }
-
-          const newGroup = await createGroup(payload)
-          navigate("/groups", { 
-            replace: true,
-            state: { newGroup }
+          coverImageUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result)
+            reader.onerror = () => reject(new Error("Failed to read cover image"))
+            reader.readAsDataURL(formData.coverImage)
           })
         } catch (e) {
-          setLoading(false)
-          if (e?.response?.status === 401) {
-            setError("Your session has expired. Please log in again.")
-            setTimeout(() => {
-              navigate("/login", { replace: true })
-            }, 2000)
-          } else {
-            setError(e?.response?.data?.detail || "Failed to create group")
-          }
+          console.warn("Failed to read cover image, continuing without it:", e)
         }
       }
-      reader.onerror = () => {
-        setLoading(false)
-        setError("Failed to read cover image. Please try again.")
+
+      const payload = {
+        name: formData.name.trim(),
+        field: formData.field.trim(),
+        exam: formData.exam.trim() || null,
+        description: formData.description.trim() || null,
+        deadline: formData.deadline ? new Date(formData.deadline).toISOString() : null,
+        capacity: capacity,
+        cover_image_url: coverImageUrl
       }
-      reader.readAsDataURL(formData.coverImage)
+
+      const newGroup = await createGroup(payload)
+      navigate("/groups", { 
+        replace: true,
+        state: { newGroup }
+      })
     } catch (e) {
       setLoading(false)
-      setError(e?.response?.data?.detail || "Failed to create group")
+      if (e?.response?.status === 401) {
+        setError("Your session has expired. Please log in again.")
+        setTimeout(() => {
+          navigate("/login", { replace: true })
+        }, 2000)
+      } else {
+        setError(e?.response?.data?.detail || "Failed to create group")
+      }
     }
   }
 
@@ -431,7 +430,7 @@ export default function CreateGroup() {
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:space-x-4">
                 <button
                   onClick={saveDraft}
-                  className="w-full sm:w-auto px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                  className="touch-target w-full sm:w-auto px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 active:bg-gray-300 transition-colors font-medium"
                 >
                   Save draft
                 </button>
@@ -440,7 +439,7 @@ export default function CreateGroup() {
                   <button
                     onClick={nextStep}
                     disabled={!canProceedToNext()}
-                    className="w-full sm:w-auto px-6 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                    className="touch-target w-full sm:w-auto px-6 py-3 bg-pink-500 text-white rounded-lg hover:bg-pink-600 active:bg-pink-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                   >
                     <span>Next</span>
                     <FontAwesomeIcon icon={faChevronRight} className="w-4 h-4" />
@@ -449,7 +448,7 @@ export default function CreateGroup() {
                   <button
                     onClick={handleSubmit}
                     disabled={loading || !canCreateGroup()}
-                    className="w-full sm:w-auto px-6 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                    className="touch-target w-full sm:w-auto px-6 py-3 bg-pink-500 text-white rounded-lg hover:bg-pink-600 active:bg-pink-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                   >
                     <span>{loading ? "Creating..." : "Create Study Group"}</span>
                     <FontAwesomeIcon icon={faChevronRight} className="w-4 h-4" />
@@ -470,6 +469,7 @@ function CoverImageStep({ formData, updateFormData, fieldErrors }) {
   const [aiPrompt, setAiPrompt] = useState("")
   const [generating, setGenerating] = useState(false)
   const [generateError, setGenerateError] = useState("")
+  const fileInputRef = useRef(null)
 
   const handleDrag = (e) => {
     e.preventDefault()
@@ -531,8 +531,8 @@ function CoverImageStep({ formData, updateFormData, fieldErrors }) {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Upload Group Cover *</h2>
-        <p className="text-gray-600">Upload a cover image or generate one with AI to represent your study group (required)</p>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Upload Group Cover</h2>
+        <p className="text-gray-600">Upload a cover image or generate one with AI to represent your study group (optional)</p>
       </div>
 
       <div className="flex items-center justify-center space-x-4 mb-6">
@@ -540,6 +540,12 @@ function CoverImageStep({ formData, updateFormData, fieldErrors }) {
           onClick={() => {
             setMode("upload")
             setGenerateError("")
+            // Trigger file input if no image is selected
+            if (!formData.coverImage && fileInputRef.current) {
+              setTimeout(() => {
+                fileInputRef.current?.click()
+              }, 100)
+            }
           }}
           className={`px-4 py-2 rounded-lg font-medium transition-colors ${
             mode === "upload"
@@ -597,6 +603,7 @@ function CoverImageStep({ formData, updateFormData, fieldErrors }) {
               <FontAwesomeIcon icon={faImage} className="w-4 h-4 mr-2" />
               Choose File
               <input
+                ref={fileInputRef}
                 type="file"
                 accept="image/*"
                 onChange={handleFileInput}
@@ -783,16 +790,16 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, fieldOptions, 
             />
           </div>
 
-          <div>
+          <div className="md:col-span-2">
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-semibold text-gray-700">
-                Description
+                Mission Description (Optional)
               </label>
               <button
                 onClick={onRefineDescription}
                 disabled={refiningDescription || !formData.description.trim()}
                 className="flex items-center space-x-1 px-2 py-1 text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded hover:from-purple-600 hover:to-pink-600 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Refine and polish your description with AI"
+                title="Refine and polish your mission description with AI"
               >
                 {refiningDescription ? (
                   <>
@@ -810,10 +817,17 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, fieldOptions, 
             <textarea
               value={formData.description}
               onChange={(e) => updateFormData({ description: e.target.value })}
-              placeholder="Describe your study group's focus, goals, and what participants can expect"
-              rows={4}
+              placeholder="Describe the mission or challenge for this group. What should members accomplish? What are the requirements and success criteria?"
+              rows={5}
+              maxLength={1000}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
             />
+            <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
+              <span>Define the mission that group members should complete</span>
+              <span className={formData.description.length > 800 ? "text-orange-500" : ""}>
+                {formData.description.length}/1000
+              </span>
+            </div>
           </div>
 
           <div>
@@ -887,9 +901,9 @@ function ReviewCreateStep({ formData, updateFormData, error }) {
         </div>
       )}
 
-      <div className="bg-gray-50 rounded-xl p-6 mb-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Cover Image *</h3>
-        {formData.coverImage ? (
+      {formData.coverImage && (
+        <div className="bg-gray-50 rounded-xl p-6 mb-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Cover Image</h3>
           <div className="max-w-md mx-auto">
             <img
               src={URL.createObjectURL(formData.coverImage)}
@@ -897,10 +911,8 @@ function ReviewCreateStep({ formData, updateFormData, error }) {
               className="w-full h-48 object-cover rounded-lg border-2 border-gray-200"
             />
           </div>
-        ) : (
-          <p className="text-red-500 text-sm">Cover image is required</p>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="bg-gray-50 rounded-xl p-6 space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -920,8 +932,8 @@ function ReviewCreateStep({ formData, updateFormData, error }) {
                 <p className="text-gray-900">{formData.exam || "Not specified"}</p>
               </div>
               <div>
-                <span className="text-sm font-medium text-gray-500">Description:</span>
-                <p className="text-gray-900">{formData.description || "No description provided"}</p>
+                <span className="text-sm font-medium text-gray-500">Mission Description:</span>
+                <p className="text-gray-900">{formData.description || "No mission description provided"}</p>
               </div>
             </div>
           </div>

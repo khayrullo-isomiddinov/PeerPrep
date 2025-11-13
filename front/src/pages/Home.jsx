@@ -1,9 +1,11 @@
 import { Link, useNavigate } from "react-router-dom"
 import { useEffect, useRef, useState, useMemo } from "react"
 import { searchLocations, autocompleteEvents, autocompleteGroups, listEvents } from "../utils/api"
+import { useAuth } from "../features/auth/AuthContext"
 
 export default function Home() {
   const navigate = useNavigate()
+  const { isAuthenticated } = useAuth()
   const [type, setType] = useState("events") 
   const [query, setQuery] = useState("")
   const [location, setLocation] = useState("")
@@ -153,6 +155,7 @@ export default function Home() {
     loadEvents()
   }, [])
 
+
   const localEvents = useMemo(() => {
     const now = new Date()
     if (!userCity || userCity === "NYC") {
@@ -198,25 +201,11 @@ export default function Home() {
       .slice(0, 2)
   }, [allEvents])
 
-  const highlightsThisWeek = useMemo(() => {
-    const now = new Date()
-    const nextWeek = new Date(now)
-    nextWeek.setDate(nextWeek.getDate() + 7)
-    return allEvents
-      .filter(e => {
-        const eventDate = new Date(e.starts_at)
-        return eventDate > now && eventDate <= nextWeek
-      })
-      .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))
-      .slice(0, 1)[0] || null
-  }, [allEvents])
-
   const moreEvents = useMemo(() => {
     const now = new Date()
     const shownIds = new Set([
       ...localEvents.map(e => e.id),
-      ...upcoming24h.map(e => e.id),
-      ...(highlightsThisWeek ? [highlightsThisWeek.id] : [])
+      ...upcoming24h.map(e => e.id)
     ])
     return allEvents
       .filter(e => {
@@ -225,7 +214,7 @@ export default function Home() {
       })
       .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))
       .slice(0, 3)
-  }, [allEvents, localEvents, upcoming24h, highlightsThisWeek])
+  }, [allEvents, localEvents, upcoming24h])
 
   function formatEventDate(dateString) {
     const date = new Date(dateString)
@@ -235,8 +224,21 @@ export default function Home() {
   }
 
   function getEventImage(event) {
+    // Use actual cover image if available, otherwise use placeholder
+    if (event.cover_image_url) {
+      return event.cover_image_url
+    }
     const seed = event.title?.toLowerCase().replace(/\s+/g, '-') || 'event'
     return `https://images.unsplash.com/photo-1492684223066-81342ee5ff30?q=80&w=800&auto=format&fit=crop&seed=${seed}`
+  }
+
+  function getGroupImage(group) {
+    // Use actual cover image if available, otherwise use placeholder
+    if (group.cover_image_url) {
+      return group.cover_image_url
+    }
+    const seed = group.name?.toLowerCase().replace(/\s+/g, '-') || 'group'
+    return `https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=800&auto=format&fit=crop&seed=${seed}`
   }
 
   return (
@@ -347,7 +349,6 @@ export default function Home() {
                     <h3>{event.title}</h3>
                     <div className="row">
                       <span className="muted">{formatEventDate(event.starts_at)}</span>
-                      <span className="free">Free event</span>
                     </div>
                     <div className="row muted">{event.location}</div>
                   </div>
@@ -399,7 +400,6 @@ export default function Home() {
                     <h3>{event.title}</h3>
                     <div className="row">
                       <span className="muted">{formatEventDate(event.starts_at)}</span>
-                      <span className="free">Free event</span>
                     </div>
                     <div className="row muted">{event.location}</div>
                   </div>
@@ -409,52 +409,6 @@ export default function Home() {
           ) : (
             <div className="text-center py-8 text-gray-500">
               <p>No events happening in the next 24 hours.</p>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="home-section">
-        <div className="home-section-inner reveal-up">
-          <div className="home-section-head">
-            <h2 className="home-title">Highlights <span className="accent">this week</span></h2>
-            <Link to="/events" className="btn-ghost-pink pill">View more</Link>
-          </div>
-          {loadingEvents ? (
-            <div className="highlight-banner premium-loading" role="region" aria-label="Highlights">
-              <div className="highlight-img bg-gray-200 animate-pulse" />
-              <div className="highlight-gradient" />
-              <div className="highlight-card">
-                <div className="h-6 bg-gray-200 rounded animate-pulse mb-4" />
-                <div className="h-8 bg-gray-200 rounded animate-pulse mb-2" />
-                <div className="h-4 bg-gray-200 rounded animate-pulse mb-2" />
-                <div className="h-4 bg-gray-200 rounded animate-pulse" />
-              </div>
-            </div>
-          ) : highlightsThisWeek ? (
-            <div className="highlight-banner" role="region" aria-label="Highlights">
-              <img 
-                className="highlight-img" 
-                src={getEventImage(highlightsThisWeek)} 
-                alt={highlightsThisWeek.title}
-                loading="lazy"
-                decoding="async"
-                style={{ willChange: 'transform' }}
-              />
-              <div className="highlight-gradient" />
-              <div className="highlight-card">
-                <div className="badge">Free event</div>
-                <h3 className="highlight-title">{highlightsThisWeek.title}</h3>
-                <div className="muted text-sm">{formatEventDate(highlightsThisWeek.starts_at)}</div>
-                <div className="muted text-sm">{highlightsThisWeek.location}</div>
-                <div className="mt-3">
-                  <Link to="/events" className="btn-pink square">View Event</Link>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-16 text-gray-500">
-              <p>No highlights this week. Check back soon!</p>
             </div>
           )}
         </div>
@@ -494,7 +448,6 @@ export default function Home() {
                     <h3>{event.title}</h3>
                     <div className="row">
                       <span className="muted">{formatEventDate(event.starts_at)}</span>
-                      <span className="free">Free event</span>
                     </div>
                     <div className="row muted">{event.location}</div>
                   </div>
@@ -511,6 +464,7 @@ export default function Home() {
           )}
         </div>
       </section>
+
     </div>
   )
 }

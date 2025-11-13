@@ -8,7 +8,6 @@ import {
   faGraduationCap, faBook, faMicroscope, faCode,
   faMusic, faPalette, faDumbbell, faHeartbeat, faChevronRight, faImage, faUpload, faTimes
 } from "@fortawesome/free-solid-svg-icons"
-import Button from "../../components/Button"
 import { deleteEvent, getAttendees, joinEvent, leaveEvent, updateEvent, generateCoverImage } from "../../utils/api"
 import { useAuth } from "../auth/AuthContext"
 
@@ -250,8 +249,20 @@ export default function EventCard({ event, onChanged, onDelete }) {
     return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
 
+  const handleCardClick = (e) => {
+    if (!isAuthenticated) {
+      e.preventDefault()
+      navigate("/login")
+      return
+    }
+  }
+
   return (
-    <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden premium-hover hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 backdrop-blur-sm">
+    <Link 
+      to={isAuthenticated ? `/events/${event.id}` : "#"}
+      onClick={handleCardClick}
+      className="block bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden premium-hover hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 backdrop-blur-sm"
+    >
       {!editing ? (
         <>
           {}
@@ -314,91 +325,97 @@ export default function EventCard({ event, onChanged, onDelete }) {
               </p>
             )}
 
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-1 text-sm text-gray-500">
-                <FontAwesomeIcon icon={faUsers} className="w-4 h-4" />
-                <span>{count}/{event.capacity} participants</span>
+            <div className="flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1 text-sm text-gray-500">
+                  <FontAwesomeIcon icon={faUsers} className="w-4 h-4" />
+                  <span>{count}/{event.capacity}</span>
+                </div>
+                {joined && (
+                  <div className="flex items-center gap-1 text-green-600 text-sm">
+                    <FontAwesomeIcon icon={faCheck} className="w-3 h-3" />
+                    <span className="font-medium">Attending</span>
+                  </div>
+                )}
+                {event.kind === "group" && (
+                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                    Group Event
+                  </span>
+                )}
               </div>
-              {event.kind === "group" && (
-                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
-                  Group Event
-                </span>
-              )}
-            </div>
 
-            {}
-            <div className="mb-4">
-              <Link
-                to={`/events/${event.id}`}
-                className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium transition-colors text-sm"
-              >
-                <span>View Full Details</span>
-                <FontAwesomeIcon icon={faChevronRight} className="w-3 h-3" />
-              </Link>
-            </div>
-
-            {}
-            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {!mine && !joined && !full && (
                   isAuthenticated ? (
                     <button
-                      onClick={onJoin}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onJoin()
+                      }}
                       disabled={busyJoin}
                       className="flex items-center gap-2 px-4 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <FontAwesomeIcon icon={faUserPlus} className="w-4 h-4" />
-                      <span>{busyJoin ? "Joining..." : "Join Event"}</span>
+                      <span>{busyJoin ? "Joining..." : "Join"}</span>
                     </button>
                   ) : (
                     <button
-                      onClick={() => navigate("/login")}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        navigate("/login")
+                      }}
                       className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
                     >
                       <FontAwesomeIcon icon={faUserPlus} className="w-4 h-4" />
-                      <span>Login to Join</span>
+                      <span>Join</span>
                     </button>
                   )
                 )}
                 {!mine && joined && isAuthenticated && (
                   <button
-                    onClick={onLeave}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      onLeave()
+                    }}
                     disabled={busyLeave}
-                    className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <FontAwesomeIcon icon={faUserMinus} className="w-4 h-4" />
                     <span>{busyLeave ? "Leaving..." : "Leave"}</span>
                   </button>
                 )}
+                {mine && (
+                  <>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setEditing(true)
+                      }}
+                      className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                      title="Edit Event"
+                    >
+                      <FontAwesomeIcon icon={faEdit} className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        handleDeleteClick()
+                      }}
+                      disabled={busyDelete}
+                      className="flex items-center gap-2 px-3 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Delete Event"
+                    >
+                      <FontAwesomeIcon icon={faTrash} className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
               </div>
-
-              {mine && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setEditing(true)}
-                    className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Edit Event"
-                  >
-                    <FontAwesomeIcon icon={faEdit} className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={handleDeleteClick}
-                    disabled={busyDelete}
-                    className="flex items-center gap-2 px-3 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Delete Event"
-                  >
-                    <FontAwesomeIcon icon={faTrash} className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
             </div>
-
-            {joined && (
-              <div className="mt-4 flex items-center gap-2 text-green-600 bg-green-50 px-3 py-2 rounded-lg">
-                <FontAwesomeIcon icon={faCheck} className="w-4 h-4" />
-                <span className="text-sm font-medium">You're attending this event</span>
-              </div>
-            )}
           </div>
         </>
       ) : (
@@ -697,6 +714,6 @@ export default function EventCard({ event, onChanged, onDelete }) {
           }
         }
       `}</style>
-    </div>
+    </Link>
   )
 }

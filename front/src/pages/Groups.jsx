@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState, useCallback } from "react"
 import { Link, useSearchParams, useLocation } from "react-router-dom"
 import GroupList from "../features/groups/GroupList"
 import EditGroupForm from "../features/groups/EditGroupForm"
-import { listGroups, updateGroup } from "../utils/api"
+import { listGroups, updateGroup, getMyGroups } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { faArrowsRotate, faSearch } from "@fortawesome/free-solid-svg-icons"
+import { faArrowsRotate, faSearch, faChevronDown, faChevronUp, faUsers } from "@fortawesome/free-solid-svg-icons"
 import { getCachedGroups, setCachedGroups } from "../utils/dataCache"
 
 export default function Groups() {
@@ -18,10 +18,13 @@ export default function Groups() {
   
   const cachedGroups = getCachedGroups(currentParams)
   const [groups, setGroupsState] = useState(cachedGroups || [])
+  const [myGroups, setMyGroups] = useState([])
   const [loading, setLoading] = useState(!cachedGroups)
+  const [loadingMyGroups, setLoadingMyGroups] = useState(false)
   const [error, setError] = useState("")
   const [editingGroup, setEditingGroup] = useState(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const [showMyGroups, setShowMyGroups] = useState(false)
   const { isAuthenticated, isLoading: authLoading } = useAuth()
 
   const setGroups = useCallback((newGroups) => {
@@ -49,6 +52,23 @@ export default function Groups() {
     }
   }, [currentParams])
 
+  const loadMyGroups = useCallback(async () => {
+    if (!isAuthenticated) {
+      setMyGroups([])
+      return
+    }
+    setLoadingMyGroups(true)
+    try {
+      const data = await getMyGroups()
+      setMyGroups(data || [])
+    } catch (error) {
+      console.error("Failed to load my groups:", error)
+      setMyGroups([])
+    } finally {
+      setLoadingMyGroups(false)
+    }
+  }, [isAuthenticated])
+
   useEffect(() => {
     const cached = getCachedGroups(currentParams)
     if (location.state?.newGroup) {
@@ -62,6 +82,10 @@ export default function Groups() {
       })
       setLoading(false)
       loadGroups(false)
+      // Refresh my groups if the section is open
+      if (showMyGroups) {
+        loadMyGroups()
+      }
       window.history.replaceState({}, document.title)
     } else if (cached) {
       setGroupsState(cached)
@@ -70,6 +94,7 @@ export default function Groups() {
       loadGroups()
     }
     setSearchQuery(params.get('q') || "")
+    // Don't auto-load my groups - only load when user clicks the button
   }, [loadGroups, params, currentParams, location.state])
 
 
@@ -77,6 +102,8 @@ export default function Groups() {
     const data = await updateGroup(groupId, updatedData)
     const updatedGroups = groups.map(g => (g.id === groupId ? data : g))
     setGroups(updatedGroups)
+    // Also update my groups if it's in there
+    setMyGroups(prev => prev.map(g => (g.id === groupId ? data : g)))
     setEditingGroup(null)
     return data
   }
@@ -118,7 +145,81 @@ export default function Groups() {
       </section>
 
       <section className="container-page section">
-        <div className="space-y-8">
+        <div className="space-y-12">
+          {/* My Groups Section */}
+          {isAuthenticated && (
+            <div className="space-y-6">
+              <button
+                onClick={() => {
+                  if (!showMyGroups) {
+                    loadMyGroups()
+                  }
+                  setShowMyGroups(!showMyGroups)
+                }}
+                className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-pink-50 to-purple-50 hover:from-pink-100 hover:to-purple-100 rounded-xl border border-pink-200 transition-all duration-200 group"
+              >
+                <div className="flex items-center gap-3">
+                  <FontAwesomeIcon icon={faUsers} className="w-5 h-5 text-pink-600" />
+                  <h2 className="text-2xl font-bold text-gray-900">My Groups</h2>
+                  {myGroups.length > 0 && (
+                    <span className="px-2 py-1 bg-pink-500 text-white text-sm font-medium rounded-full">
+                      {myGroups.length}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  {showMyGroups && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        loadMyGroups()
+                        loadGroups(false)
+                      }}
+                      className="touch-target text-gray-500 hover:text-gray-700 active:text-gray-900 font-medium flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/50 active:bg-white/70 transition-colors"
+                    >
+                      <FontAwesomeIcon icon={faArrowsRotate} className="w-4 h-4" />
+                      <span className="hidden sm:inline">Refresh</span>
+                    </button>
+                  )}
+                  <FontAwesomeIcon 
+                    icon={showMyGroups ? faChevronUp : faChevronDown} 
+                    className="w-5 h-5 text-gray-600 group-hover:text-gray-900 transition-colors" 
+                  />
+                </div>
+              </button>
+
+              {showMyGroups && (
+                <>
+                  {loadingMyGroups ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {[...Array(3)].map((_, i) => (
+                        <div key={i} className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200/60 p-6 premium-loading">
+                          <div className="animate-pulse space-y-4">
+                            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                            <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                            <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : myGroups.length > 0 ? (
+                    <GroupList groups={myGroups} setGroups={setGroups} onEdit={setEditingGroup} showFilters={false} />
+                  ) : (
+                    <div className="text-center py-12 bg-gray-50 rounded-2xl border border-gray-200">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <FontAwesomeIcon icon={faUsers} className="w-8 h-8 text-gray-400" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">No groups yet</h3>
+                      <p className="text-gray-600 text-sm">Join or create groups to see them here</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* All Groups Section */}
+          <div className="space-y-6">
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 premium-scale-in">
               <div className="flex items-start gap-3">
@@ -135,18 +236,21 @@ export default function Groups() {
             </div>
           )}
 
-          <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-gray-900">Study Groups</h2>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => loadGroups()}
-                className="text-gray-500 hover:text-gray-700 font-medium flex items-center gap-2"
-              >
-                <FontAwesomeIcon icon={faArrowsRotate} className="w-4 h-4" />
-                Refresh
-              </button>
+            <div className="flex items-center justify-between">
+              <h2 className="text-3xl font-bold text-gray-900">All Groups</h2>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => {
+                    loadGroups()
+                    if (isAuthenticated) loadMyGroups()
+                  }}
+                  className="touch-target text-gray-500 hover:text-gray-700 active:text-gray-900 font-medium flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors"
+                >
+                  <FontAwesomeIcon icon={faArrowsRotate} className="w-4 h-4" />
+                  <span className="hidden sm:inline">Refresh</span>
+                </button>
+              </div>
             </div>
-          </div>
 
           {loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -191,6 +295,7 @@ export default function Groups() {
               )}
             </div>
           )}
+          </div>
         </div>
       </section>
 

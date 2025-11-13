@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, WebSocket, WebSocketDisconnect
 from sqlmodel import Session, select, func
 from typing import List, Optional, Dict
 from datetime import datetime, timezone
@@ -14,6 +14,7 @@ from app.schemas.groups import (
 )
 from app.routers.auth import _get_user_from_token
 from app.services.ai import generate_image
+from app.services.message_sync import MessageSynchronizer, MessageVersion, get_synchronizer
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/groups", tags=["groups"])
@@ -26,6 +27,9 @@ typing_status: Dict[str, Dict[int, datetime]] = defaultdict(dict)
 # Users are considered "online" if they've been active in the last 5 minutes
 user_presence: Dict[int, datetime] = {}
 PRESENCE_TIMEOUT_SECONDS = 300  # 5 minutes
+
+# WebSocket connections for group chat (group_id -> {user_id: WebSocket})
+group_connections: Dict[str, Dict[int, WebSocket]] = {}
 
 def generate_group_id(name: str) -> str:
     """Generate a unique group ID from the group name"""
@@ -164,6 +168,41 @@ def autocomplete_groups(
         }
         for group in groups
     ]
+
+@router.get("/my-groups", response_model=List[GroupSchema])
+def get_my_groups(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(_get_user_from_token)
+):
+    """Get all groups that the current user is a member of or created"""
+    # Get user's memberships
+    user_memberships = session.exec(
+        select(GroupMember).where(GroupMember.user_id == current_user.id)
+    ).all()
+    
+    # Get group IDs user is a member of
+    member_group_ids = {m.group_id for m in user_memberships}
+    
+    # Get groups user created
+    created_groups = session.exec(
+        select(Group).where(Group.created_by == current_user.id)
+    ).all()
+    created_group_ids = {g.id for g in created_groups}
+    
+    # Combine both sets
+    all_group_ids = member_group_ids | created_group_ids
+    
+    if not all_group_ids:
+        return []
+    
+    # Get all groups (member or created), ordered by creation date (newest first)
+    groups = session.exec(
+        select(Group)
+        .where(Group.id.in_(all_group_ids))
+        .order_by(Group.created_at.desc())
+    ).all()
+    
+    return list(groups)
 
 @router.get("/{group_id}", response_model=GroupSchema)
 def get_group(
@@ -400,7 +439,9 @@ def get_group_members(
                 joined_at=member.joined_at,
                 is_leader=member.is_leader,
                 user_email=user.email if user else None,
-                user_name=user.name if user else None
+                user_name=user.name if user else None,
+                user_photo_url=user.photo_url if user else None,
+                user_is_verified=user.is_verified if user else None
             ))
         return result
     
@@ -485,6 +526,9 @@ def get_group_leaderboard(
         leaderboard.append(LeaderboardEntry(
             user_id=user.id,
             user_email=user.email,
+            user_name=user.name,
+            user_photo_url=user.photo_url,
+            user_is_verified=user.is_verified,
             score=submission.score or 0,
             rank=current_rank,
             submission_id=submission.id,
@@ -573,7 +617,8 @@ def get_group_messages(group_id: str, session: Session = Depends(get_session), c
             
             result.append({
                 "id": msg.id,
-                "content": msg.content,
+                "content": msg.content if not msg.is_deleted else None,
+                "is_deleted": msg.is_deleted,
                 "created_at": created_at_str,
                 "read_count": read_count,
                 "is_read_by_me": is_read_by_current_user,
@@ -778,6 +823,38 @@ def get_group_presence(
     
     return {"presence": result}
 
+@router.delete("/{group_id}/messages/{message_id}")
+def delete_group_message(
+    group_id: str,
+    message_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(_get_user_from_token)
+):
+    """Delete a message from a group chat (only by message author) - soft delete"""
+    group = session.exec(select(Group).where(Group.id == group_id)).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    message = session.get(GroupMessage, message_id)
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+    
+    if message.group_id != group_id:
+        raise HTTPException(status_code=400, detail="Message does not belong to this group")
+    
+    # Only the message author can delete their own message
+    if message.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only delete your own messages")
+    
+    # Soft delete - mark as deleted instead of removing
+    message.is_deleted = True
+    message.content = ""  # Clear content for privacy
+    session.add(message)
+    session.commit()
+    session.refresh(message)
+    
+    return {"message": "Message deleted successfully"}
+
 @router.post("/{group_id}/messages/{message_id}/read")
 def mark_group_message_read(
     group_id: str,
@@ -870,3 +947,406 @@ def add_group_message_reaction(
         session.add(reaction)
         session.commit()
         return {"status": "added", "emoji": emoji}
+
+
+# WebSocket endpoint for real-time group chat
+@router.websocket("/{group_id}/ws")
+async def group_chat_websocket(websocket: WebSocket, group_id: str):
+    """WebSocket endpoint for real-time group chat"""
+    await websocket.accept()
+    
+    # Get user from token
+    user_id = None
+    user_name = None
+    user_email = None
+    user_photo_url = None
+    try:
+        token = websocket.query_params.get("token")
+        if token:
+            from app.core.security import decode_token
+            payload = decode_token(token)
+            user_id = int(payload.get("sub"))
+            
+            # Get user details
+            session_gen = get_session()
+            session = next(session_gen)
+            try:
+                user = session.get(User, user_id)
+                if user:
+                    user_name = user.name or user.email
+                    user_email = user.email
+                    user_photo_url = user.photo_url
+            finally:
+                try:
+                    next(session_gen)
+                except StopIteration:
+                    pass
+    except Exception as e:
+        await websocket.close(code=1008, reason="Invalid authentication")
+        return
+    
+    if not user_id:
+        await websocket.close(code=1008, reason="Authentication required")
+        return
+    
+    # Verify group exists and user has access
+    session_gen = get_session()
+    session = next(session_gen)
+    try:
+        group = session.exec(select(Group).where(Group.id == group_id)).first()
+        if not group:
+            await websocket.close(code=1008, reason="Group not found")
+            return
+        
+        # Check if user is a member or owner
+        is_member = session.exec(
+            select(GroupMember).where(
+                GroupMember.group_id == group_id,
+                GroupMember.user_id == user_id
+            )
+        ).first()
+        is_owner = group.created_by == user_id
+        
+        if not is_member and not is_owner:
+            await websocket.close(code=1008, reason="Access denied")
+            return
+        
+        # Initialize connection storage
+        if group_id not in group_connections:
+            group_connections[group_id] = {}
+        
+        # Add connection
+        group_connections[group_id][user_id] = websocket
+        
+        # Update presence
+        user_presence[user_id] = datetime.now(timezone.utc)
+        
+        # Get message synchronizer for this group
+        synchronizer = get_synchronizer(group_id, "group")
+        
+        # Load messages from database and sync with synchronizer
+        messages = session.exec(
+            select(GroupMessage).where(GroupMessage.group_id == group_id)
+            .order_by(GroupMessage.created_at.desc())
+            .limit(50)
+        ).all()
+        
+        # Initialize message versions in synchronizer (for existing messages)
+        # Process in chronological order to build vector clocks correctly
+        try:
+            sorted_messages = sorted(messages, key=lambda m: m.created_at)
+            for msg in sorted_messages:
+                try:
+                    created_at = msg.created_at
+                    if created_at.tzinfo is None:
+                        created_at = created_at.replace(tzinfo=timezone.utc)
+                    
+                    # Initialize message version in synchronizer
+                    synchronizer.initialize_message_version(
+                        message_id=msg.id,
+                        user_id=msg.user_id,
+                        content=msg.content if not msg.is_deleted else "",
+                        created_at=created_at
+                    )
+                except Exception as e:
+                    print(f"Error initializing message version for message {msg.id}: {e}")
+                    continue
+            
+            # Get causally ordered messages from synchronizer
+            try:
+                ordered_versions = synchronizer.get_ordered_messages(limit=50)
+            except Exception as e:
+                print(f"Error getting ordered messages: {e}")
+                # Fallback to simple chronological order
+                ordered_versions = []
+                for msg in sorted_messages:
+                    try:
+                        created_at = msg.created_at
+                        if created_at.tzinfo is None:
+                            created_at = created_at.replace(tzinfo=timezone.utc)
+                        version = MessageVersion(
+                            message_id=msg.id,
+                            vector_clock={},
+                            content=msg.content if not msg.is_deleted else "",
+                            user_id=msg.user_id,
+                            created_at=created_at
+                        )
+                        ordered_versions.append(version)
+                    except:
+                        continue
+        except Exception as e:
+            print(f"Error in message synchronization: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback: use messages as-is
+            ordered_versions = []
+            for msg in reversed(messages):
+                try:
+                    created_at = msg.created_at
+                    if created_at.tzinfo is None:
+                        created_at = created_at.replace(tzinfo=timezone.utc)
+                    version = MessageVersion(
+                        message_id=msg.id,
+                        vector_clock={},
+                        content=msg.content if not msg.is_deleted else "",
+                        user_id=msg.user_id,
+                        created_at=created_at
+                    )
+                    ordered_versions.append(version)
+                except:
+                    continue
+        
+        # Convert to message list format
+        messages_list = []
+        for msg_version in ordered_versions:
+            try:
+                msg = session.get(GroupMessage, msg_version.message_id)
+                if not msg:
+                    continue
+                    
+                msg_user = session.get(User, msg.user_id)
+                created_at_str = msg.created_at.isoformat()
+                if msg.created_at.tzinfo is None:
+                    created_at_str = msg.created_at.replace(tzinfo=timezone.utc).isoformat()
+                if not created_at_str.endswith('Z') and msg.created_at.tzinfo == timezone.utc:
+                    created_at_str = created_at_str.replace('+00:00', 'Z')
+                
+                messages_list.append({
+                    "id": msg.id,
+                    "content": msg.content if not msg.is_deleted else "",
+                    "is_deleted": msg.is_deleted,
+                    "created_at": created_at_str,
+                    "vector_clock": msg_version.vector_clock if hasattr(msg_version, 'vector_clock') else {},  # Include vector clock
+                    "version": msg_version.version if hasattr(msg_version, 'version') else 0,
+                    "user": {
+                        "id": msg_user.id if msg_user else user_id,
+                        "name": msg_user.name if msg_user else "Unknown",
+                        "email": msg_user.email if msg_user else "",
+                        "photo_url": msg_user.photo_url if msg_user else None,
+                        "is_verified": msg_user.is_verified if msg_user else False
+                    }
+                })
+            except Exception as e:
+                print(f"Error processing message version: {e}")
+                continue
+        
+        try:
+            await websocket.send_json({
+                "type": "initial_messages",
+                "messages": messages_list
+            })
+        except Exception as e:
+            print(f"Error sending initial messages: {e}")
+            import traceback
+            traceback.print_exc()
+            await websocket.close(code=1011, reason="Failed to send initial messages")
+            return
+        
+        # Broadcast user joined
+        try:
+            await broadcast_to_group(group_id, user_id, {
+                "type": "user_joined",
+                "user_id": user_id,
+                "user_name": user_name,
+                "user_photo_url": user_photo_url
+            })
+        except Exception as e:
+            print(f"Error broadcasting user joined: {e}")
+            # Don't close connection for this
+        
+        # Handle messages
+        try:
+            while True:
+                try:
+                    data = await websocket.receive_json()
+                    message_type = data.get("type")
+                    
+                    # Handle incoming message sync (from other clients)
+                    if message_type == "sync_message":
+                        # Client is sending a message with vector clock for sync
+                        incoming_msg = data.get("message")
+                        if incoming_msg:
+                            synchronizer = get_synchronizer(group_id, "group")
+                            try:
+                                created_at_str = incoming_msg.get("created_at", "")
+                                if created_at_str.endswith('Z'):
+                                    created_at_str = created_at_str.replace('Z', '+00:00')
+                                created_at = datetime.fromisoformat(created_at_str)
+                                msg_version = MessageVersion(
+                                    message_id=incoming_msg.get("id"),
+                                    vector_clock=incoming_msg.get("vector_clock", {}),
+                                    content=incoming_msg.get("content", ""),
+                                    user_id=incoming_msg.get("user_id"),
+                                    created_at=created_at
+                                )
+                                is_new, merged = synchronizer.merge_message(msg_version)
+                                if is_new:
+                                    # Broadcast the merged message
+                                    await broadcast_to_group(group_id, user_id, {
+                                        "type": "new_message",
+                                        "message": incoming_msg
+                                    })
+                            except Exception as e:
+                                print(f"Error processing sync_message: {e}")
+                        continue
+                    
+                    if message_type == "message":
+                        # Send a new message
+                        content = data.get("content", "").strip()
+                        if not content or len(content) > 1000:
+                            continue
+                        
+                        # Get synchronizer for this group
+                        synchronizer = get_synchronizer(group_id, "group")
+                        
+                        # Create message in database
+                        # Use a new session for each database operation to avoid session issues
+                        try:
+                            message = GroupMessage(
+                                group_id=group_id,
+                                user_id=user_id,
+                                content=content
+                            )
+                            session.add(message)
+                            session.commit()
+                            session.refresh(message)
+                        except Exception as e:
+                            print(f"Error creating message in database: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            continue
+                        
+                        # Create message version with vector clock
+                        try:
+                            created_at = message.created_at
+                            if created_at.tzinfo is None:
+                                created_at = created_at.replace(tzinfo=timezone.utc)
+                            
+                            msg_version = synchronizer.create_message_version(
+                                message_id=message.id,
+                                user_id=user_id,
+                                content=content,
+                                created_at=created_at
+                            )
+                        except Exception as e:
+                            print(f"Error creating message version: {e}")
+                            # Fallback: create a simple version without vector clock
+                            msg_version = type('obj', (object,), {
+                                'vector_clock': {},
+                                'version': 0
+                            })()
+                        
+                        # Update presence
+                        user_presence[user_id] = datetime.now(timezone.utc)
+                        
+                        # Format created_at
+                        created_at_str = message.created_at.isoformat()
+                        if message.created_at.tzinfo is None:
+                            created_at_str = message.created_at.replace(tzinfo=timezone.utc).isoformat()
+                        if not created_at_str.endswith('Z') and message.created_at.tzinfo == timezone.utc:
+                            created_at_str = created_at_str.replace('+00:00', 'Z')
+                        
+                        # Get user for message
+                        msg_user = session.get(User, user_id)
+                        
+                        # Broadcast message to all connected users with vector clock
+                        await broadcast_to_group(group_id, None, {
+                            "type": "new_message",
+                            "message": {
+                                "id": message.id,
+                                "content": message.content,
+                                "is_deleted": False,
+                                "created_at": created_at_str,
+                                "vector_clock": msg_version.vector_clock,  # Include vector clock
+                                "version": msg_version.version,
+                                "user": {
+                                    "id": user_id,
+                                    "name": msg_user.name if msg_user else user_name,
+                                    "email": msg_user.email if msg_user else user_email,
+                                    "photo_url": msg_user.photo_url if msg_user else user_photo_url,
+                                    "is_verified": msg_user.is_verified if msg_user else False
+                                }
+                            }
+                        })
+                    
+                    elif message_type == "typing":
+                        # Update typing status
+                        typing_status[group_id][user_id] = datetime.now(timezone.utc)
+                        user_presence[user_id] = datetime.now(timezone.utc)
+                        
+                        # Broadcast typing indicator
+                        await broadcast_to_group(group_id, user_id, {
+                            "type": "typing",
+                            "user_id": user_id,
+                            "user_name": user_name
+                        })
+                    
+                    elif message_type == "presence_ping":
+                        # Update presence
+                        user_presence[user_id] = datetime.now(timezone.utc)
+                        
+                        # Send current presence
+                        now = datetime.now(timezone.utc)
+                        online_users = []
+                        if group_id in group_connections:
+                            for uid in group_connections[group_id].keys():
+                                if uid != user_id and uid in user_presence:
+                                    if (now - user_presence[uid]).total_seconds() < PRESENCE_TIMEOUT_SECONDS:
+                                        online_users.append(uid)
+                        
+                        await websocket.send_json({
+                            "type": "presence_update",
+                            "online_users": online_users
+                        })
+                except Exception as e:
+                    # Log error but don't disconnect
+                    print(f"Error processing WebSocket message: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    continue
+                
+        except WebSocketDisconnect:
+            print("WebSocket disconnected normally")
+            pass
+        except Exception as e:
+            # Log unexpected errors
+            print(f"WebSocket error in main loop: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            # Remove connection
+            if group_id in group_connections and user_id in group_connections[group_id]:
+                del group_connections[group_id][user_id]
+            
+            # Broadcast user left
+            try:
+                await broadcast_to_group(group_id, user_id, {
+                    "type": "user_left",
+                    "user_id": user_id
+                })
+            except Exception as e:
+                print(f"Error broadcasting user left: {e}")
+    finally:
+        try:
+            if session_gen:
+                next(session_gen)
+        except (StopIteration, TypeError):
+            pass
+
+async def broadcast_to_group(group_id: str, exclude_user_id: Optional[int], message: Dict):
+    """Broadcast message to all connected users in a group"""
+    if group_id not in group_connections:
+        return
+    
+    disconnected = []
+    for user_id, ws in group_connections[group_id].items():
+        if exclude_user_id is None or user_id != exclude_user_id:
+            try:
+                await ws.send_json(message)
+            except:
+                disconnected.append(user_id)
+    
+    # Clean up disconnected users
+    for user_id in disconnected:
+        if group_id in group_connections and user_id in group_connections[group_id]:
+            del group_connections[group_id][user_id]

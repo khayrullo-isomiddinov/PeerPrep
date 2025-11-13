@@ -35,9 +35,23 @@ export default function EventDetail() {
   const messagesEndRef = useRef(null)
   const messagesContainerRef = useRef(null)
   const shouldAutoScrollRef = useRef(true)
+  const wsRef = useRef(null)
+  const [wsConnected, setWsConnected] = useState(false)
+  const presencePingIntervalRef = useRef(null)
+  const reconnectTimeoutRef = useRef(null)
+  const reconnectAttemptsRef = useRef(0)
+  const messageQueueRef = useRef([])
+  const receivedMessageIdsRef = useRef(new Set())
   
   // Common emojis for reactions
   const reactionEmojis = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👏", "💯", "✨"]
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate("/login")
+    }
+  }, [isAuthenticated, navigate])
 
   useEffect(() => {
     async function loadMessages(shouldScroll = false) {
@@ -57,6 +71,9 @@ export default function EventDetail() {
     }
 
     async function loadEvent() {
+      if (!isAuthenticated) {
+        return
+      }
       try {
         setLoading(true)
         setError("")
@@ -108,99 +125,232 @@ export default function EventDetail() {
     )
     
     if (unreadMessages.length > 0) {
-      // Mark messages as read (debounce to avoid too many requests)
+      // Mark messages as read via WebSocket if connected, otherwise HTTP
       const timeoutId = setTimeout(() => {
-        unreadMessages.forEach(msg => {
-          markEventMessageRead(id, msg.id).catch(err => {
-            // Silently fail - read receipts are not critical
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          unreadMessages.forEach(msg => {
+            wsRef.current.send(JSON.stringify({
+              type: "mark_read",
+              message_id: msg.id
+            }))
           })
-        })
+        } else {
+          // Fallback to HTTP
+          unreadMessages.forEach(msg => {
+            markEventMessageRead(id, msg.id).catch(err => {
+              // Silently fail - read receipts are not critical
+            })
+          })
+        }
       }, 500)
       
       return () => clearTimeout(timeoutId)
     }
   }, [id, user, joined, isOwner, messages])
 
+  // WebSocket connection for real-time chat
   useEffect(() => {
-    if (!id || (!joined && !isOwner)) return
+    if (!id || (!joined && !isOwner)) {
+      // Disconnect if conditions not met
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = null
+        setWsConnected(false)
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
+      reconnectAttemptsRef.current = 0
+      messageQueueRef.current = []
+      return
+    }
     
-    async function loadMessages() {
-      try {
-        const messagesData = await getEventMessages(id)
-        const previousMessageCount = messages.length
-        const hasNewMessages = (messagesData || []).length > previousMessageCount
+    if (!isAuthenticated || !user) return
+    
+    const token = localStorage.getItem("access_token")
+    if (!token) return
+    
+    function connectWebSocket() {
+      // Clear any existing reconnection timeout
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
+      
+      // Connect WebSocket
+      const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
+      const wsProtocol = apiBase.startsWith("https") ? "wss" : "ws"
+      const wsHost = apiBase.replace(/^https?:\/\//, "").replace(/\/$/, "")
+      const wsUrl = `${wsProtocol}://${wsHost}/api/events/${id}/ws?token=${token}`
+      const ws = new WebSocket(wsUrl)
+      
+      ws.onopen = () => {
+        console.log("Event chat WebSocket connected")
+        setWsConnected(true)
+        reconnectAttemptsRef.current = 0 // Reset on successful connection
         
-        setMessages(messagesData || [])
-        
-        // Only auto-scroll if there are new messages and user is near bottom
-        if (hasNewMessages && messagesContainerRef.current) {
-          const container = messagesContainerRef.current
-          const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 200
-          
-          if (isNearBottom) {
-            setTimeout(() => {
-              container.scrollTop = container.scrollHeight
-            }, 100)
+        // Send queued messages
+        while (messageQueueRef.current.length > 0) {
+          const queuedMessage = messageQueueRef.current.shift()
+          try {
+            ws.send(JSON.stringify(queuedMessage))
+          } catch (err) {
+            console.error("Failed to send queued message:", err)
+            // Re-queue if send fails
+            messageQueueRef.current.unshift(queuedMessage)
+            break
           }
         }
-      } catch (err) {
-        console.error("Failed to load messages:", err)
-      }
-    }
-    
-    async function loadTypingStatus() {
-      try {
-        const typingData = await getEventTypingStatus(id)
-        setTypingUsers(typingData.typing_users || [])
-      } catch (err) {
-        // Silently fail - typing indicators are not critical
-      }
-    }
-    
-    async function loadPresence() {
-      try {
-        const presenceData = await getEventPresence(id)
-        setPresence(presenceData.presence || [])
-      } catch (err) {
-        // Silently fail - presence indicators are not critical
-      }
-    }
-    
-    async function loadMessagesPoll() {
-      try {
-        const messagesData = await getEventMessages(id)
-        const previousMessageCount = messages.length
-        const hasNewMessages = (messagesData || []).length > previousMessageCount
         
-        setMessages(messagesData || [])
-        
-        // Only auto-scroll if there are new messages and user is near bottom
-        if (messagesContainerRef.current) {
-          const container = messagesContainerRef.current
-          const scrollBottom = container.scrollHeight - container.scrollTop - container.clientHeight
-          const wasNearBottom = scrollBottom < 200
-          
-          if (wasNearBottom && hasNewMessages) {
-            setTimeout(() => {
-              container.scrollTop = container.scrollHeight
-            }, 100)
+        // Start presence ping interval
+        presencePingIntervalRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "presence_ping" }))
           }
-        }
-      } catch (err) {
-        console.error("Failed to load messages:", err)
+        }, 30000) // Ping every 30 seconds
       }
+      
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data)
+        handleWebSocketMessage(message)
+      }
+      
+      ws.onerror = (error) => {
+        console.error("Event chat WebSocket error:", error)
+        setWsConnected(false)
+      }
+      
+      ws.onclose = (event) => {
+        console.log("Event chat WebSocket disconnected", event.code, event.reason)
+        setWsConnected(false)
+        if (presencePingIntervalRef.current) {
+          clearInterval(presencePingIntervalRef.current)
+          presencePingIntervalRef.current = null
+        }
+        
+        // Only attempt reconnection if it wasn't a manual close (code 1000) or auth error (1008)
+        if (event.code !== 1000 && event.code !== 1008) {
+          // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000)
+          reconnectAttemptsRef.current++
+          
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (id && (joined || isOwner)) {
+              console.log(`Attempting to reconnect (attempt ${reconnectAttemptsRef.current})...`)
+              connectWebSocket()
+            }
+          }, delay)
+        } else {
+          reconnectAttemptsRef.current = 0
+        }
+      }
+      
+      wsRef.current = ws
     }
     
-    const messageInterval = setInterval(loadMessagesPoll, 3000)
-    const typingInterval = setInterval(loadTypingStatus, 1000) // Poll typing status more frequently
-    const presenceInterval = setInterval(loadPresence, 5000) // Poll presence every 5 seconds
+    connectWebSocket()
     
     return () => {
-      clearInterval(messageInterval)
-      clearInterval(typingInterval)
-      clearInterval(presenceInterval)
+      if (presencePingIntervalRef.current) {
+        clearInterval(presencePingIntervalRef.current)
+        presencePingIntervalRef.current = null
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
+      if (wsRef.current) {
+        wsRef.current.close(1000, "Component unmounting")
+        wsRef.current = null
+      }
+      setWsConnected(false)
+      reconnectAttemptsRef.current = 0
     }
-  }, [id, joined, isOwner, messages.length])
+  }, [id, joined, isOwner, user, isAuthenticated])
+  
+  function handleWebSocketMessage(message) {
+    switch (message.type) {
+      case "initial_messages":
+        // Track received message IDs to prevent duplicates
+        const initialIds = new Set((message.messages || []).map(m => m.id))
+        receivedMessageIdsRef.current = initialIds
+        setMessages(message.messages || [])
+        // Auto-scroll to bottom after initial load
+        setTimeout(() => {
+          if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+          }
+        }, 100)
+        break
+      
+      case "new_message":
+        const msgId = message.message?.id
+        if (!msgId) break
+        
+        // Prevent duplicate messages
+        if (receivedMessageIdsRef.current.has(msgId)) {
+          console.log("Duplicate message detected, ignoring:", msgId)
+          break
+        }
+        receivedMessageIdsRef.current.add(msgId)
+        
+        setMessages(prev => {
+          // Double-check for duplicates in state
+          if (prev.some(m => m.id === msgId)) {
+            return prev
+          }
+          return [...prev, message.message]
+        })
+        // Auto-scroll if near bottom
+        setTimeout(() => {
+          if (messagesContainerRef.current) {
+            const container = messagesContainerRef.current
+            const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 200
+            if (isNearBottom) {
+              container.scrollTop = container.scrollHeight
+            }
+          }
+        }, 100)
+        break
+      
+      case "typing":
+        if (message.user_id !== user?.id) {
+          setTypingUsers(prev => {
+            if (prev.some(u => u.id === message.user_id)) {
+              return prev
+            }
+            return [...prev, { id: message.user_id, name: message.user_name }]
+          })
+          // Remove typing indicator after 3 seconds
+          setTimeout(() => {
+            setTypingUsers(prev => prev.filter(u => u.id !== message.user_id))
+          }, 3000)
+        }
+        break
+      
+      case "presence_update":
+        // Update presence based on online users
+        break
+      
+      case "message_read":
+        // Update read status for a message
+        setMessages(prev => prev.map(msg => 
+          msg.id === message.message_id 
+            ? { ...msg, is_read_by_me: true }
+            : msg
+        ))
+        break
+      
+      case "user_joined":
+        // User joined - could update presence
+        break
+      
+      case "user_left":
+        // User left - could update presence
+        break
+    }
+  }
   
   // Close emoji picker when clicking outside
   useEffect(() => {
@@ -255,39 +405,82 @@ export default function EventDetail() {
     e.stopPropagation()
     if (!newMessage.trim() || sendingMessage || !id) return
     
-    setSendingMessage(true)
-    try {
-      await postEventMessage(id, newMessage.trim())
-      setNewMessage("")
-      
-      // Clear typing timeout when message is sent
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current)
-        typingTimeoutRef.current = null
-      }
-      
-      const messagesData = await getEventMessages(id)
-      setMessages(messagesData || [])
-      setTimeout(() => {
-        if (messagesContainerRef.current && messagesEndRef.current) {
-          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    // Send via WebSocket if connected, otherwise queue or fallback to HTTP
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      setSendingMessage(true)
+      try {
+        const messageData = {
+          type: "message",
+          content: newMessage.trim()
         }
-      }, 100)
-    } catch (error) {
-      console.error("Failed to send message:", error)
-      alert(error?.response?.data?.detail || "Failed to send message")
-    } finally {
-      setSendingMessage(false)
+        wsRef.current.send(JSON.stringify(messageData))
+        setNewMessage("")
+        
+        // Clear typing timeout when message is sent
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current)
+          typingTimeoutRef.current = null
+        }
+      } catch (error) {
+        console.error("Failed to send message via WebSocket:", error)
+        // Queue message for retry when connection is restored
+        messageQueueRef.current.push({
+          type: "message",
+          content: newMessage.trim()
+        })
+        alert("Connection lost. Message will be sent when connection is restored.")
+      } finally {
+        setSendingMessage(false)
+      }
+    } else if (wsRef.current && wsRef.current.readyState === WebSocket.CONNECTING) {
+      // Queue message if WebSocket is connecting
+      messageQueueRef.current.push({
+        type: "message",
+        content: newMessage.trim()
+      })
+      setNewMessage("")
+      alert("Connecting... Message will be sent when connection is established.")
+    } else {
+      // Fallback to HTTP POST
+      setSendingMessage(true)
+      try {
+        await postEventMessage(id, newMessage.trim())
+        setNewMessage("")
+        
+        // Clear typing timeout when message is sent
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current)
+          typingTimeoutRef.current = null
+        }
+        
+        const messagesData = await getEventMessages(id)
+        setMessages(messagesData || [])
+        setTimeout(() => {
+          if (messagesContainerRef.current && messagesEndRef.current) {
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+          }
+        }, 100)
+      } catch (error) {
+        console.error("Failed to send message:", error)
+        alert(error?.response?.data?.detail || "Failed to send message")
+      } finally {
+        setSendingMessage(false)
+      }
     }
   }
 
   function handleTyping() {
     if (!id || !isAuthenticated || (!joined && !isOwner)) return
     
-    // Send typing status
-    setEventTypingStatus(id).catch(() => {
-      // Silently fail - typing indicators are not critical
-    })
+    // Send typing status via WebSocket if connected
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "typing" }))
+    } else {
+      // Fallback to HTTP
+      setEventTypingStatus(id).catch(() => {
+        // Silently fail - typing indicators are not critical
+      })
+    }
     
     // Clear existing timeout
     if (typingTimeoutRef.current) {
@@ -421,6 +614,11 @@ export default function EventDetail() {
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+  }
+
+  // Don't render anything if not authenticated (will redirect)
+  if (!isAuthenticated) {
+    return null
   }
 
   if (loading) {
@@ -561,7 +759,7 @@ export default function EventDetail() {
                   <button
                     onClick={handleJoinLeave}
                     disabled={isLoading}
-                    className="bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-600 text-white font-bold rounded-xl px-8 py-4 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                    className="touch-target bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-600 text-white font-bold rounded-xl px-8 py-4 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none w-full lg:w-auto"
                   >
                     <FontAwesomeIcon icon={faUserPlus} className="w-5 h-5 inline mr-2" />
                     {isLoading ? "Joining..." : "Join Event"}
@@ -571,7 +769,7 @@ export default function EventDetail() {
                   <button
                     onClick={handleJoinLeave}
                     disabled={isLoading}
-                    className="bg-gray-100 text-gray-700 font-bold rounded-xl px-8 py-4 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none border-2 border-gray-300"
+                    className="touch-target bg-gray-100 text-gray-700 font-bold rounded-xl px-8 py-4 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none border-2 border-gray-300 w-full lg:w-auto"
                   >
                     <FontAwesomeIcon icon={faUserMinus} className="w-5 h-5 inline mr-2" />
                     {isLoading ? "Leaving..." : "Leave Event"}
@@ -586,7 +784,7 @@ export default function EventDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left: Leaderboard - Vertical Column */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden flex flex-col h-[600px]">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden flex flex-col h-[400px] lg:h-[600px]">
               <div className="bg-gradient-to-r from-yellow-500 via-orange-500 to-pink-500 p-5 flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
@@ -676,7 +874,7 @@ export default function EventDetail() {
           {/* Right: Group Chat - Large Messaging Area */}
           <div className="lg:col-span-2">
             {(joined || isOwner) ? (
-              <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden flex flex-col h-[600px]">
+              <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden flex flex-col h-[400px] lg:h-[600px]">
                 {/* Chat Header */}
                 <div className="relative bg-gradient-to-br from-slate-900 via-indigo-900 to-purple-900 p-5 flex-shrink-0">
                   <div className="flex items-center gap-3">
@@ -687,9 +885,16 @@ export default function EventDetail() {
                       <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-slate-900"></div>
                     </div>
                     <div>
-                      <h2 className="text-xl font-bold text-white">Event Chat</h2>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-xl font-bold text-white">Event Chat</h2>
+                        {wsConnected ? (
+                          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" title="Connected"></span>
+                        ) : (
+                          <span className="w-2 h-2 bg-red-400 rounded-full" title="Disconnected"></span>
+                        )}
+                      </div>
                       <p className="text-indigo-200 text-xs">
-                        {messages.length > 0 ? `${messages.length} message${messages.length !== 1 ? 's' : ''} • Active` : 'Start chatting'}
+                        {messages.length > 0 ? `${messages.length} message${messages.length !== 1 ? 's' : ''} • ${wsConnected ? 'Connected' : 'Reconnecting...'}` : wsConnected ? 'Start chatting' : 'Connecting...'}
                       </p>
                     </div>
                   </div>
@@ -781,7 +986,7 @@ export default function EventDetail() {
                                       <button
                                         onClick={() => handleDeleteClick(msg.id)}
                                         disabled={deletingMessageId === msg.id}
-                                        className="opacity-0 group-hover:opacity-100 transition-opacity ml-2 p-1 hover:bg-white/20 rounded-lg disabled:opacity-50"
+                                        className="touch-target opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity ml-2 p-2 hover:bg-white/20 rounded-lg disabled:opacity-50"
                                         title="Delete message"
                                       >
                                         {deletingMessageId === msg.id ? (
@@ -830,7 +1035,7 @@ export default function EventDetail() {
                                         e.stopPropagation()
                                         setShowEmojiPicker(showEmojiPicker === msg.id ? null : msg.id)
                                       }}
-                                      className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-400 hover:text-gray-600 transition-all opacity-0 group-hover:opacity-100"
+                                      className="touch-target flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-400 hover:text-gray-600 transition-all opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
                                       title="Add reaction"
                                     >
                                       <span className="text-xs">+</span>
@@ -877,7 +1082,7 @@ export default function EventDetail() {
                                       e.stopPropagation()
                                       setShowEmojiPicker(showEmojiPicker === msg.id ? null : msg.id)
                                     }}
-                                    className="opacity-0 group-hover:opacity-100 transition-opacity mt-1.5 px-1 text-xs text-gray-400 hover:text-gray-600"
+                                    className="touch-target opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity mt-1.5 px-3 py-2 text-xs text-gray-400 hover:text-gray-600 rounded-lg bg-gray-50 hover:bg-gray-100"
                                     title="Add reaction"
                                   >
                                     Add reaction
@@ -1014,9 +1219,9 @@ export default function EventDetail() {
                           e.stopPropagation()
                           handleSendMessage(e)
                         }}
-                        className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all ${
+                        className={`touch-target w-11 h-11 flex items-center justify-center rounded-lg transition-all ${
                           newMessage.trim() && !sendingMessage
-                            ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white hover:scale-110'
+                            ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white hover:scale-110 active:scale-95'
                             : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                         }`}
                       >
@@ -1039,7 +1244,7 @@ export default function EventDetail() {
                 <p className="text-gray-500 mb-6">Join this event to participate in the group chat</p>
                 <button
                   onClick={handleJoinLeave}
-                  className="bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-600 text-white font-bold rounded-xl px-6 py-3 shadow-lg hover:shadow-xl transition-all"
+                  className="touch-target bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-600 text-white font-bold rounded-xl px-6 py-3 shadow-lg hover:shadow-xl transition-all active:scale-95"
                 >
                   Join Event
                 </button>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { 
@@ -49,7 +49,7 @@ export default function CreateEventForm({ onCreated }) {
     const errs = {}
     switch (step) {
       case 0: 
-        if (!formData.coverImage) errs.coverImage = "Cover image is required"
+        // Cover image is optional
         break
       case 1: 
         if (!formData.title.trim()) errs.title = "Title is required"
@@ -62,7 +62,7 @@ export default function CreateEventForm({ onCreated }) {
         if (!formData.city.trim()) errs.city = "City is required"
         break
       case 3:
-        if (!formData.coverImage) errs.coverImage = "Cover image is required"
+        // Cover image is optional
         if (!formData.title.trim()) errs.title = "Title is required"
         if (!formData.category) errs.category = "Category is required"
         if (!formData.startsAt) errs.startsAt = "Start date/time is required"
@@ -166,52 +166,53 @@ export default function CreateEventForm({ onCreated }) {
     if (!formData.category) errs.category = "Category is required"
     if (!formData.startsAt) errs.startsAt = "Start date/time is required"
     if (!formData.location.trim()) errs.location = "Location is required"
-    if (!formData.coverImage) errs.coverImage = "Cover image is required"
+    // Cover image is optional
 
     setFieldErrors(errs)
     if (Object.keys(errs).length > 0) return
 
     setLoading(true)
     try {
-      const reader = new FileReader()
-      reader.onload = async () => {
+      let coverImageUrl = null
+      if (formData.coverImage) {
         try {
-          // Convert study materials to JSON
-          const studyMaterialsJson = formData.studyMaterials.length > 0
-            ? JSON.stringify(formData.studyMaterials)
-            : null
-
-          const payload = {
-            title: formData.title.trim(),
-            starts_at: new Date(formData.startsAt).toISOString(),
-            location: formData.location.trim(),
-            capacity: Number(formData.capacity),
-            description: formData.description?.trim() || null,
-            group_id: null,
-            kind: "one_off",
-            cover_image_url: reader.result,
-            study_materials: studyMaterialsJson
-          }
-          console.log('Creating event with payload:', payload)
-          const evt = await createEvent(payload)
-          console.log('Event created successfully:', evt)
-          onCreated?.(evt)
-          navigate("/events", {
-            state: { newEvent: evt }
+          coverImageUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result)
+            reader.onerror = () => reject(new Error("Failed to read cover image"))
+            reader.readAsDataURL(formData.coverImage)
           })
         } catch (e) {
-          setLoading(false)
-          console.error('Event creation failed:', e)
-          setError(e?.response?.data?.detail || "Failed to create event")
+          console.warn("Failed to read cover image, continuing without it:", e)
         }
       }
-      reader.onerror = () => {
-        setLoading(false)
-        setError("Failed to read cover image. Please try again.")
+
+      // Convert study materials to JSON
+      const studyMaterialsJson = formData.studyMaterials.length > 0
+        ? JSON.stringify(formData.studyMaterials)
+        : null
+
+      const payload = {
+        title: formData.title.trim(),
+        starts_at: new Date(formData.startsAt).toISOString(),
+        location: formData.location.trim(),
+        capacity: Number(formData.capacity),
+        description: formData.description?.trim() || null,
+        group_id: null,
+        kind: "one_off",
+        cover_image_url: coverImageUrl,
+        study_materials: studyMaterialsJson
       }
-      reader.readAsDataURL(formData.coverImage)
+      console.log('Creating event with payload:', payload)
+      const evt = await createEvent(payload)
+      console.log('Event created successfully:', evt)
+      onCreated?.(evt)
+      navigate("/events", {
+        state: { newEvent: evt }
+      })
     } catch (e) {
       setLoading(false)
+      console.error('Event creation failed:', e)
       setError(e?.response?.data?.detail || "Failed to create event")
     }
   }
@@ -406,6 +407,7 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
   const [aiPrompt, setAiPrompt] = useState("")
   const [generating, setGenerating] = useState(false)
   const [generateError, setGenerateError] = useState("")
+  const fileInputRef = useRef(null)
 
   const handleDrag = (e) => {
     e.preventDefault()
@@ -468,11 +470,11 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
     <div className="space-y-6">
       <div className="flex items-center space-x-3 mb-6">
         <FontAwesomeIcon icon={faImage} className="w-6 h-6 text-pink-500" />
-        <h2 className="text-2xl font-bold text-gray-900">Upload cover *</h2>
+        <h2 className="text-2xl font-bold text-gray-900">Upload cover</h2>
       </div>
       
       <p className="text-gray-600 mb-6">
-        Upload a cover image or generate one with AI to capture your event's focus and attract participants (required).
+        Upload a cover image or generate one with AI to capture your event's focus and attract participants (optional).
       </p>
 
       <div className="flex items-center space-x-4 mb-6">
@@ -480,6 +482,12 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
           onClick={() => {
             setMode("upload")
             setGenerateError("")
+            // Trigger file input if no image is selected
+            if (!formData.coverImage && fileInputRef.current) {
+              setTimeout(() => {
+                fileInputRef.current?.click()
+              }, 100)
+            }
           }}
           className={`px-4 py-2 rounded-lg font-medium transition-colors ${
             mode === "upload"
@@ -532,6 +540,7 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
               <label className="bg-pink-500 text-white px-4 py-2 rounded-lg hover:bg-pink-600 transition-colors text-sm font-medium cursor-pointer">
                 Change
                 <input
+                  ref={fileInputRef}
                   type="file"
                   accept="image/*"
                   onChange={handleFileInput}
@@ -546,11 +555,12 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
               <FontAwesomeIcon icon={faUpload} className="w-8 h-8 text-pink-500" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Upload cover image *</h3>
-              <p className="text-gray-600 mb-4">Drag and drop or click to browse (required)</p>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Upload cover image</h3>
+              <p className="text-gray-600 mb-4">Drag and drop or click to browse (optional)</p>
               <label className="bg-pink-500 text-white px-6 py-2 rounded-lg hover:bg-pink-600 transition-colors font-medium cursor-pointer">
                 Choose File
                 <input
+                  ref={fileInputRef}
                   type="file"
                   accept="image/*"
                   onChange={handleFileInput}
@@ -1148,7 +1158,7 @@ function ReviewPublishStep({ formData, updateFormData, error }) {
             />
           </div>
         ) : (
-          <p className="text-red-500 text-sm">Cover image is required</p>
+          <p className="text-gray-500 text-sm">No cover image selected (optional)</p>
         )}
       </div>
 

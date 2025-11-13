@@ -54,6 +54,11 @@ export async function listEvents(params = {}) {
   return data
 }
 
+export async function getMyEvents() {
+  const { data } = await api.get("events/my-events")
+  return data
+}
+
 export async function refineEventText(text, fieldType = "general") {
   const token = localStorage.getItem("access_token")
   console.log("🔍 Refine text - Token exists:", !!token)
@@ -156,6 +161,12 @@ export async function listGroups(params = {}) {
   return data
 }
 
+export async function getMyGroups() {
+  const { data } = await api.get("groups/my-groups")
+  return data
+}
+
+
 export async function createGroup(payload) {
   const { data } = await api.post("groups", payload)
   return data
@@ -200,10 +211,6 @@ export async function getGroupMembers(id) {
   return data
 }
 
-export async function getGroupLeaderboard(id) {
-  const { data } = await api.get(`groups/${id}/leaderboard`)
-  return data
-}
 
 export async function submitMission(groupId, payload) {
   const { data } = await api.post(`groups/${groupId}/missions`, payload)
@@ -279,35 +286,6 @@ export async function autocompleteGroups(query) {
   return data 
 }
 
-export async function followUser(userId) {
-  const { data } = await api.post(`follows/${userId}`)
-  return data
-}
-
-export async function unfollowUser(userId) {
-  const { data } = await api.delete(`follows/${userId}`)
-  return data
-}
-
-export async function getFollowStatus(userId) {
-  const { data } = await api.get(`follows/${userId}/status`)
-  return data
-}
-
-export async function getFollowers(userId) {
-  const { data } = await api.get(`follows/${userId}/followers`)
-  return data
-}
-
-export async function getFollowing(userId) {
-  const { data } = await api.get(`follows/${userId}/following`)
-  return data
-}
-
-export async function getFollowCounts(userId) {
-  const { data } = await api.get(`follows/${userId}/counts`)
-  return data
-}
 
 export async function getGroupMessages(groupId) {
   const { data } = await api.get(`groups/${groupId}/messages`)
@@ -316,6 +294,11 @@ export async function getGroupMessages(groupId) {
 
 export async function postGroupMessage(groupId, content) {
   const { data } = await api.post(`groups/${groupId}/messages?content=${encodeURIComponent(content)}`)
+  return data
+}
+
+export async function deleteGroupMessage(groupId, messageId) {
+  const { data } = await api.delete(`groups/${groupId}/messages/${messageId}`)
   return data
 }
 
@@ -354,3 +337,4 @@ export async function addGroupMessageReaction(groupId, messageId, emoji) {
   })
   return data
 }
+

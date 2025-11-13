@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState, useRef } from "react"
 import { useNavigate, useParams, Link } from "react-router-dom"
-import Card from "../components/Card"
-import Button from "../components/Button"
 import { useAuth } from "../features/auth/AuthContext"
-import { updateProfile, deleteAccount, getUserProfile, getUserBadge, followUser, unfollowUser, getFollowStatus, getFollowCounts, getFollowers, getFollowing } from "../utils/api"
+import { updateProfile, deleteAccount, getUserProfile, getUserBadge } from "../utils/api"
 import UserBadge from "../components/UserBadge"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { faTrophy, faMedal, faAward, faUsers, faCalendar, faCheckCircle, faStar, faGraduationCap, faBookOpen, faUserPlus, faUserMinus, faUserFriends } from "@fortawesome/free-solid-svg-icons"
+import { faTrophy, faMedal, faAward, faUsers, faCalendar, faCheckCircle, faStar, faGraduationCap, faBookOpen } from "@fortawesome/free-solid-svg-icons"
 
 export default function Profile() {
   const { userId } = useParams()
@@ -21,16 +19,6 @@ export default function Profile() {
   const [deleting, setDeleting] = useState(false)
   const [userStats, setUserStats] = useState(null)
   const [loadingStats, setLoadingStats] = useState(false)
-  const [isFollowing, setIsFollowing] = useState(false)
-  const [loadingFollow, setLoadingFollow] = useState(false)
-  const [followCounts, setFollowCounts] = useState({ followers_count: 0, following_count: 0 })
-  const [loadingFollowCounts, setLoadingFollowCounts] = useState(false)
-  const [showFollowersModal, setShowFollowersModal] = useState(false)
-  const [showFollowingModal, setShowFollowingModal] = useState(false)
-  const [followersList, setFollowersList] = useState([])
-  const [followingList, setFollowingList] = useState([])
-  const [loadingFollowers, setLoadingFollowers] = useState(false)
-  const [loadingFollowing, setLoadingFollowing] = useState(false)
   
   const isViewingOwnProfile = !userId || (user && parseInt(userId) === user.id)
   const displayUser = isViewingOwnProfile ? user : profileUser
@@ -94,84 +82,6 @@ export default function Profile() {
     loadUserStats()
   }, [targetUserId])
 
-  // Load follow status and counts
-  useEffect(() => {
-    async function loadFollowData() {
-      if (!targetUserId) return
-      
-      // Load follow counts (public, no auth required)
-      try {
-        setLoadingFollowCounts(true)
-        const counts = await getFollowCounts(targetUserId)
-        setFollowCounts(counts)
-      } catch (error) {
-        console.error("Failed to load follow counts:", error)
-      } finally {
-        setLoadingFollowCounts(false)
-      }
-
-      // Check if current user is following this user (requires auth)
-      if (!isViewingOwnProfile && isAuthenticated) {
-        try {
-          const status = await getFollowStatus(targetUserId)
-          setIsFollowing(status.following)
-        } catch (error) {
-          console.error("Failed to load follow status:", error)
-        }
-      }
-    }
-    loadFollowData()
-  }, [targetUserId, isAuthenticated, isViewingOwnProfile])
-
-  async function handleFollowToggle() {
-    if (!isAuthenticated) {
-      navigate("/login")
-      return
-    }
-    
-    setLoadingFollow(true)
-    try {
-      if (isFollowing) {
-        await unfollowUser(targetUserId)
-        setIsFollowing(false)
-        setFollowCounts(prev => ({ ...prev, followers_count: prev.followers_count - 1 }))
-      } else {
-        await followUser(targetUserId)
-        setIsFollowing(true)
-        setFollowCounts(prev => ({ ...prev, followers_count: prev.followers_count + 1 }))
-      }
-    } catch (error) {
-      console.error("Failed to toggle follow:", error)
-    } finally {
-      setLoadingFollow(false)
-    }
-  }
-
-  async function loadFollowers() {
-    if (!targetUserId) return
-    setLoadingFollowers(true)
-    try {
-      const data = await getFollowers(targetUserId)
-      setFollowersList(data.followers || [])
-    } catch (error) {
-      console.error("Failed to load followers:", error)
-    } finally {
-      setLoadingFollowers(false)
-    }
-  }
-
-  async function loadFollowing() {
-    if (!targetUserId) return
-    setLoadingFollowing(true)
-    try {
-      const data = await getFollowing(targetUserId)
-      setFollowingList(data.following || [])
-    } catch (error) {
-      console.error("Failed to load following:", error)
-    } finally {
-      setLoadingFollowing(false)
-    }
-  }
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated && !userId) {
@@ -415,9 +325,7 @@ export default function Profile() {
                   </h1>
                   {displayUser?.id && <UserBadge userId={displayUser.id} size="md" />}
                 </div>
-                {isViewingOwnProfile && (
-                  <p className="text-lg sm:text-xl text-gray-600 mb-4">{form.email}</p>
-                )}
+                <p className="text-lg sm:text-xl text-gray-600 mb-4">{form.email}</p>
                 <div className="flex items-center gap-6 text-sm flex-wrap mb-4">
                   <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-700 rounded-full">
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -432,35 +340,10 @@ export default function Profile() {
                     </div>
                   )}
                 </div>
-                {/* Follow counts */}
-                {!loadingFollowCounts && (
-                  <div className="flex items-center gap-4 text-sm">
-                    <button
-                      onClick={() => {
-                        setShowFollowersModal(true)
-                        loadFollowers()
-                      }}
-                      className="hover:text-pink-600 transition-colors cursor-pointer"
-                    >
-                      <span className="font-semibold text-gray-900">{followCounts.followers_count || 0}</span>
-                      <span className="text-gray-600 ml-1">followers</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowFollowingModal(true)
-                        loadFollowing()
-                      }}
-                      className="hover:text-pink-600 transition-colors cursor-pointer"
-                    >
-                      <span className="font-semibold text-gray-900">{followCounts.following_count || 0}</span>
-                      <span className="text-gray-600 ml-1">following</span>
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
 
-            {isViewingOwnProfile ? (
+            {isViewingOwnProfile && (
               <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                 {!editing ? (
                   <button
@@ -473,55 +356,24 @@ export default function Profile() {
                     Edit Profile
                   </button>
                 ) : (
-                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                  <button
-                    onClick={handleSave}
-                    className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-base sm:text-lg"
-                  >
-                    <svg className="w-5 h-5 sm:w-6 sm:h-6 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Save Changes
-                  </button>
-                  <button
-                    onClick={() => setEditing(false)}
-                    className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-semibold rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-base sm:text-lg"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-              </div>
-            ) : (
-              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                <button
-                  onClick={handleFollowToggle}
-                  disabled={loadingFollow}
-                  className={`text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4 shadow-lg hover:shadow-xl w-full sm:w-auto transition-all rounded-full font-semibold ${
-                    isFollowing
-                      ? "bg-gradient-to-r from-gray-500 to-gray-600 text-white hover:from-gray-600 hover:to-gray-700"
-                      : "btn-pink-pill"
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  {loadingFollow ? (
-                    <>
-                      <svg className="w-5 h-5 inline mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                    <button
+                      onClick={handleSave}
+                      className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-base sm:text-lg"
+                    >
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
-                      {isFollowing ? "Unfollowing..." : "Following..."}
-                    </>
-                  ) : isFollowing ? (
-                    <>
-                      <FontAwesomeIcon icon={faUserMinus} className="w-5 h-5 inline mr-2" />
-                      Unfollow
-                    </>
-                  ) : (
-                    <>
-                      <FontAwesomeIcon icon={faUserPlus} className="w-5 h-5 inline mr-2" />
-                      Follow
-                    </>
-                  )}
-                </button>
+                      Save Changes
+                    </button>
+                    <button
+                      onClick={() => setEditing(false)}
+                      className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-semibold rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-base sm:text-lg"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -543,6 +395,7 @@ export default function Profile() {
                     <span className="text-xs font-medium text-gray-600">XP</span>
                   </div>
                   <div className="text-2xl font-bold text-gray-900">{userStats.total_xp || 0}</div>
+                  <div className="text-xs text-gray-500 mt-1">Dynamic calculation</div>
                 </div>
                 <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-4 border border-blue-200 shadow-sm hover:shadow-md transition-all">
                   <div className="flex items-center gap-2 mb-2">
@@ -552,6 +405,7 @@ export default function Profile() {
                     <span className="text-xs font-medium text-gray-600">Submissions</span>
                   </div>
                   <div className="text-2xl font-bold text-gray-900">{userStats.total_accepted_submissions || 0}</div>
+                  <div className="text-xs text-gray-500 mt-1">Approved</div>
                 </div>
                 <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200 shadow-sm hover:shadow-md transition-all">
                   <div className="flex items-center gap-2 mb-2">
@@ -561,6 +415,7 @@ export default function Profile() {
                     <span className="text-xs font-medium text-gray-600">Events</span>
                   </div>
                   <div className="text-2xl font-bold text-gray-900">{userStats.events_attended || 0}</div>
+                  <div className="text-xs text-gray-500 mt-1">Attended</div>
                 </div>
                 <div className="bg-gradient-to-br from-orange-50 to-yellow-50 rounded-xl p-4 border border-orange-200 shadow-sm hover:shadow-md transition-all">
                   <div className="flex items-center gap-2 mb-2">
@@ -570,6 +425,39 @@ export default function Profile() {
                     <span className="text-xs font-medium text-gray-600">Level</span>
                   </div>
                   <div className="text-2xl font-bold text-gray-900">{userStats.badge?.name || "Beginner"}</div>
+                  <div className="text-xs text-gray-500 mt-1">Current badge</div>
+                </div>
+              </div>
+            )}
+
+            {/* Engagement Score Card */}
+            {userStats && userStats.engagement_score !== undefined && (
+              <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-xl p-6 border border-indigo-200 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                      <FontAwesomeIcon icon={faStar} className="text-white text-xl" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">Engagement Score</h3>
+                      <p className="text-sm text-gray-600">Based on activity patterns</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-indigo-600">
+                      {(userStats.engagement_score * 100).toFixed(0)}%
+                    </div>
+                    <div className="text-xs text-gray-500">ML-inspired prediction</div>
+                  </div>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+                  <div
+                    className="bg-gradient-to-r from-indigo-500 to-purple-600 h-3 rounded-full transition-all duration-500"
+                    style={{ width: `${userStats.engagement_score * 100}%` }}
+                  />
+                </div>
+                <div className="text-xs text-gray-600">
+                  Calculated from: recency, frequency, diversity, and consistency of your activity
                 </div>
               </div>
             )}
@@ -593,15 +481,27 @@ export default function Profile() {
                 
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pb-4">
                   {[
-                    { name: "Beginner", min_xp: 0, icon: "🌱", color: "green", bgFrom: "from-green-100", bgTo: "to-green-200", border: "border-green-400", ring: "ring-green-300", text: "text-green-700", textLight: "text-green-600", bgLightFrom: "from-green-50", bgLightTo: "to-green-100", borderLight: "border-green-300" },
-                    { name: "Learner", min_xp: 200, icon: "📚", color: "blue", bgFrom: "from-blue-100", bgTo: "to-blue-200", border: "border-blue-400", ring: "ring-blue-300", text: "text-blue-700", textLight: "text-blue-600", bgLightFrom: "from-blue-50", bgLightTo: "to-blue-100", borderLight: "border-blue-300" },
-                    { name: "Achiever", min_xp: 500, icon: "⭐", color: "purple", bgFrom: "from-purple-100", bgTo: "to-purple-200", border: "border-purple-400", ring: "ring-purple-300", text: "text-purple-700", textLight: "text-purple-600", bgLightFrom: "from-purple-50", bgLightTo: "to-purple-100", borderLight: "border-purple-300" },
-                    { name: "Expert", min_xp: 1500, icon: "🏆", color: "orange", bgFrom: "from-orange-100", bgTo: "to-orange-200", border: "border-orange-400", ring: "ring-orange-300", text: "text-orange-700", textLight: "text-orange-600", bgLightFrom: "from-orange-50", bgLightTo: "to-orange-100", borderLight: "border-orange-300" },
-                    { name: "Master", min_xp: 4000, icon: "👑", color: "gold", bgFrom: "from-yellow-100", bgTo: "to-yellow-200", border: "border-yellow-400", ring: "ring-yellow-300", text: "text-yellow-700", textLight: "text-yellow-600", bgLightFrom: "from-yellow-50", bgLightTo: "to-yellow-100", borderLight: "border-yellow-300" },
+                    { name: "Beginner", min_xp: 0, requirements: {xp: 0}, icon: "🌱", color: "green", bgFrom: "from-green-100", bgTo: "to-green-200", border: "border-green-400", ring: "ring-green-300", text: "text-green-700", textLight: "text-green-600", bgLightFrom: "from-green-50", bgLightTo: "to-green-100", borderLight: "border-green-300" },
+                    { name: "Learner", min_xp: 200, requirements: {xp: 200, submissions: 2, engagement: 0.3}, icon: "📚", color: "blue", bgFrom: "from-blue-100", bgTo: "to-blue-200", border: "border-blue-400", ring: "ring-blue-300", text: "text-blue-700", textLight: "text-blue-600", bgLightFrom: "from-blue-50", bgLightTo: "to-blue-100", borderLight: "border-blue-300" },
+                    { name: "Achiever", min_xp: 500, requirements: {xp: 500, submissions: 5, events: 3, engagement: 0.5, streak_days: 3}, icon: "⭐", color: "purple", bgFrom: "from-purple-100", bgTo: "to-purple-200", border: "border-purple-400", ring: "ring-purple-300", text: "text-purple-700", textLight: "text-purple-600", bgLightFrom: "from-purple-50", bgLightTo: "to-purple-100", borderLight: "border-purple-300" },
+                    { name: "Expert", min_xp: 1500, requirements: {xp: 1500, submissions: 15, events: 8, engagement: 0.7, streak_days: 7, groups: 3}, icon: "🏆", color: "orange", bgFrom: "from-orange-100", bgTo: "to-orange-200", border: "border-orange-400", ring: "ring-orange-300", text: "text-orange-700", textLight: "text-orange-600", bgLightFrom: "from-orange-50", bgLightTo: "to-orange-100", borderLight: "border-orange-300" },
+                    { name: "Master", min_xp: 4000, requirements: {xp: 4000, submissions: 40, events: 20, engagement: 0.9, streak_days: 14, groups: 5, avg_score: 80}, icon: "👑", color: "gold", bgFrom: "from-yellow-100", bgTo: "to-yellow-200", border: "border-yellow-400", ring: "ring-yellow-300", text: "text-yellow-700", textLight: "text-yellow-600", bgLightFrom: "from-yellow-50", bgLightTo: "to-yellow-100", borderLight: "border-yellow-300" },
                   ].map((badge, index) => {
                     const currentXP = userStats?.total_xp || 0
-                    const isUnlocked = currentXP >= badge.min_xp
+                    const currentSubmissions = userStats?.total_accepted_submissions || 0
+                    const currentEvents = userStats?.events_attended || 0
+                    const currentEngagement = userStats?.engagement_score || 0
+                    
+                    // Check multi-dimensional requirements
+                    const meetsXP = currentXP >= badge.requirements.xp
+                    const meetsSubmissions = !badge.requirements.submissions || currentSubmissions >= badge.requirements.submissions
+                    const meetsEvents = !badge.requirements.events || currentEvents >= badge.requirements.events
+                    const meetsEngagement = !badge.requirements.engagement || currentEngagement >= badge.requirements.engagement
+                    const isUnlocked = meetsXP && meetsSubmissions && meetsEvents && meetsEngagement
                     const isCurrent = userStats?.badge?.name === badge.name
+                    
+                    // Calculate progress percentage
+                    const progress = Math.min(100, (currentXP / badge.min_xp) * 100) || 0
                     
                     return (
                       <div
@@ -629,13 +529,39 @@ export default function Profile() {
                           {badge.min_xp}+ XP
                         </div>
                         {!isUnlocked && (
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-                              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                              </svg>
+                          <>
+                            <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                              <div
+                                className={`h-1.5 rounded-full transition-all ${badge.bgFrom} ${badge.bgTo}`}
+                                style={{ width: `${progress}%` }}
+                              />
                             </div>
-                          </div>
+                            <div className="text-xs text-gray-500 mt-1 text-center">
+                              {progress.toFixed(0)}% complete
+                            </div>
+                            {/* Show missing requirements on hover */}
+                            <div className="mt-2 space-y-1 text-xs opacity-0 hover:opacity-100 transition-opacity">
+                              {!meetsXP && (
+                                <div className="text-gray-500">Need {badge.requirements.xp - currentXP} more XP</div>
+                              )}
+                              {!meetsSubmissions && badge.requirements.submissions && (
+                                <div className="text-gray-500">Need {badge.requirements.submissions - currentSubmissions} more submissions</div>
+                              )}
+                              {!meetsEvents && badge.requirements.events && (
+                                <div className="text-gray-500">Need {badge.requirements.events - currentEvents} more events</div>
+                              )}
+                              {!meetsEngagement && badge.requirements.engagement && (
+                                <div className="text-gray-500">Need {(badge.requirements.engagement * 100).toFixed(0)}% engagement</div>
+                              )}
+                            </div>
+                            <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
+                              <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+                                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                </svg>
+                              </div>
+                            </div>
+                          </>
                         )}
                       </div>
                     )
@@ -684,12 +610,10 @@ export default function Profile() {
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">Full Name</h3>
                       <p className="text-gray-700">{form.name || "Not provided"}</p>
                     </div>
-                    {isViewingOwnProfile && (
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Email</h3>
-                        <p className="text-gray-700">{form.email}</p>
-                      </div>
-                    )}
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Email</h3>
+                      <p className="text-gray-700">{form.email}</p>
+                    </div>
                   </div>
             </div>
           ) : (
@@ -800,113 +724,6 @@ export default function Profile() {
           </div>
         </div>
         
-        {/* Followers Modal */}
-        {showFollowersModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowFollowersModal(false)}>
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              <div className="p-6 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-2xl font-bold text-gray-900">Followers</h3>
-                  <button
-                    onClick={() => setShowFollowersModal(false)}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <div className="p-6 overflow-y-auto max-h-[60vh]">
-                {loadingFollowers ? (
-                  <div className="text-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Loading followers...</p>
-                  </div>
-                ) : followersList.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <FontAwesomeIcon icon={faUsers} className="text-4xl mb-3 text-gray-300" />
-                    <p>No followers yet</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {followersList.map((follower) => (
-                      <Link
-                        key={follower.id}
-                        to={`/profile/${follower.id}`}
-                        onClick={() => setShowFollowersModal(false)}
-                        className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors"
-                      >
-                        <img
-                          src={follower.photo_url || `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(follower.email || "user")}`}
-                          alt={follower.name || follower.email}
-                          className="w-12 h-12 rounded-full object-cover"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 truncate">{follower.name || "User"}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Following Modal */}
-        {showFollowingModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowFollowingModal(false)}>
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              <div className="p-6 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-2xl font-bold text-gray-900">Following</h3>
-                  <button
-                    onClick={() => setShowFollowingModal(false)}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <div className="p-6 overflow-y-auto max-h-[60vh]">
-                {loadingFollowing ? (
-                  <div className="text-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Loading following...</p>
-                  </div>
-                ) : followingList.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <FontAwesomeIcon icon={faUserFriends} className="text-4xl mb-3 text-gray-300" />
-                    <p>Not following anyone yet</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {followingList.map((following) => (
-                      <Link
-                        key={following.id}
-                        to={`/profile/${following.id}`}
-                        onClick={() => setShowFollowingModal(false)}
-                        className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors"
-                      >
-                        <img
-                          src={following.photo_url || `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(following.email || "user")}`}
-                          alt={following.name || following.email}
-                          className="w-12 h-12 rounded-full object-cover"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 truncate">{following.name || "User"}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
 
         {isViewingOwnProfile && user?.email !== "harryshady131@gmail.com" && (
           <div className="mt-8">

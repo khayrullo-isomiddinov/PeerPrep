@@ -67,6 +67,42 @@ html {
   h4 { @apply text-xl md:text-2xl font-semibold; }
   p, span, li, div { color: inherit; }
   * { @apply transition-colors duration-300 ease-in-out; }
+  
+  /* Fix for prose class - ensure text is visible */
+  .prose p,
+  .prose li,
+  .prose span,
+  .prose div {
+    color: #1f2937 !important;
+  }
+  
+  .prose h1,
+  .prose h2,
+  .prose h3,
+  .prose h4,
+  .prose h5,
+  .prose h6 {
+    color: #111827 !important;
+  }
+}
+
+/* Flashcard 3D Flip Animation */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+  -webkit-transform: rotateY(180deg);
 }
 
 @layer components {
@@ -74,12 +110,15 @@ html {
 
   .nav-root {
     position: fixed;
-    top: env(safe-area-inset-top);
+    top: 0;
     left: 0;
     right: 0;
     z-index: 1000;
-    padding-top: .5rem;
-    padding-bottom: .5rem;
+    padding-top: 0;
+    padding-bottom: 0;
+    border: none;
+    outline: none;
+    box-shadow: none;
   }
 
   .nav-shell {
@@ -328,7 +367,8 @@ html {
   /* Minimal light navbar to match reference */
   .nav-clean .nav-bar.nav-clean-bar {
     background: #ffffff;
-    outline: 1px solid rgba(0,0,0,.06);
+    outline: none;
+    border: none;
     box-shadow: 0 6px 14px rgba(0,0,0,.04);
     border-radius: 0; /* square ends */
     padding: .75rem 1rem;
@@ -336,7 +376,13 @@ html {
   }
   .nav-clean .nav-aura { display: none; }
   .nav-clean .nav-shell { max-width: none; padding-left: 0; padding-right: 0; }
-  .nav-clean.nav-root { padding-top: 0; padding-bottom: 0; }
+  .nav-clean.nav-root { 
+    padding-top: 0; 
+    padding-bottom: 0; 
+    border: none; 
+    outline: none;
+    top: 0 !important;
+  }
   
   /* Smooth authentication state transitions */
   .nav-authenticated .nav-tabs {
@@ -736,7 +782,7 @@ html {
   .z-nav { z-index: 1000; }
   .z-above-nav { z-index: 1400; }
 
-  .nav-spacer { height: calc(64px + env(safe-area-inset-top)); }
+  .nav-spacer { height: 64px; }
 
   .link-quiet { opacity: .8; }
   .link-quiet:hover { opacity: 1; }
@@ -1570,12 +1616,44 @@ html {
   
   /* Mobile menu positioning - using attribute selector for better specificity */
   [class*="lg:hidden"].fixed {
-    top: calc(64px + env(safe-area-inset-top));
+    top: 64px;
   }
   
   /* Form inputs mobile */
-  .input, .textarea, .auth-input {
+  .input, .textarea, .auth-input, input[type="text"], 
+  input[type="email"], input[type="password"], input[type="search"],
+  textarea, select {
     font-size: 16px !important; /* Prevents zoom on iOS */
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+  }
+  
+  /* Better touch feedback */
+  button:active, .btn:active, a:active {
+    transform: scale(0.98);
+    transition: transform 0.1s;
+  }
+  
+  /* Mobile menu improvements */
+  .mobile-menu {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  
+  /* Prevent pull-to-refresh on mobile menu */
+  .mobile-menu:active {
+    overscroll-behavior-y: contain;
+  }
+  
+  /* Better card touch targets */
+  .event-card, .group-card {
+    min-height: 200px;
+  }
+  
+  /* Improve button groups on mobile */
+  .flex.gap-2 > button, .flex.gap-3 > button, .flex.gap-4 > button {
+    flex: 1 1 auto;
+    min-width: 0;
   }
   
   /* Card padding mobile */
@@ -1587,12 +1665,157 @@ html {
   .step-content {
     padding: 1rem !important;
   }
+  
+  /* Detail pages mobile - two column layout becomes single */
+  .grid.grid-cols-1.lg\\:grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+  
+  /* Chat containers mobile */
+  .h-\\[600px\\] {
+    height: 400px !important;
+    max-height: 50vh;
+  }
+  
+  /* Message input mobile */
+  .message-input-container {
+    padding: 0.75rem !important;
+  }
+  
+  .message-input-container input {
+    font-size: 16px !important;
+    padding: 0.75rem !important;
+  }
+  
+  .message-input-container button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  
+  /* Reaction buttons mobile */
+  button[title*="reaction"], button[title*="Add reaction"] {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0.5rem;
+  }
+  
+  /* Emoji picker mobile */
+  .emoji-picker-container {
+    width: calc(100vw - 2rem) !important;
+    max-width: 300px;
+    left: 0 !important;
+    right: auto !important;
+  }
+  
+  /* Join/Leave buttons mobile */
+  button:has(.fa-user-plus), button:has(.fa-user-minus) {
+    width: 100%;
+    padding: 0.875rem 1.5rem;
+  }
+  
+  /* Back button mobile */
+  a:has(.fa-arrow-left) {
+    padding: 0.5rem 0.75rem;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+  
+  /* Info grid mobile */
+  .grid.grid-cols-2.md\\:grid-cols-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.75rem;
+  }
+  
+  /* Mission description mobile */
+  .bg-gradient-to-br.from-purple-50 {
+    padding: 1rem !important;
+  }
+  
+  /* Members list mobile */
+  .space-y-3 > * {
+    padding: 0.75rem !important;
+  }
+  
+  /* Create menu dropdown mobile */
+  .absolute.right-0.top-full.mt-2.w-48 {
+    width: calc(100vw - 2rem) !important;
+    max-width: 280px;
+    right: 0.5rem;
+  }
+  
+  /* Profile dropdown mobile */
+  .profile-dropdown {
+    width: calc(100vw - 2rem) !important;
+    max-width: 200px;
+    right: 0.5rem;
+  }
+  
+  /* Reaction buttons mobile - make them larger */
+  button[title*="person"], button[title*="people"] {
+    min-width: 48px;
+    min-height: 36px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+  }
+  
+  /* Emoji picker buttons mobile */
+  .emoji-picker-container button {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 1.25rem;
+  }
+  
+  /* Message delete button mobile - always visible */
+  button[title="Delete message"] {
+    opacity: 1 !important;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0.5rem;
+  }
+  
+  /* Step buttons mobile */
+  .step-button {
+    min-height: 48px;
+    padding: 0.75rem 1rem;
+  }
+  
+  /* Search input mobile */
+  .events-search input, .home-search-input {
+    font-size: 16px !important;
+    min-height: 44px;
+  }
+  
+  /* Filter buttons mobile */
+  .filter-btn {
+    min-height: 44px;
+    padding: 0.625rem 1rem;
+  }
+  
+  /* Modal buttons mobile */
+  .modal button, [role="dialog"] button {
+    min-height: 44px;
+    padding: 0.75rem 1.5rem;
+  }
+  
+  /* Download buttons mobile */
+  button:has(.fa-download) {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+  }
+  
+  /* Member/attendee cards mobile */
+  a[href*="/profile/"] {
+    min-height: 64px;
+    padding: 0.75rem !important;
+  }
 }
 
 @media (max-width: 640px) {
   /* Extra small mobile adjustments */
   .nav-spacer {
-    height: calc(56px + env(safe-area-inset-top));
+    height: 56px;
   }
   
   .home-hero-bg {
@@ -1634,23 +1857,59 @@ html {
   }
 }
 
-/* Touch-friendly targets */
+/* Touch-friendly targets - Enhanced */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+  -webkit-tap-highlight-color: rgba(236, 72, 153, 0.2);
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 @media (hover: none) and (pointer: coarse) {
-  .btn, .btn-pink, .btn-secondary, button, a {
+  /* All interactive elements should be touch-friendly */
+  .btn, .btn-pink, .btn-secondary, .btn-ghost-pink, button:not([disabled]), 
+  a:not(.no-touch-target), .nav-link, .tab-link, .nav-link-clean,
+  input[type="button"], input[type="submit"], .event-card, .group-card {
     min-height: 44px;
     min-width: 44px;
-  }
-  
-  .nav-link, .tab-link, .nav-link-clean {
-    padding: .5rem;
-    min-height: 44px;
-    display: flex;
-    align-items: center;
-  }
-  
-  /* Prevent text selection on tap */
-  .btn, button {
     -webkit-tap-highlight-color: rgba(236, 72, 153, 0.2);
+    touch-action: manipulation;
+  }
+  
+  /* Prevent accidental text selection on tap */
+  button, .btn, a.button-like {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  
+  /* Larger touch targets for small buttons */
+  .nav-bell, .auth-chip, button[aria-label] {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0.5rem;
+  }
+  
+  /* Improve form inputs */
+  input, textarea, select {
+    font-size: 16px !important; /* Prevents zoom on iOS */
+    min-height: 44px;
+  }
+  
+  /* Better spacing for touch */
+  .home-card-grid, .upcoming-grid {
+    gap: 1rem;
+  }
+  
+  /* Prevent double-tap zoom */
+  * {
+    touch-action: manipulation;
+  }
+  
+  /* Better scroll behavior */
+  .premium-scrollbar {
+    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -1665,6 +1924,58 @@ html {
   }
   
   .nav-spacer {
-    height: calc(60px + env(safe-area-inset-top));
+    height: 60px;
+  }
+  
+  /* Reduce chat height in landscape */
+  .h-\\[600px\\] {
+    height: 300px !important;
+    max-height: 40vh;
+  }
+}
+
+/* Extra small devices */
+@media (max-width: 375px) {
+  .home-hero-title {
+    font-size: 1.25rem !important;
+  }
+  
+  .home-search {
+    padding: 0.5rem 0.6rem !important;
+  }
+  
+  .home-search-input {
+    font-size: 0.875rem !important;
+    padding: 0.3rem 0.35rem !important;
+  }
+  
+  .btn-pink, .btn-ghost-pink {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.875rem !important;
+  }
+  
+  .container-page {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+  
+  .home-section-inner {
+    padding: 1.5rem 0.5rem 1rem !important;
+  }
+}
+
+/* Safe area insets for notched devices */
+@supports (padding: max(0px)) {
+  .nav-root {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  
+  .nav-spacer {
+    height: 64px;
+  }
+  
+  .mobile-menu {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
 }

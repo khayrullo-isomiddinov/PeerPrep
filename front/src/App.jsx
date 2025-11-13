@@ -5,6 +5,7 @@ import { faSpinner } from "@fortawesome/free-solid-svg-icons"
 import ScrollProgressBar from "./components/ScrollProgressBar"
 import Navbar from "./components/Navbar"
 import Footer from "./components/Footer"
+import ErrorBoundary from "./components/ErrorBoundary"
 import Home from "./pages/Home"
 import Groups from "./pages/Groups"
 import GroupDetail from "./pages/GroupDetail"
@@ -39,25 +40,29 @@ export default function App() {
   }
 
   return (
-    <div className="route-transition">
-      <Navbar />
-      <ScrollProgressBar />
-      <main>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/groups" element={<Groups />} />
-          <Route path="/groups/:id" element={<GroupDetail />} />
-          <Route path="/groups/create" element={<CreateGroup />} />
-          <Route path="/events" element={<Events />} />
-          <Route path="/events/:id" element={<EventDetail />} />
-          <Route path="/events/create" element={<CreateEvent />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/profile/:userId" element={<Profile />} />
-          <Route path="/register" element={<RegisterForm />} />
-          <Route path="/login" element={<LoginForm />} />
-        </Routes>
-      </main>
-      <Footer />
-    </div>
+    <ErrorBoundary>
+      <div className="route-transition">
+        <Navbar />
+        <ScrollProgressBar />
+        <main>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/groups" element={<Groups />} />
+              <Route path="/groups/:id" element={<GroupDetail />} />
+              <Route path="/groups/create" element={<CreateGroup />} />
+              <Route path="/events" element={<Events />} />
+              <Route path="/events/:id" element={<EventDetail />} />
+              <Route path="/events/create" element={<CreateEvent />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/profile/:userId" element={<Profile />} />
+              <Route path="/register" element={<RegisterForm />} />
+              <Route path="/login" element={<LoginForm />} />
+            </Routes>
+          </ErrorBoundary>
+        </main>
+        <Footer />
+      </div>
+    </ErrorBoundary>
   )
 }

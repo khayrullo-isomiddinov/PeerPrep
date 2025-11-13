@@ -1,4 +1,4 @@
-"""Badge system based on XP and accepted mission submissions"""
+"""Advanced Badge system with multi-factor XP calculation and engagement prediction"""
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select, func
 from typing import Optional
@@ -6,6 +6,10 @@ from typing import Optional
 from app.db import get_session
 from app.models import MissionSubmission, User, EventAttendee, Event
 from app.routers.auth import _get_user_from_token
+from app.services.gamification import (
+    DynamicXPCalculator, AdvancedBadgeSystem, EngagementPredictor,
+    award_dynamic_xp_for_submission
+)
 from datetime import datetime
 
 router = APIRouter(prefix="/badges", tags=["badges"])
@@ -21,13 +25,19 @@ BADGE_LEVELS = [
     {"name": "Master", "min_xp": 4000, "icon": "👑", "color": "gold"},
 ]
 
-def award_xp_for_submission(user_id: int, session: Session):
-    """Award XP when a submission is approved"""
-    user = session.exec(select(User).where(User.id == user_id)).first()
-    if user:
-        user.xp = (user.xp or 0) + XP_PER_APPROVED_SUBMISSION
-        session.add(user)
-        session.commit()
+def award_xp_for_submission(user_id: int, submission_id: int, session: Session) -> int:
+    """
+    Award dynamically calculated XP when a submission is approved.
+    
+    Args:
+        user_id: The ID of the user who submitted
+        submission_id: The ID of the submission (required for dynamic XP calculation)
+        session: Database session
+        
+    Returns:
+        The amount of XP awarded
+    """
+    return award_dynamic_xp_for_submission(user_id, submission_id, session)
 
 def award_xp_for_event(user_id: int, event_id: int, session: Session):
     """Award XP when user attends an event (after event date passes)"""
@@ -41,20 +51,8 @@ def award_xp_for_event(user_id: int, event_id: int, session: Session):
             session.commit()
 
 def get_user_badge_level(user_id: int, session: Session) -> Optional[dict]:
-    """Calculate user's badge level based on total XP"""
-    user = session.exec(select(User).where(User.id == user_id)).first()
-    if not user:
-        return None
-    
-    total_xp = user.xp or 0
-    
-    badge_level = None
-    for level in reversed(BADGE_LEVELS):
-        if total_xp >= level["min_xp"]:
-            badge_level = level
-            break
-    
-    return badge_level
+    """Calculate user's badge level using advanced multi-dimensional requirements"""
+    return AdvancedBadgeSystem.check_badge_unlock(user_id, session)
 
 @router.get("/user/{user_id}")
 def get_user_badge(
@@ -88,12 +86,16 @@ def get_user_badge(
         )
     ).one()
     
+    # Get engagement score
+    engagement_score = EngagementPredictor.calculate_engagement_score(user_id, session)
+    
     return {
         "user_id": user_id,
         "badge": badge_level,
         "total_xp": total_xp,
         "total_accepted_submissions": total_submissions,
-        "events_attended": events_attended
+        "events_attended": events_attended,
+        "engagement_score": round(engagement_score, 2)
     }
 
 @router.get("/me")

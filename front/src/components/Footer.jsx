@@ -1,5 +1,10 @@
+import { Link } from "react-router-dom"
+import { useAuth } from "../features/auth/AuthContext"
+
 export default function Footer() {
   const year = new Date().getFullYear()
+  const { isAuthenticated } = useAuth()
+  
   return (
     <footer className="footer-pro">
       <div className="footer-inner">
@@ -18,63 +23,48 @@ export default function Footer() {
               </svg>
               <div className="brand-text"><span className="text-neutral-200">Peer</span><span className="text-pink-500">Prep</span></div>
             </div>
+            <p className="footer-note" style={{ marginTop: '1rem', maxWidth: '280px' }}>
+              Connect with peers, collaborate on study materials, and achieve your academic goals together.
+            </p>
           </div>
 
           <nav className="footer-col">
-            <h3 className="footer-title">Categories</h3>
+            <h3 className="footer-title">Quick Links</h3>
             <ul className="footer-list">
-              <li><a href="#">All</a></li>
-              <li><a href="#">Music</a></li>
-              <li><a href="#">Sport</a></li>
-              <li><a href="#">Exhibition</a></li>
-              <li><a href="#">Business</a></li>
-              <li><a href="#">Photography</a></li>
+              <li><Link to="/">Home</Link></li>
+              <li><Link to="/groups">Study Groups</Link></li>
+              <li><Link to="/events">Events</Link></li>
             </ul>
           </nav>
 
           <nav className="footer-col">
-            <h3 className="footer-title">Resources</h3>
+            <h3 className="footer-title">Features</h3>
             <ul className="footer-list">
-              <li><a href="#">User guides</a></li>
-              <li><a href="#">Help Center</a></li>
-              <li><a href="#">Partners</a></li>
-              <li><a href="#">Taxes</a></li>
+              <li><Link to="/groups">Study Groups</Link></li>
+              <li><Link to="/events">Study Events</Link></li>
             </ul>
           </nav>
 
           <nav className="footer-col">
-            <h3 className="footer-title">Company</h3>
+            <h3 className="footer-title">Account</h3>
             <ul className="footer-list">
-              <li><a href="#">About</a></li>
-              <li><a href="#">Join us</a></li>
+              {isAuthenticated ? (
+                <li><Link to="/profile">My Profile</Link></li>
+              ) : (
+                <>
+                  <li><Link to="/login">Login</Link></li>
+                  <li><Link to="/register">Register</Link></li>
+                </>
+              )}
             </ul>
           </nav>
-
-          <div className="footer-subscribe">
-            <h3 className="footer-title accent">Stay in the loop</h3>
-            <p className="footer-note">For product announcements and exclusive insights</p>
-            <form className="subscribe-wrap" onSubmit={(e)=>e.preventDefault()}>
-              <div className="subscribe-field">
-                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden><path fill="currentColor" d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
-                <input placeholder="Input your email" type="email" />
-              </div>
-              <button className="btn-pink square" type="submit">Subscribe</button>
-            </form>
-          </div>
         </div>
 
         <div className="footer-divider" />
 
         <div className="footer-bottom">
-          <div className="lang-select">
-            <select aria-label="Language">
-              <option>English</option>
-              <option>Deutsch</option>
-              <option>Français</option>
-            </select>
-          </div>
           <div className="legal">
-            © {year} PeerPrep · <a href="#">Privacy</a> · <a href="#">Terms</a> · <a href="#">Sitemap</a>
+            © {year} PeerPrep
           </div>
         </div>
       </div>

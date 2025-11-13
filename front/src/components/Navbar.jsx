@@ -88,11 +88,12 @@ export default function Navbar() {
             {isAuthenticated && (
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="lg:hidden nav-bell hover:bg-pink-50 hover:border-pink-200 transition-colors"
-                style={{ gridColumn: '2', justifySelf: 'center' }}
+                className="lg:hidden nav-bell hover:bg-pink-50 hover:border-pink-200 transition-colors touch-target"
+                style={{ gridColumn: '2', justifySelf: 'center', minWidth: '44px', minHeight: '44px', padding: '0.5rem' }}
                 aria-label="Menu"
+                aria-expanded={mobileMenuOpen}
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" className="text-pink-600">
+                <svg width="20" height="20" viewBox="0 0 24 24" className="text-pink-600">
                   {mobileMenuOpen ? (
                     <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                   ) : (
@@ -225,15 +226,24 @@ export default function Navbar() {
 
       {/* Mobile menu */}
       {isAuthenticated && mobileMenuOpen && (
-        <div className="lg:hidden fixed left-0 right-0 bg-white border-b border-gray-200 shadow-lg z-50" style={{ top: 'calc(64px + env(safe-area-inset-top))' }}>
+        <div 
+          className="lg:hidden fixed left-0 right-0 bg-white border-b border-gray-200 shadow-lg z-50 mobile-menu"
+          style={{ 
+            top: '64px',
+            maxHeight: 'calc(100vh - 64px)',
+            overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch'
+          }}
+        >
           <div className="container-page py-4">
-            <ul className="space-y-2">
+            <ul className="space-y-1">
               <li>
                 <NavLink 
                   to="/" 
                   end 
-                  className={({isActive}) => `block px-4 py-3 rounded-lg font-medium transition-colors ${isActive ? 'bg-pink-50 text-pink-600' : 'text-gray-700 hover:bg-gray-50'}`}
+                  className={({isActive}) => `block px-4 py-4 rounded-lg font-medium transition-colors touch-target ${isActive ? 'bg-pink-50 text-pink-600' : 'text-gray-700 active:bg-gray-100'}`}
                   onClick={() => setMobileMenuOpen(false)}
+                  style={{ minHeight: '48px', display: 'flex', alignItems: 'center' }}
                 >
                   Explore
                 </NavLink>
@@ -241,8 +251,9 @@ export default function Navbar() {
               <li>
                 <NavLink 
                   to="/groups" 
-                  className={({isActive}) => `block px-4 py-3 rounded-lg font-medium transition-colors ${isActive ? 'bg-pink-50 text-pink-600' : 'text-gray-700 hover:bg-gray-50'}`}
+                  className={({isActive}) => `block px-4 py-4 rounded-lg font-medium transition-colors touch-target ${isActive ? 'bg-pink-50 text-pink-600' : 'text-gray-700 active:bg-gray-100'}`}
                   onClick={() => setMobileMenuOpen(false)}
+                  style={{ minHeight: '48px', display: 'flex', alignItems: 'center' }}
                 >
                   Groups
                 </NavLink>
@@ -250,11 +261,25 @@ export default function Navbar() {
               <li>
                 <NavLink 
                   to="/events" 
-                  className={({isActive}) => `block px-4 py-3 rounded-lg font-medium transition-colors ${isActive ? 'bg-pink-50 text-pink-600' : 'text-gray-700 hover:bg-gray-50'}`}
+                  className={({isActive}) => `block px-4 py-4 rounded-lg font-medium transition-colors touch-target ${isActive ? 'bg-pink-50 text-pink-600' : 'text-gray-700 active:bg-gray-100'}`}
                   onClick={() => setMobileMenuOpen(false)}
+                  style={{ minHeight: '48px', display: 'flex', alignItems: 'center' }}
                 >
                   Upcoming Events
                 </NavLink>
+              </li>
+              <li className="border-t border-gray-200 mt-2 pt-2">
+                <Link
+                  to="/profile"
+                  className="block px-4 py-4 rounded-lg font-medium transition-colors touch-target text-gray-700 active:bg-gray-100"
+                  onClick={() => setMobileMenuOpen(false)}
+                  style={{ minHeight: '48px', display: 'flex', alignItems: 'center', gap: '0.75rem' }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" className="text-gray-500">
+                    <path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                  </svg>
+                  Profile
+                </Link>
               </li>
             </ul>
           </div>

@@ -3,10 +3,10 @@ import { useSearchParams, useLocation } from "react-router-dom"
 import { Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { 
-  faCalendarAlt, faArrowsRotate, faSearch
+  faCalendarAlt, faArrowsRotate, faSearch, faChevronDown, faChevronUp
 } from "@fortawesome/free-solid-svg-icons"
 import EventList from "../features/events/EventList"
-import { listEvents } from "../utils/api"
+import { listEvents, getMyEvents } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
 import { getCachedEvents, setCachedEvents } from "../utils/dataCache"
 
@@ -23,8 +23,11 @@ export default function Events() {
   
   const cachedEvents = getCachedEvents(currentParams)
   const [events, setEvents] = useState(cachedEvents || [])
+  const [myEvents, setMyEvents] = useState([])
   const [loading, setLoading] = useState(!cachedEvents)
+  const [loadingMyEvents, setLoadingMyEvents] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [showMyEvents, setShowMyEvents] = useState(false)
 
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) {
@@ -47,6 +50,23 @@ export default function Events() {
     }
   }, [params])
 
+  const loadMyEvents = useCallback(async () => {
+    if (!isAuthenticated) {
+      setMyEvents([])
+      return
+    }
+    setLoadingMyEvents(true)
+    try {
+      const data = await getMyEvents()
+      setMyEvents(data || [])
+    } catch (error) {
+      console.error("Failed to load my events:", error)
+      setMyEvents([])
+    } finally {
+      setLoadingMyEvents(false)
+    }
+  }, [isAuthenticated])
+
   useEffect(() => {
     const cached = getCachedEvents(currentParams)
     if (location.state?.newEvent) {
@@ -60,6 +80,10 @@ export default function Events() {
       })
       setLoading(false)
       load(false)
+      // Refresh my events if the section is open
+      if (showMyEvents) {
+        loadMyEvents()
+      }
       window.history.replaceState({}, document.title)
     } else if (cached) {
       setEvents(cached)
@@ -68,6 +92,7 @@ export default function Events() {
       load()
     }
     setSearchQuery(params.get('q') || "")
+    // Don't auto-load my events - only load when user clicks the button
   }, [load, params, currentParams, location.state])
 
   useEffect(() => {
@@ -106,6 +131,7 @@ export default function Events() {
     if (!updated) {
       setTimeout(() => {
         load()
+        loadMyEvents()
       }, 400)
       return
     }
@@ -114,6 +140,8 @@ export default function Events() {
     const q = params.get('q') || undefined
     const location = params.get('location') || undefined
     setCachedEvents(updatedEvents, { q, location })
+    // Also update my events if it's in there
+    setMyEvents(prev => prev.map(e => (e.id === updated.id ? updated : e)))
   }
 
   function handleDelete(eventId) {
@@ -122,6 +150,8 @@ export default function Events() {
     const q = params.get('q') || undefined
     const location = params.get('location') || undefined
     setCachedEvents(updatedEvents, { q, location })
+    // Also remove from my events if it's in there
+    setMyEvents(prev => prev.filter(e => e.id !== eventId))
   }
 
   return (
@@ -150,19 +180,96 @@ export default function Events() {
 
        {}
        <section className="container-page section">
-         <div className="space-y-8">
-           <div className="flex items-center justify-between">
-             <h2 className="text-3xl font-bold text-gray-900">New Study Events</h2>
-             <div className="flex items-center gap-4">
+         <div className="space-y-12">
+           {/* My Events Section */}
+           {isAuthenticated && (
+             <div className="space-y-6">
                <button
-                 onClick={load}
-                 className="text-gray-500 hover:text-gray-700 font-medium flex items-center gap-2"
+                 onClick={() => {
+                   if (!showMyEvents) {
+                     loadMyEvents()
+                   }
+                   setShowMyEvents(!showMyEvents)
+                 }}
+                 className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-pink-50 to-purple-50 hover:from-pink-100 hover:to-purple-100 rounded-xl border border-pink-200 transition-all duration-200 group"
                >
-                 <FontAwesomeIcon icon={faArrowsRotate} className="w-4 h-4" />
-                 Refresh
+                 <div className="flex items-center gap-3">
+                   <FontAwesomeIcon icon={faCalendarAlt} className="w-5 h-5 text-pink-600" />
+                   <h2 className="text-2xl font-bold text-gray-900">My Events</h2>
+                   {myEvents.length > 0 && (
+                     <span className="px-2 py-1 bg-pink-500 text-white text-sm font-medium rounded-full">
+                       {myEvents.length}
+                     </span>
+                   )}
+                 </div>
+                 <div className="flex items-center gap-3">
+                   {showMyEvents && (
+                     <button
+                       onClick={(e) => {
+                         e.stopPropagation()
+                         loadMyEvents()
+                         load(false)
+                       }}
+                       className="touch-target text-gray-500 hover:text-gray-700 active:text-gray-900 font-medium flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/50 active:bg-white/70 transition-colors"
+                     >
+                       <FontAwesomeIcon icon={faArrowsRotate} className="w-4 h-4" />
+                       <span className="hidden sm:inline">Refresh</span>
+                     </button>
+                   )}
+                   <FontAwesomeIcon 
+                     icon={showMyEvents ? faChevronUp : faChevronDown} 
+                     className="w-5 h-5 text-gray-600 group-hover:text-gray-900 transition-colors" 
+                   />
+                 </div>
                </button>
+
+               {showMyEvents && (
+                 <>
+                   {loadingMyEvents ? (
+                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                       {[...Array(3)].map((_, i) => (
+                         <div key={i} className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200/60 p-6 premium-loading">
+                           <div className="animate-pulse space-y-4">
+                             <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                             <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                             <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+                           </div>
+                         </div>
+                       ))}
+                     </div>
+                   ) : myEvents.length > 0 ? (
+                     <EventList events={myEvents} onChanged={onChanged} onDelete={handleDelete} />
+                   ) : (
+                     <div className="text-center py-12 bg-gray-50 rounded-2xl border border-gray-200">
+                       <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                         <FontAwesomeIcon icon={faCalendarAlt} className="w-8 h-8 text-gray-400" />
+                       </div>
+                       <h3 className="text-lg font-semibold text-gray-900 mb-2">No events yet</h3>
+                       <p className="text-gray-600 text-sm">Join or create events to see them here</p>
+                     </div>
+                   )}
+                 </>
+               )}
              </div>
-           </div>
+           )}
+
+           {/* All Events Section */}
+           <div className="space-y-6">
+             <div className="flex items-center justify-between">
+               <h2 className="text-3xl font-bold text-gray-900">All Events</h2>
+               <div className="flex items-center gap-4">
+                 <button
+                   onClick={() => {
+                     load()
+                     if (isAuthenticated) loadMyEvents()
+                   }}
+                   className="touch-target text-gray-500 hover:text-gray-700 active:text-gray-900 font-medium flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors"
+                 >
+                   <FontAwesomeIcon icon={faArrowsRotate} className="w-4 h-4" />
+                   <span className="hidden sm:inline">Refresh</span>
+                 </button>
+               </div>
+             </div>
 
           {loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -201,6 +308,7 @@ export default function Events() {
               )}
             </div>
           )}
+          </div>
         </div>
       </section>
     </div>

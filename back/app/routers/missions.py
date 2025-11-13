@@ -8,6 +8,9 @@ from app.models import MissionSubmission, Group, GroupMember, User
 from app.schemas.groups import MissionSubmission as MissionSubmissionSchema
 from app.routers.auth import _get_user_from_token
 from app.routers.badges import award_xp_for_submission
+from app.services.mission_analyzer import (
+    analyze_submission_quality, NLPQualityScorer, DeadlineOptimizer
+)
 from app.core.security import decode_token
 from pydantic import BaseModel, Field
 
@@ -77,7 +80,30 @@ def submit_mission(
     session.commit()
     session.refresh(submission)
     
-    return submission
+    # Automatically analyze submission quality
+    quality_analysis = None
+    try:
+        quality_analysis = analyze_submission_quality(submission, session)
+        # Store auto-generated feedback if leader hasn't provided one yet
+        if not submission.feedback and quality_analysis.get("auto_feedback"):
+            submission.feedback = quality_analysis["auto_feedback"]
+            # Suggest score based on quality
+            if submission.score is None:
+                submission.score = quality_analysis.get("recommended_score")
+            session.add(submission)
+            session.commit()
+            session.refresh(submission)
+    except Exception as e:
+        # Don't fail submission if analysis fails
+        print(f"Quality analysis error: {e}")
+    
+    # Convert to schema and add quality analysis
+    result = MissionSubmissionSchema.model_validate(submission)
+    if quality_analysis:
+        result.quality_scores = quality_analysis.get("quality_scores")
+        result.auto_feedback = quality_analysis.get("auto_feedback")
+    
+    return result
 
 @router.get("", response_model=List[MissionSubmissionSchema])
 def list_submissions(
@@ -122,7 +148,20 @@ def list_submissions(
     query = query.order_by(MissionSubmission.submitted_at.desc())
     submissions = session.exec(query).all()
     
-    return submissions
+    # Add quality analysis to each submission
+    result = []
+    for submission in submissions:
+        sub_dict = MissionSubmissionSchema.model_validate(submission).model_dump()
+        # Re-analyze to get current quality scores
+        try:
+            quality_analysis = analyze_submission_quality(submission, session)
+            sub_dict["quality_scores"] = quality_analysis.get("quality_scores")
+            sub_dict["auto_feedback"] = quality_analysis.get("auto_feedback")
+        except:
+            pass
+        result.append(sub_dict)
+    
+    return result
 
 @router.get("/my-submissions", response_model=List[MissionSubmissionSchema])
 def get_my_submissions(
@@ -146,7 +185,20 @@ def get_my_submissions(
         ).order_by(MissionSubmission.submitted_at.desc())
     ).all()
     
-    return submissions
+    # Add quality analysis to each submission
+    result = []
+    for submission in submissions:
+        sub_dict = MissionSubmissionSchema.model_validate(submission).model_dump()
+        # Re-analyze to get current quality scores
+        try:
+            quality_analysis = analyze_submission_quality(submission, session)
+            sub_dict["quality_scores"] = quality_analysis.get("quality_scores")
+            sub_dict["auto_feedback"] = quality_analysis.get("auto_feedback")
+        except:
+            pass
+        result.append(sub_dict)
+    
+    return result
 
 @router.patch("/{submission_id}", response_model=MissionSubmissionSchema)
 def review_submission(
@@ -199,7 +251,8 @@ def review_submission(
             submission.approved_by = current_user.id
             submission.approved_at = datetime.utcnow()
             if not was_approved:
-                award_xp_for_submission(submission.user_id, session)
+                # Award dynamic XP based on submission quality
+                award_xp_for_submission(submission.user_id, submission.id, session)
         else:
             submission.approved_by = None
             submission.approved_at = None
@@ -214,7 +267,16 @@ def review_submission(
     session.commit()
     session.refresh(submission)
     
-    return submission
+    # Add quality analysis to response
+    result = MissionSubmissionSchema.model_validate(submission)
+    try:
+        quality_analysis = analyze_submission_quality(submission, session)
+        result.quality_scores = quality_analysis.get("quality_scores")
+        result.auto_feedback = quality_analysis.get("auto_feedback")
+    except:
+        pass
+    
+    return result
 
 @router.delete("/{submission_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_submission(

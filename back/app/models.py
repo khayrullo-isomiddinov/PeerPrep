@@ -82,6 +82,7 @@ class GroupMessage(SQLModel, table=True):
     user_id: int = Field(index=True, foreign_key="user.id")
     content: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_deleted: bool = Field(default=False)
 
 class MessageRead(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -120,3 +121,28 @@ class Follow(SQLModel, table=True):
     # Prevent duplicate follows - this will be enforced at the database level
     # SQLModel doesn't support composite unique constraints directly, 
     # but we check in the router before creating
+
+# Collaborative Document Editor Models
+class StudyDocument(SQLModel, table=True):
+    """Study document that can be collaboratively edited"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    group_id: Optional[str] = Field(default=None, index=True, foreign_key="group.id")
+    event_id: Optional[int] = Field(default=None, index=True, foreign_key="event.id")
+    title: str
+    content: str = Field(default="")  # Current document content
+    created_by: int = Field(index=True, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    version: int = Field(default=0, description="Document version for conflict resolution")
+
+class DocumentOperation(SQLModel, table=True):
+    """CRDT operation log for document editing"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    document_id: int = Field(index=True, foreign_key="studydocument.id")
+    user_id: int = Field(index=True, foreign_key="user.id")
+    operation_type: str  # "insert", "delete", "retain"
+    position: int  # Character position
+    content: Optional[str] = None  # Text to insert/delete
+    length: int = Field(default=1)  # Length of operation
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    vector_clock: Optional[str] = Field(default=None, description="JSON string of vector clock for CRDT")

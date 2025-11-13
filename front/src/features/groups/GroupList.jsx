@@ -7,7 +7,6 @@ import {
 import GroupCard from "./GroupCard"
 import { deleteGroup } from "../../utils/api"
 import { useAuth } from "../auth/AuthContext"
-import Button from "../../components/Button"
 
 export default function GroupList({ groups, setGroups, onEdit, showFilters = true }) {
   const [searchTerm, setSearchTerm] = useState("")
@@ -217,16 +216,16 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
             <h3 className="text-xl font-bold text-gray-900">No groups found</h3>
             <p className="text-gray-600 mt-2">Try adjusting your search or filters.</p>
             <div className="mt-6">
-              <Button
-                variant="secondary"
+              <button
                 onClick={() => {
                   setSearchTerm("")
                   setSelectedField("")
                   setShowMissionsOnly(false)
                 }}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
               >
                 Clear filters
-              </Button>
+              </button>
             </div>
           </div>
         </div>

@@ -89,7 +89,10 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden premium-hover hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 backdrop-blur-sm">
+    <Link 
+      to={`/groups/${group.id}`}
+      className="block bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden premium-hover hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 backdrop-blur-sm"
+    >
       {}
       <div className="h-52 relative overflow-hidden group">
         {group.cover_image_url ? (
@@ -174,36 +177,41 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
         )}
 
         {}
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => setShowDetails(v => !v)}
-            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium transition-colors"
-          >
-            <span>{showDetails ? 'Hide Details' : 'View Details'}</span>
-            <FontAwesomeIcon icon={faChevronRight} className={`transform transition-transform ${showDetails ? 'rotate-90' : ''}`} />
-          </button>
+        <div className="flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-2">
             {!canDelete && (
-              <button
-                onClick={handleJoinLeave}
-                disabled={isLoading}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${joined ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-pink-500 text-white hover:bg-pink-600'} disabled:opacity-50 disabled:cursor-not-allowed`}
-              >
-                <FontAwesomeIcon icon={joined ? faUserMinus : faUserPlus} />
-                <span>{isLoading ? (joined ? 'Leaving...' : 'Joining...') : (joined ? 'Leave' : 'Join Group')}</span>
-              </button>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handleJoinLeave()
+                  }}
+                  disabled={isLoading}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${joined ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-pink-500 text-white hover:bg-pink-600'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <FontAwesomeIcon icon={joined ? faUserMinus : faUserPlus} />
+                  <span>{isLoading ? (joined ? 'Leaving...' : 'Joining...') : (joined ? 'Leave' : 'Join Group')}</span>
+                </button>
             )}
             {canDelete && (
               <>
                 <button
-                  onClick={() => onEdit && onEdit(group)}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onEdit && onEdit(group)
+                  }}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors bg-blue-500 text-white hover:bg-blue-600"
                 >
                   <FontAwesomeIcon icon={faEdit} />
                   <span>Edit</span>
                 </button>
                 <button
-                  onClick={handleDeleteClick}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handleDeleteClick()
+                  }}
                   disabled={busyDelete || isDeleting}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -214,28 +222,6 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
             )}
           </div>
         </div>
-
-        {showDetails && (
-          <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
-              <div>
-                <h5 className="font-semibold text-gray-800 mb-2">Group Info</h5>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2"><FontAwesomeIcon icon={faGraduationCap} className="text-blue-500" /><span>Field: {group.field}</span></div>
-                  {group.exam && (<div className="flex items-center gap-2"><FontAwesomeIcon icon={faBook} className="text-purple-500" /><span>Exam: {group.exam}</span></div>)}
-                  <div className="flex items-center gap-2"><FontAwesomeIcon icon={faUsers} className="text-green-500" /><span>Members: {memberCount}</span></div>
-                </div>
-              </div>
-            </div>
-            <Link
-              to={`/groups/${group.id}`}
-              className="block w-full btn-pink text-center"
-            >
-              View Full Details
-              <FontAwesomeIcon icon={faChevronRight} className="ml-2" />
-            </Link>
-          </div>
-        )}
       </div>
 
       {err && (
@@ -323,6 +309,6 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
           }
         }
       `}</style>
-    </div>
+    </Link>
   )
 }

@@ -114,6 +114,51 @@ def migrate_add_is_deleted_to_event_messages():
     except Exception as e:
         print(f"Migration note (is_deleted): {e}")
 
+def migrate_add_is_deleted_to_group_messages():
+    """Add is_deleted column to groupmessage table if it doesn't exist"""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='groupmessage'"))
+            if not result.fetchone():
+                print("Group message table doesn't exist yet, will be created by init_db")
+                return
+            
+            result = conn.execute(text("PRAGMA table_info(groupmessage)"))
+            columns = [row[1] for row in result.fetchall()]
+            
+            if 'is_deleted' not in columns:
+                print("Adding is_deleted column to groupmessage table...")
+                conn.execute(text("ALTER TABLE groupmessage ADD COLUMN is_deleted INTEGER DEFAULT 0"))
+                conn.commit()
+                print("✓ Added is_deleted column to groupmessage table")
+            else:
+                print("✓ is_deleted column already exists in groupmessage table")
+    except Exception as e:
+        print(f"Migration note (is_deleted group): {e}")
+
+def migrate_add_mission_description_to_groups():
+    """Add mission_description column to group table if it doesn't exist"""
+    try:
+        with engine.begin() as conn:
+            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='group'"))
+            if not result.fetchone():
+                print("Group table doesn't exist yet, will be created by init_db")
+                return
+            
+            result = conn.execute(text("PRAGMA table_info(\"group\")"))
+            columns = [row[1] for row in result.fetchall()]
+            
+            if 'mission_description' not in columns:
+                print("Adding mission_description column to group table...")
+                conn.execute(text("ALTER TABLE \"group\" ADD COLUMN mission_description TEXT"))
+                print("✓ Added mission_description column to group table")
+            else:
+                print("✓ mission_description column already exists in group table")
+    except Exception as e:
+        print(f"Migration error (mission_description): {e}")
+        import traceback
+        traceback.print_exc()
+
 def migrate_add_message_reads():
     """Add messageread table if it doesn't exist"""
     try:
@@ -156,6 +201,7 @@ def run_migrations():
     migrate_add_event_messages()
     migrate_add_group_messages()
     migrate_add_is_deleted_to_event_messages()
+    migrate_add_is_deleted_to_group_messages()
     migrate_add_message_reads()
     migrate_add_message_reactions()
 
