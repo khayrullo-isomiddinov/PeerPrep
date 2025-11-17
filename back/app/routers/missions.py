@@ -1,16 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Header, Query
 from sqlmodel import Session, select
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.db import get_session
 from app.models import MissionSubmission, Group, GroupMember, User
 from app.schemas.groups import MissionSubmission as MissionSubmissionSchema
 from app.routers.auth import _get_user_from_token
 from app.routers.badges import award_xp_for_submission
-from app.services.mission_analyzer import (
-    analyze_submission_quality, NLPQualityScorer, DeadlineOptimizer
-)
+from app.services.mission_analyzer import analyze_submission_quality
 from app.core.security import decode_token
 from pydantic import BaseModel, Field
 
@@ -98,7 +96,7 @@ def submit_mission(
         print(f"Quality analysis error: {e}")
     
     # Convert to schema and add quality analysis
-    result = MissionSubmissionSchema.model_validate(submission)
+    result = MissionSubmissionSchema.model_validate(submission, from_attributes=True)
     if quality_analysis:
         result.quality_scores = quality_analysis.get("quality_scores")
         result.auto_feedback = quality_analysis.get("auto_feedback")
@@ -109,9 +107,11 @@ def submit_mission(
 def list_submissions(
     group_id: str,
     session: Session = Depends(get_session),
-    authorization: Optional[str] = Header(default=None)
+    authorization: Optional[str] = Header(default=None),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0)
 ):
-    """List all mission submissions for a group"""
+    """List mission submissions for a group with pagination"""
     
     current_user = None
     try:
@@ -145,20 +145,14 @@ def list_submissions(
     if not is_leader:
         query = query.where(MissionSubmission.is_approved == True)
     
-    query = query.order_by(MissionSubmission.submitted_at.desc())
+    query = query.order_by(MissionSubmission.submitted_at.desc()).limit(limit).offset(offset)
     submissions = session.exec(query).all()
     
-    # Add quality analysis to each submission
+    # OPTIMIZED: Don't analyze quality in list view - too expensive
+    # Quality analysis is only done on submission creation and review
     result = []
     for submission in submissions:
-        sub_dict = MissionSubmissionSchema.model_validate(submission).model_dump()
-        # Re-analyze to get current quality scores
-        try:
-            quality_analysis = analyze_submission_quality(submission, session)
-            sub_dict["quality_scores"] = quality_analysis.get("quality_scores")
-            sub_dict["auto_feedback"] = quality_analysis.get("auto_feedback")
-        except:
-            pass
+        sub_dict = MissionSubmissionSchema.model_validate(submission, from_attributes=True).model_dump()
         result.append(sub_dict)
     
     return result
@@ -167,7 +161,9 @@ def list_submissions(
 def get_my_submissions(
     group_id: str,
     session: Session = Depends(get_session),
-    current_user: User = Depends(_get_user_from_token)
+    current_user: User = Depends(_get_user_from_token),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0)
 ):
     """Get current user's submissions for a group"""
     
@@ -183,19 +179,13 @@ def get_my_submissions(
             MissionSubmission.group_id == group_id,
             MissionSubmission.user_id == current_user.id
         ).order_by(MissionSubmission.submitted_at.desc())
+        .limit(limit).offset(offset)
     ).all()
     
-    # Add quality analysis to each submission
+    # OPTIMIZED: Don't analyze quality in list view - too expensive
     result = []
     for submission in submissions:
-        sub_dict = MissionSubmissionSchema.model_validate(submission).model_dump()
-        # Re-analyze to get current quality scores
-        try:
-            quality_analysis = analyze_submission_quality(submission, session)
-            sub_dict["quality_scores"] = quality_analysis.get("quality_scores")
-            sub_dict["auto_feedback"] = quality_analysis.get("auto_feedback")
-        except:
-            pass
+        sub_dict = MissionSubmissionSchema.model_validate(submission, from_attributes=True).model_dump()
         result.append(sub_dict)
     
     return result
@@ -249,7 +239,7 @@ def review_submission(
         submission.is_approved = review_data.is_approved
         if review_data.is_approved:
             submission.approved_by = current_user.id
-            submission.approved_at = datetime.utcnow()
+            submission.approved_at = datetime.now(timezone.utc)
             if not was_approved:
                 # Award dynamic XP based on submission quality
                 award_xp_for_submission(submission.user_id, submission.id, session)
@@ -268,7 +258,7 @@ def review_submission(
     session.refresh(submission)
     
     # Add quality analysis to response
-    result = MissionSubmissionSchema.model_validate(submission)
+    result = MissionSubmissionSchema.model_validate(submission, from_attributes=True)
     try:
         quality_analysis = analyze_submission_quality(submission, session)
         result.quality_scores = quality_analysis.get("quality_scores")

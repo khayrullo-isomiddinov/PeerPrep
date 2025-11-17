@@ -1,97 +1,129 @@
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useMemo, useCallback, memo } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate, Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { 
   faCalendarAlt, faMapMarkerAlt, faUsers, faClock, 
-  faEdit, faTrash, faUserPlus, faUserMinus, faCheck, faStar,
+  faEdit, faTrash,
   faGraduationCap, faBook, faMicroscope, faCode,
-  faMusic, faPalette, faDumbbell, faHeartbeat, faChevronRight, faImage, faUpload, faTimes
+  faMusic, faPalette, faDumbbell, faHeartbeat
 } from "@fortawesome/free-solid-svg-icons"
-import { deleteEvent, getAttendees, joinEvent, leaveEvent, updateEvent, generateCoverImage } from "../../utils/api"
+import { deleteEvent, getAttendees, joinEvent, leaveEvent, getEvent } from "../../utils/api"
 import { useAuth } from "../auth/AuthContext"
+import { usePrefetch } from "../../utils/usePrefetch"
 
-export default function EventCard({ event, onChanged, onDelete }) {
+function EventCard({ event, onChanged, onDelete, onEdit }) {
   const { user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
-  const currentId = user ? Number(user.id ?? user?.user?.id) : null
-  const creatorId = event.created_by != null ? Number(event.created_by) : null
-  const mine = currentId != null && creatorId === currentId
+  const { prefetch } = usePrefetch()
+  const currentId = useMemo(() => user ? Number(user.id ?? user?.user?.id) : null, [user])
+  const creatorId = useMemo(() => event.created_by != null ? Number(event.created_by) : null, [event.created_by])
+  const mine = useMemo(() => currentId != null && creatorId === currentId, [currentId, creatorId])
 
-  const [count, setCount] = useState(0)
-  const [joined, setJoined] = useState(mine)
+  // Use enriched data from API - simple and straightforward
+  const count = event.attendee_count ?? 0
+  const isJoinedFromAPI = event.is_joined ?? false
+  
+  const [joined, setJoined] = useState(() => {
+    // Initialize from API data if available
+    if (mine) return true
+    return isJoinedFromAPI
+  })
+  
   const [busyJoin, setBusyJoin] = useState(false)
   const [busyLeave, setBusyLeave] = useState(false)
   const [busyDelete, setBusyDelete] = useState(false)
-  const [busySave, setBusySave] = useState(false)
-  const [editing, setEditing] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [err, setErr] = useState("")
 
-  const [title, setTitle] = useState(event.title)
-  const [startsAt, setStartsAt] = useState(new Date(event.starts_at).toISOString().slice(0, 16))
-  const [location, setLocation] = useState(event.location)
-  const [capacity, setCapacity] = useState(event.capacity)
-  const [description, setDescription] = useState(event.description || "")
-  const [coverImageFile, setCoverImageFile] = useState(null)
-  const [coverImagePreview, setCoverImagePreview] = useState(null)
-  const [coverMode, setCoverMode] = useState("upload")
-  const [aiPrompt, setAiPrompt] = useState("")
-  const [generatingCover, setGeneratingCover] = useState(false)
-  const fileInputRef = useRef(null)
-
-  async function loadAttendees() {
-    try {
-      const ids = await getAttendees(event.id)
-      const safeIds = Array.isArray(ids) ? ids : []
-      setCount(safeIds.length)
-      if (!mine && currentId != null) {
-        setJoined(safeIds.includes(currentId))
-      }
-    } catch {
-      setCount(0)
-    }
-  }
-
+  // Update joined state when API data is available - simple sync
   useEffect(() => {
-    setJoined(mine)
-    setTitle(event.title)
-    setStartsAt(new Date(event.starts_at).toISOString().slice(0, 16))
-    setLocation(event.location)
-    setCapacity(event.capacity)
-    setDescription(event.description || "")
-    setCoverImageFile(null)
-    setCoverImagePreview(null)
-    setAiPrompt("")
-    setCoverMode("upload")
-    loadAttendees()
-  }, [event.id, mine])
+    if (mine) {
+      setJoined(true)
+    } else if (!busyJoin && !busyLeave) {
+      // Only update if not in the middle of an operation
+      setJoined(isJoinedFromAPI)
+    }
+  }, [mine, isJoinedFromAPI, busyJoin, busyLeave])
 
   const full = count >= event.capacity
 
   async function onJoin() {
+    // Prevent multiple simultaneous operations
+    if (busyJoin || busyLeave) {
+      return
+    }
+    
     setErr("")
     setBusyJoin(true)
+    const previousJoined = joined
+    
     try {
-      await joinEvent(event.id)
-      setJoined(true)
-      setCount(c => c + 1)
+      const result = await joinEvent(event.id)
+      
+      if (result?.success) {
+        setJoined(true)
+        // Use server-provided count for accuracy
+        const updatedEvent = {
+          ...event,
+          is_joined: true,
+          attendee_count: result.attendee_count ?? event.attendee_count
+        }
+        // Invalidate cache to ensure fresh data when navigating
+        import("../../utils/pageCache").then(({ invalidateCache }) => {
+          invalidateCache(`event:${event.id}`)
+          invalidateCache("events")
+          invalidateCache("home:events")
+        })
+        onChanged?.(updatedEvent)
+      } else {
+        setErr("Unexpected response from server")
+        setTimeout(() => setErr(""), 5000)
+      }
     } catch (e) {
-      setErr(e?.response?.data?.detail || "Join failed")
+      setJoined(previousJoined) // Revert on error
+      const errorMsg = e?.response?.data?.detail || e?.message || "Join failed"
+      setErr(errorMsg)
+      setTimeout(() => setErr(""), 5000)
     } finally {
       setBusyJoin(false)
     }
   }
 
   async function onLeave() {
+    // Prevent multiple simultaneous operations
+    if (busyJoin || busyLeave) {
+      return
+    }
+    
     setErr("")
     setBusyLeave(true)
+    const previousJoined = joined
+    
     try {
-      await leaveEvent(event.id)
-      setJoined(false)
-      setCount(c => Math.max(0, c - 1))
+      const result = await leaveEvent(event.id)
+      
+      if (result?.success) {
+        setJoined(false)
+        // Use server-provided count for accuracy
+        const updatedEvent = {
+          ...event,
+          is_joined: false,
+          attendee_count: result.attendee_count ?? event.attendee_count
+        }
+        // Invalidate cache to ensure fresh data when navigating
+        import("../../utils/pageCache").then(({ invalidateCache }) => {
+          invalidateCache(`event:${event.id}`)
+          invalidateCache("events")
+          invalidateCache("home:events")
+        })
+        onChanged?.(updatedEvent)
+      }
     } catch (e) {
-      setErr(e?.response?.data?.detail || "Leave failed")
+      setJoined(previousJoined) // Revert on error
+      const errorMsg = e?.response?.data?.detail || "Leave failed"
+      setErr(errorMsg)
+      setTimeout(() => setErr(""), 5000)
     } finally {
       setBusyLeave(false)
     }
@@ -124,88 +156,6 @@ export default function EventCard({ event, onChanged, onDelete }) {
     }
   }
 
-  async function onSave() {
-    setErr("")
-    setBusySave(true)
-    try {
-      const patch = {
-        title,
-        starts_at: new Date(startsAt).toISOString(),
-        location,
-        capacity: Number(capacity),
-        description,
-      }
-
-      // If a new cover image was selected, convert it to base64
-      if (coverImageFile) {
-        const reader = new FileReader()
-        await new Promise((resolve, reject) => {
-          reader.onload = () => {
-            patch.cover_image_url = reader.result
-            resolve()
-          }
-          reader.onerror = reject
-          reader.readAsDataURL(coverImageFile)
-        })
-      }
-
-      const updated = await updateEvent(event.id, patch)
-      setEditing(false)
-      setCoverImageFile(null)
-      setCoverImagePreview(null)
-      setAiPrompt("")
-      onChanged?.(updated)
-    } catch (e) {
-      setErr(e?.response?.data?.detail || "Update failed")
-    } finally {
-      setBusySave(false)
-    }
-  }
-
-  function onCancel() {
-    setEditing(false)
-    setTitle(event.title)
-    setStartsAt(new Date(event.starts_at).toISOString().slice(0, 16))
-    setLocation(event.location)
-    setCapacity(event.capacity)
-    setDescription(event.description || "")
-    setCoverImageFile(null)
-    setCoverImagePreview(null)
-    setAiPrompt("")
-    setCoverMode("upload")
-  }
-
-  function handleCoverImageSelect(e) {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0]
-      if (file.type.startsWith('image/')) {
-        setCoverImageFile(file)
-        setCoverImagePreview(URL.createObjectURL(file))
-      }
-    }
-  }
-
-  async function handleGenerateCoverImage() {
-    if (!aiPrompt.trim()) {
-      setErr("Please enter a prompt to generate an image")
-      return
-    }
-
-    setGeneratingCover(true)
-    setErr("")
-    try {
-      const imageUrl = await generateCoverImage(aiPrompt.trim())
-      const response = await fetch(imageUrl)
-      const blob = await response.blob()
-      const file = new File([blob], "ai-generated-cover.png", { type: "image/png" })
-      setCoverImageFile(file)
-      setCoverImagePreview(URL.createObjectURL(file))
-    } catch (e) {
-      setErr(e?.response?.data?.detail || "Failed to generate image. Please try again.")
-    } finally {
-      setGeneratingCover(false)
-    }
-  }
 
   const getCategoryIcon = (title, description) => {
     const text = (title + " " + (description || "")).toLowerCase()
@@ -258,381 +208,155 @@ export default function EventCard({ event, onChanged, onDelete }) {
   }
 
   return (
-    <Link 
-      to={isAuthenticated ? `/events/${event.id}` : "#"}
-      onClick={handleCardClick}
-      className="block bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden premium-hover hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 backdrop-blur-sm"
-    >
-      {!editing ? (
-        <>
-          {}
-          <div className="h-52 relative overflow-hidden group">
-            {event.cover_image_url ? (
-              <img 
-                src={event.cover_image_url} 
-                alt={event.title}
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-              />
-            ) : (
-              <div className="h-full bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 group-hover:from-blue-600 group-hover:via-purple-600 group-hover:to-pink-600 transition-all duration-500" />
-            )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
-            <div className="absolute top-4 right-4">
-              <button className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors">
-                <FontAwesomeIcon icon={faStar} className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 via-black/50 to-transparent">
-              <h3 className="text-xl font-bold text-white mb-1 drop-shadow-lg">{event.title}</h3>
-              <p className="text-pink-200 text-sm drop-shadow-md">From Free</p>
-            </div>
-            {mine && (
-              <div className="absolute top-4 left-4">
-                <span className="px-2 py-1 bg-blue-500 text-white rounded text-xs font-medium">
-                  Owner
-                </span>
-              </div>
-            )}
-            {full && (
-              <div className="absolute top-4 left-4">
-                <span className="px-2 py-1 bg-red-500 text-white rounded text-xs font-medium">
-                  Full
-                </span>
-              </div>
-            )}
-          </div>
-          
-          {}
-          <div className="p-6 bg-white/95 backdrop-blur-sm">
-            <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
-              <div className="flex items-center gap-2">
-                <FontAwesomeIcon icon={faCalendarAlt} className="w-4 h-4" />
-                <span>{formatDate(event.starts_at)}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <FontAwesomeIcon icon={faClock} className="w-4 h-4" />
-                <span>{formatTime(event.starts_at)}</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
-              <FontAwesomeIcon icon={faMapMarkerAlt} className="w-4 h-4" />
-              <span className="truncate">{event.location}</span>
-            </div>
-            
-            {event.description && (
-              <p className="text-gray-700 mb-4 line-clamp-2 leading-relaxed text-sm">
-                {event.description}
-              </p>
-            )}
-
-            <div className="flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1 text-sm text-gray-500">
-                  <FontAwesomeIcon icon={faUsers} className="w-4 h-4" />
-                  <span>{count}/{event.capacity}</span>
+    <div className="relative">
+      <Link 
+        to={isAuthenticated ? `/events/${event.id}` : "#"}
+        onClick={handleCardClick}
+        onMouseEnter={() => isAuthenticated && prefetch(`event:${event.id}`, () => getEvent(event.id))}
+        className="group block bg-white rounded-xl border border-gray-200/80 overflow-hidden premium-hover hover:border-gray-300 hover:shadow-lg transition-all duration-300"
+      >
+      <div className="flex">
+            {/* Compact Image/Thumbnail */}
+            <div className="w-24 h-24 flex-shrink-0 relative overflow-hidden bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
+              {event.cover_image_url ? (
+                <img 
+                  src={event.cover_image_url} 
+                  alt={event.title}
+                  loading="lazy"
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center">
+                  <FontAwesomeIcon icon={getCategoryIcon(event.title, event.description)} className="w-8 h-8 text-white/80" />
                 </div>
-                {joined && (
-                  <div className="flex items-center gap-1 text-green-600 text-sm">
-                    <FontAwesomeIcon icon={faCheck} className="w-3 h-3" />
-                    <span className="font-medium">Attending</span>
+              )}
+              {mine && (
+                <div className="absolute top-1 left-1">
+                  <span className="px-1.5 py-0.5 bg-blue-500/90 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
+                    Owner
+                  </span>
+                </div>
+              )}
+              {full && !mine && (
+                <div className="absolute top-1 left-1">
+                  <span className="px-1.5 py-0.5 bg-red-500/90 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
+                    Full
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Content Section */}
+            <div className="flex-1 p-4 flex flex-col justify-between min-w-0">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-gray-900 mb-2 truncate group-hover:text-indigo-600 transition-colors">
+                  {event.title}
+                </h3>
+                
+                <div className="flex items-center gap-3 text-xs text-gray-500 mb-2">
+                  <div className="flex items-center gap-1">
+                    <FontAwesomeIcon icon={faCalendarAlt} className="w-3 h-3" />
+                    <span>{formatDate(event.starts_at)}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <FontAwesomeIcon icon={faClock} className="w-3 h-3" />
+                    <span>{formatTime(event.starts_at)}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1 text-xs text-gray-500 mb-2">
+                  <FontAwesomeIcon icon={faMapMarkerAlt} className="w-3 h-3 flex-shrink-0" />
+                  <span className="truncate">{event.location}</span>
+                </div>
+                {event.exam && (
+                  <div className="flex items-center gap-1 text-xs text-indigo-600 mb-3">
+                    <FontAwesomeIcon icon={faGraduationCap} className="w-3 h-3 flex-shrink-0" />
+                    <span className="truncate font-medium">{event.exam}</span>
                   </div>
                 )}
-                {event.kind === "group" && (
-                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">
-                    Group Event
-                  </span>
-                )}
               </div>
 
-              <div className="flex items-center gap-2">
-                {!mine && !joined && !full && (
-                  isAuthenticated ? (
+              {/* Bottom Actions Bar */}
+              <div className="flex items-center justify-between pt-2 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center gap-1 text-xs text-gray-500">
+                  <FontAwesomeIcon icon={faUsers} className="w-3 h-3" />
+                  <span className="font-medium">{count}/{event.capacity}</span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  {!mine && isAuthenticated && joined && (
                     <button
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
-                        onJoin()
+                        if (!busyLeave) onLeave()
                       }}
-                      disabled={busyJoin}
-                      className="flex items-center gap-2 px-4 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-md text-xs font-semibold"
                     >
-                      <FontAwesomeIcon icon={faUserPlus} className="w-4 h-4" />
-                      <span>{busyJoin ? "Joining..." : "Join"}</span>
+                      Leave
                     </button>
-                  ) : (
+                  )}
+                  {!mine && isAuthenticated && !joined && !full && (
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        if (!busyJoin) onJoin()
+                      }}
+                      className="px-3 py-1.5 bg-indigo-500 text-white rounded-md text-xs font-semibold"
+                    >
+                      Join
+                    </button>
+                  )}
+                  {!mine && !isAuthenticated && !full && (
                     <button
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
                         navigate("/login")
                       }}
-                      className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                      className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md text-xs font-semibold"
                     >
-                      <FontAwesomeIcon icon={faUserPlus} className="w-4 h-4" />
-                      <span>Join</span>
+                      Join
                     </button>
-                  )
-                )}
-                {!mine && joined && isAuthenticated && (
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      onLeave()
-                    }}
-                    disabled={busyLeave}
-                    className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <FontAwesomeIcon icon={faUserMinus} className="w-4 h-4" />
-                    <span>{busyLeave ? "Leaving..." : "Leave"}</span>
-                  </button>
-                )}
-                {mine && (
-                  <>
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        setEditing(true)
-                      }}
-                      className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-                      title="Edit Event"
-                    >
-                      <FontAwesomeIcon icon={faEdit} className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        handleDeleteClick()
-                      }}
-                      disabled={busyDelete}
-                      className="flex items-center gap-2 px-3 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Delete Event"
-                    >
-                      <FontAwesomeIcon icon={faTrash} className="w-4 h-4" />
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </>
-      ) : (
-        <div className="p-6 space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Event</h3>
-          
-          {/* Cover Image Section */}
-          <div className="space-y-3">
-            <label className="block text-sm font-medium text-gray-700">Cover Image</label>
-            
-            {/* Mode Toggle */}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setCoverMode("upload")}
-                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                  coverMode === "upload"
-                    ? "bg-pink-500 text-white"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-                disabled={busySave}
-              >
-                Upload
-              </button>
-              <button
-                type="button"
-                onClick={() => setCoverMode("generate")}
-                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                  coverMode === "generate"
-                    ? "bg-pink-500 text-white"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-                disabled={busySave}
-              >
-                Generate with AI
-              </button>
-            </div>
-
-            {/* Current Cover Image Preview */}
-            {!coverImagePreview && event.cover_image_url && (
-              <div className="relative">
-                <img
-                  src={event.cover_image_url}
-                  alt="Current cover"
-                  className="w-full h-32 object-cover rounded-lg border-2 border-gray-200"
-                />
-                <p className="text-xs text-gray-500 mt-1">Current cover image</p>
-              </div>
-            )}
-
-            {/* Upload Mode */}
-            {coverMode === "upload" && (
-              <div className="space-y-2">
-                {coverImagePreview ? (
-                  <div className="space-y-2">
-                    <img
-                      src={coverImagePreview}
-                      alt="New cover preview"
-                      className="w-full h-32 object-cover rounded-lg border-2 border-pink-300"
-                    />
-                    <div className="flex gap-2">
+                  )}
+                  {mine && (
+                    <>
                       <button
-                        type="button"
-                        onClick={() => {
-                          setCoverImageFile(null)
-                          setCoverImagePreview(null)
-                          if (fileInputRef.current) fileInputRef.current.click()
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          onEdit && onEdit(event)
                         }}
-                        className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium"
-                        disabled={busySave}
+                        className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md"
+                        title="Edit Event"
                       >
-                        Change
+                        <FontAwesomeIcon icon={faEdit} className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        type="button"
-                        onClick={() => {
-                          setCoverImageFile(null)
-                          setCoverImagePreview(null)
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleDeleteClick()
                         }}
-                        className="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 text-sm font-medium"
-                        disabled={busySave}
+                        disabled={busyDelete}
+                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Delete Event"
                       >
-                        <FontAwesomeIcon icon={faTimes} className="w-3 h-3" />
+                        <FontAwesomeIcon icon={faTrash} className="w-3.5 h-3.5" />
                       </button>
-                    </div>
-                  </div>
-                ) : (
-                  <label className="block border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-pink-400 transition-colors">
-                    <FontAwesomeIcon icon={faUpload} className="w-6 h-6 text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-600">Click to upload new cover image</p>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleCoverImageSelect}
-                      className="hidden"
-                      disabled={busySave}
-                    />
-                  </label>
-                )}
-              </div>
-            )}
-
-            {/* Generate Mode */}
-            {coverMode === "generate" && (
-              <div className="space-y-2">
-                <textarea
-                  value={aiPrompt}
-                  onChange={e => setAiPrompt(e.target.value)}
-                  placeholder="Describe the cover image you want (e.g., A modern study group meeting in a library)"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-sm text-gray-900 bg-white"
-                  rows={2}
-                  disabled={busySave || generatingCover}
-                />
-                <button
-                  type="button"
-                  onClick={handleGenerateCoverImage}
-                  disabled={busySave || generatingCover || !aiPrompt.trim()}
-                  className="w-full px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg hover:from-pink-600 hover:to-purple-700 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {generatingCover ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <FontAwesomeIcon icon={faImage} className="w-4 h-4" />
-                      Generate Image
                     </>
                   )}
-                </button>
-                {coverImagePreview && (
-                  <div className="mt-2">
-                    <img
-                      src={coverImagePreview}
-                      alt="Generated cover preview"
-                      className="w-full h-32 object-cover rounded-lg border-2 border-pink-300"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCoverImageFile(null)
-                        setCoverImagePreview(null)
-                        setAiPrompt("")
-                      }}
-                      className="mt-2 w-full px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 text-sm font-medium"
-                      disabled={busySave}
-                    >
-                      Remove Generated Image
-                    </button>
-                  </div>
-                )}
+                </div>
               </div>
-            )}
+            </div>
           </div>
-
-          <input 
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input text-gray-900 bg-white" 
-            value={title} 
-            onChange={e => setTitle(e.target.value)} 
-            disabled={busySave}
-            placeholder="Event title"
-          />
-          <input 
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input text-gray-900 bg-white" 
-            type="datetime-local" 
-            value={startsAt} 
-            onChange={e => setStartsAt(e.target.value)} 
-            disabled={busySave} 
-          />
-          <input 
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input text-gray-900 bg-white" 
-            value={location} 
-            onChange={e => setLocation(e.target.value)} 
-            disabled={busySave}
-            placeholder="Location"
-          />
-          <input 
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input text-gray-900 bg-white" 
-            type="number" 
-            min="1" 
-            value={capacity} 
-            onChange={e => setCapacity(e.target.value)} 
-            disabled={busySave}
-            placeholder="Capacity"
-          />
-          <textarea 
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 form-input text-gray-900 bg-white" 
-            value={description} 
-            onChange={e => setDescription(e.target.value)} 
-            disabled={busySave}
-            placeholder="Event description"
-            rows={3}
-          />
-          <div className="flex gap-3 justify-end">
-            <button 
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium disabled:opacity-50" 
-              disabled={busySave} 
-              onClick={onCancel}
-            >
-              Cancel
-            </button>
-            <button 
-              className="px-4 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50" 
-              disabled={busySave} 
-              onClick={onSave}
-            >
-              {busySave ? "Saving..." : "Save Changes"}
-            </button>
-          </div>
-        </div>
-      )}
+      </Link>
+      
       {err && (
-        <div className="px-6 pb-4">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-            <p className="text-red-600 text-sm">{err}</p>
+        <div className="fixed top-20 right-4 z-[10000] max-w-xs animate-in fade-in slide-in-from-top-2">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 shadow-lg">
+            <p className="text-red-600 text-sm font-medium">{err}</p>
           </div>
         </div>
       )}
@@ -673,11 +397,6 @@ export default function EventCard({ event, onChanged, onDelete }) {
               </div>
             </div>
             
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <p className="text-sm text-red-800">
-                <span className="font-semibold">Warning:</span> This action cannot be undone. All event data and attendee information will be permanently deleted.
-              </p>
-            </div>
 
             <div className="flex gap-3 pt-2">
               <button
@@ -714,6 +433,8 @@ export default function EventCard({ event, onChanged, onDelete }) {
           }
         }
       `}</style>
-    </Link>
+    </div>
   )
 }
+
+export default memo(EventCard)

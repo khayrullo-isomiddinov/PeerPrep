@@ -1,16 +1,24 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Response
 from fastapi.responses import RedirectResponse
-from sqlmodel import Session, select
+from sqlmodel import Session, select, text
+from sqlalchemy import text as sql_text
 from app.db import get_session
 from app.models import User
 from app.core.security import hash_password, verify_password, create_access_token, decode_token
 from app.config import settings
-from app.schemas.auth import RegisterIn, LoginIn, ProfileUpdate, UserProfile
+from app.schemas.auth import RegisterIn, LoginIn, ProfileUpdate
 import secrets
 from app.services.email import send_email
 from typing import Optional
+from datetime import datetime
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+@router.options("/register")
+@router.options("/login")
+async def options_auth():
+    """Handle CORS preflight for auth endpoints"""
+    return {}
 
 @router.post("/register")
 async def register(data: RegisterIn, session: Session = Depends(get_session)):
@@ -18,15 +26,42 @@ async def register(data: RegisterIn, session: Session = Depends(get_session)):
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     token = secrets.token_urlsafe(32)
-    user = User(
-        email=data.email,
-        hashed_password=hash_password(data.password),
-        is_verified=False,
-        verification_token=token,
-    )
-    session.add(user)
-    session.commit()
-    session.refresh(user)
+    
+    # Use raw SQL to handle is_active column that may still exist in DB
+    # Check if is_active column exists using the connection
+    from app.db import engine
+    with engine.connect() as conn:
+        result = conn.execute(sql_text("PRAGMA table_info(user)"))
+        columns = [row[1] for row in result.fetchall()]
+        has_is_active = 'is_active' in columns
+    
+    if has_is_active:
+        # Insert with is_active explicitly set using raw SQL
+        # Also include xp which has a default of 0 in the model
+        with engine.begin() as conn:
+            conn.execute(sql_text("""
+                INSERT INTO user (email, hashed_password, is_verified, verification_token, created_at, is_active, xp)
+                VALUES (:email, :hashed_password, :is_verified, :verification_token, :created_at, 1, 0)
+            """), {
+                "email": data.email,
+                "hashed_password": hash_password(data.password),
+                "is_verified": 0,  # False = 0 in SQLite
+                "verification_token": token,
+                "created_at": datetime.utcnow()
+            })
+        # Fetch the created user
+        user = session.exec(select(User).where(User.email == data.email)).first()
+    else:
+        # Normal insert if column doesn't exist
+        user = User(
+            email=data.email,
+            hashed_password=hash_password(data.password),
+            is_verified=False,
+            verification_token=token,
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
     verify_url = f"{settings.BACKEND_BASE_URL}{settings.API_PREFIX}/auth/verify?token={token}"
     html = f"<p>Verify your email:</p><p><a href='{verify_url}'>{verify_url}</a></p>"
     try:
@@ -58,6 +93,7 @@ def login(data: LoginIn, session: Session = Depends(get_session)):
             "photo_url": user.photo_url,
             "is_verified": user.is_verified,
             "created_at": user.created_at.isoformat(),
+            "xp": user.xp or 0,
         }
     }
 
@@ -90,6 +126,22 @@ def _get_user_from_token(
         raise HTTPException(status_code=401, detail="User not found")
     return user
 
+def _get_optional_user_from_token(
+    session: Session = Depends(get_session),
+    authorization: str | None = Header(default=None)
+) -> Optional[User]:
+    """Get user from token if provided, otherwise return None (for public endpoints)"""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        payload = decode_token(token)
+        user_id = int(payload.get("sub"))
+    except Exception:
+        return None
+    user = session.exec(select(User).where(User.id == user_id)).first()
+    return user
+
 @router.get("/me")
 def me(response: Response, current_user: User = Depends(_get_user_from_token)):
     response.headers["Cache-Control"] = "private, max-age=300"
@@ -101,6 +153,7 @@ def me(response: Response, current_user: User = Depends(_get_user_from_token)):
         "photo_url": current_user.photo_url,
         "is_verified": current_user.is_verified,
         "created_at": current_user.created_at.isoformat(),
+        "xp": current_user.xp or 0,
     }
 
 @router.put("/profile")
@@ -153,7 +206,6 @@ def delete_account(
     current_user: User = Depends(_get_user_from_token),
     session: Session = Depends(get_session)
 ):
-    """Delete user account (except admin)"""
     
     if current_user.email == settings.ADMIN_EMAIL:
         raise HTTPException(

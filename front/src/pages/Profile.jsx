@@ -38,9 +38,32 @@ export default function Profile() {
     async function loadUserProfile() {
       if (userId && user && parseInt(userId) !== user.id) {
         try {
+          // Check cache first
+          const { getCachedPage, setCachedPage } = await import("../utils/pageCache")
+          const cached = getCachedPage(`profile:${userId}`)
+          
+          if (cached && cached.data) {
+            setProfileUser(cached.data)
+            setLoadingProfile(false)
+            // Refresh in background if expired
+            if (cached.isExpired) {
+              setTimeout(async () => {
+                try {
+                  const profileData = await getUserProfile(parseInt(userId))
+                  setProfileUser(profileData)
+                  setCachedPage(`profile:${userId}`, profileData)
+                } catch (error) {
+                  console.error("Background refresh failed:", error)
+                }
+              }, 100)
+            }
+            return
+          }
+          
           setLoadingProfile(true)
           const profileData = await getUserProfile(parseInt(userId))
           setProfileUser(profileData)
+          setCachedPage(`profile:${userId}`, profileData)
         } catch (error) {
           console.error("Failed to load user profile:", error)
           navigate("/profile", { replace: true })
@@ -50,9 +73,30 @@ export default function Profile() {
       } else if (userId && !user) {
         // If not logged in but trying to view a profile, still load it
         try {
+          const { getCachedPage, setCachedPage } = await import("../utils/pageCache")
+          const cached = getCachedPage(`profile:${userId}`)
+          
+          if (cached && cached.data) {
+            setProfileUser(cached.data)
+            setLoadingProfile(false)
+            if (cached.isExpired) {
+              setTimeout(async () => {
+                try {
+                  const profileData = await getUserProfile(parseInt(userId))
+                  setProfileUser(profileData)
+                  setCachedPage(`profile:${userId}`, profileData)
+                } catch (error) {
+                  console.error("Background refresh failed:", error)
+                }
+              }, 100)
+            }
+            return
+          }
+          
           setLoadingProfile(true)
           const profileData = await getUserProfile(parseInt(userId))
           setProfileUser(profileData)
+          setCachedPage(`profile:${userId}`, profileData)
         } catch (error) {
           console.error("Failed to load user profile:", error)
           navigate("/", { replace: true })
@@ -115,7 +159,6 @@ export default function Profile() {
       }
       
       const updatedProfile = await updateProfile(profileData)
-      console.log("Profile saved:", updatedProfile)
       
       const updatedUser = { ...user, ...updatedProfile }
       setUser(updatedUser)
@@ -140,7 +183,6 @@ export default function Profile() {
   async function onPhotoSelected(e) {
     const file = e.target.files?.[0]
     if (!file) {
-      console.log("No file selected")
       return
     }
     
@@ -163,7 +205,6 @@ export default function Profile() {
       return
     }
     
-    console.log("Processing image:", file.name, file.type, file.size)
     setUploading(true)
     
     const reader = new FileReader()
@@ -175,7 +216,6 @@ export default function Profile() {
     
     reader.onload = async () => {
       const photoUrl = String(reader.result || "")
-      console.log("Image converted to base64, length:", photoUrl.length)
       
       setForm(prev => ({ ...prev, photoUrl }))
       
@@ -186,10 +226,7 @@ export default function Profile() {
           photo_url: photoUrl
         }
         
-        console.log("Saving profile with photo_url length:", photoUrl.length)
         const updatedProfile = await updateProfile(profileData)
-        console.log("Profile updated successfully:", updatedProfile)
-        console.log("Returned photo_url:", updatedProfile.photo_url ? "exists" : "missing", updatedProfile.photo_url?.substring(0, 50))
         
         const updatedUser = { ...user, ...updatedProfile }
         setUser(updatedUser)
@@ -199,7 +236,6 @@ export default function Profile() {
           photoUrl: updatedProfile.photo_url || photoUrl
         }))
 
-        console.log("Profile picture saved and updated!")
       } catch (error) {
         console.error("Failed to save photo:", error)
         alert("Failed to save profile picture. Please try again.")
@@ -271,7 +307,7 @@ export default function Profile() {
     <div className="min-h-screen tap-safe premium-scrollbar bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 route-transition">
       <div className="nav-spacer" />
       
-      <section className="relative bg-gradient-to-r from-white via-pink-50/30 to-purple-50/30 border-b border-gray-200/60 backdrop-blur-sm premium-fade-in">
+      <section className="relative bg-gradient-to-r from-white via-pink-50/30 to-purple-50/30 border-b border-gray-200/60 backdrop-blur-sm">
         <div className="absolute inset-0 bg-gradient-to-r from-pink-500/5 via-purple-500/5 to-indigo-500/5"></div>
         <div className="container-page py-6 sm:py-8 lg:py-12 relative z-10">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 lg:gap-8">
@@ -463,7 +499,7 @@ export default function Profile() {
             )}
 
             {/* Badge Shelf */}
-            <div className="bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 rounded-2xl shadow-lg border-2 border-amber-200 p-6 lg:p-8 premium-fade-in">
+            <div className="bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 rounded-2xl shadow-lg border-2 border-amber-200 p-6 lg:p-8">
               <div className="flex items-center gap-3 mb-6">
                 <div className="h-12 w-12 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center shadow-lg">
                   <FontAwesomeIcon icon={faTrophy} className="text-white text-xl" />
@@ -492,12 +528,24 @@ export default function Profile() {
                     const currentEvents = userStats?.events_attended || 0
                     const currentEngagement = userStats?.engagement_score || 0
                     
-                    // Check multi-dimensional requirements
+                    // Badge hierarchy for determining unlock status
+                    const badgeHierarchy = ["Beginner", "Learner", "Achiever", "Expert", "Master"]
+                    const currentBadgeName = userStats?.badge?.name || "Beginner"
+                    const currentBadgeIndex = badgeHierarchy.indexOf(currentBadgeName)
+                    const badgeIndex = badgeHierarchy.indexOf(badge.name)
+                    
+                    // If backend says user has this badge or higher, it's unlocked
+                    const isUnlockedByBackend = currentBadgeIndex >= badgeIndex
+                    
+                    // Also check requirements as fallback (for cases where backend might not have badge info)
                     const meetsXP = currentXP >= badge.requirements.xp
                     const meetsSubmissions = !badge.requirements.submissions || currentSubmissions >= badge.requirements.submissions
                     const meetsEvents = !badge.requirements.events || currentEvents >= badge.requirements.events
                     const meetsEngagement = !badge.requirements.engagement || currentEngagement >= badge.requirements.engagement
-                    const isUnlocked = meetsXP && meetsSubmissions && meetsEvents && meetsEngagement
+                    const meetsRequirements = meetsXP && meetsSubmissions && meetsEvents && meetsEngagement
+                    
+                    // Unlocked if backend says so OR if requirements are met
+                    const isUnlocked = isUnlockedByBackend || meetsRequirements
                     const isCurrent = userStats?.badge?.name === badge.name
                     
                     // Calculate progress percentage
@@ -569,7 +617,7 @@ export default function Profile() {
                 </div>
               </div>
             </div>
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/60 p-4 sm:p-6 lg:p-8 hover:shadow-xl transition-all duration-300 premium-scale-in">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/60 p-4 sm:p-6 lg:p-8 hover:shadow-xl transition-all duration-300">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 bg-gradient-to-r from-pink-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
@@ -659,7 +707,7 @@ export default function Profile() {
           <div className="space-y-6">
             {/* Current Badge Card */}
             {userStats?.badge && (
-              <div className="bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-lg border border-gray-200 p-6 premium-fade-in sticky top-24">
+              <div className="bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-lg border border-gray-200 p-6 sticky top-24">
                 <div className="text-center mb-4">
                   <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-purple-100 to-pink-100 rounded-2xl mb-3 shadow-md">
                     <span className="text-5xl">{userStats.badge.icon}</span>
@@ -698,7 +746,7 @@ export default function Profile() {
 
             {/* Quick Stats */}
             {userStats && (
-              <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 premium-fade-in">
+              <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                   <FontAwesomeIcon icon={faGraduationCap} className="text-purple-500" />
                   Activity Summary
@@ -721,13 +769,14 @@ export default function Profile() {
                 </div>
               </div>
             )}
+
           </div>
         </div>
         
 
         {isViewingOwnProfile && user?.email !== "harryshady131@gmail.com" && (
           <div className="mt-8">
-            <div className="bg-red-50/80 backdrop-blur-sm rounded-2xl shadow-lg border border-red-200/60 p-8 hover:shadow-xl transition-all duration-300 premium-fade-in">
+            <div className="bg-red-50/80 backdrop-blur-sm rounded-2xl shadow-lg border border-red-200/60 p-8 hover:shadow-xl transition-all duration-300">
               <div className="flex items-center gap-3 mb-6">
                 <div className="h-10 w-10 bg-gradient-to-r from-red-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">

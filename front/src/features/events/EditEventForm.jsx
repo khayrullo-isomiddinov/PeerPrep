@@ -1,22 +1,21 @@
 import { useState, useEffect, useRef } from "react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { faTimes, faUsers, faTrophy, faClock, faSave, faExclamationTriangle, faImage, faUpload, faWandMagicSparkles } from "@fortawesome/free-solid-svg-icons"
+import { faTimes, faCalendarAlt, faMapMarkerAlt, faUsers, faSave, faExclamationTriangle, faImage, faUpload, faWandMagicSparkles } from "@fortawesome/free-solid-svg-icons"
 import { useAuth } from "../auth/AuthContext"
-import { generateGroupCoverImage } from "../../utils/api"
+import { generateCoverImage } from "../../utils/api"
 
-export default function EditGroupForm({ group, onUpdate, onCancel }) {
+export default function EditEventForm({ event, onUpdate, onCancel }) {
   const { isAuthenticated } = useAuth()
   const [form, setForm] = useState({
-    name: "",
-    field: "",
-    exam: "",
-    description: "",
-    deadline: "",
+    title: "",
+    starts_at: "",
+    location: "",
     capacity: 10,
+    description: "",
+    exam: "",
   })
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
-  const [showPreview, setShowPreview] = useState(false)
   const [coverImageFile, setCoverImageFile] = useState(null)
   const [coverImagePreview, setCoverImagePreview] = useState(null)
   const [coverMode, setCoverMode] = useState("upload")
@@ -25,29 +24,41 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
   const fileInputRef = useRef(null)
 
   useEffect(() => {
-    if (!group) return
+    if (!event) return
+    const startsAt = new Date(event.starts_at)
+    const localDateTime = new Date(startsAt.getTime() - startsAt.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16)
+    
     setForm({
-      name: group.name || "",
-      field: group.field || "",
-      exam: group.exam || "",
-      description: group.description || "",
-      deadline: group.deadline ? new Date(group.deadline).toISOString().split("T")[0] : "",
-      capacity: group.capacity || 10,
+      title: event.title || "",
+      starts_at: localDateTime,
+      location: event.location || "",
+      capacity: event.capacity || 10,
+      description: event.description || "",
+      exam: event.exam || "",
     })
-  }, [group])
-
-  const fieldOptions = [
-    "Computer Science","Mathematics","Physics","Chemistry","Biology",
-    "Engineering","Medicine","Business","Economics","Psychology",
-    "Languages","History","Literature","Art","Music","Sports",
-    "Wellness","Productivity","Other"
-  ]
+  }, [event])
 
   function handleChange(e) {
     const { name, value, type } = e.target
     const v = type === "number" ? (parseInt(value) || 0) : value
     setForm(prev => ({ ...prev, [name]: v }))
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: "" }))
+  }
+
+  function validateForm() {
+    const next = {}
+    if (!form.title.trim()) next.title = "Event title is required"
+    else if (form.title.length > 200) next.title = "Max 200 characters"
+    if (!form.location.trim()) next.location = "Location is required"
+    if (!form.starts_at) next.starts_at = "Start date and time is required"
+    else if (new Date(form.starts_at) <= new Date()) next.starts_at = "Event must be in the future"
+    if (form.capacity < 1 || form.capacity > 1000) next.capacity = "Capacity must be 1–1000"
+    if (form.description && form.description.length > 1000) next.description = "Max 1000 characters"
+    if (form.exam && form.exam.length > 100) next.exam = "Max 100 characters"
+    setErrors(next)
+    return Object.keys(next).length === 0
   }
 
   function handleCoverImageChange(e) {
@@ -72,7 +83,7 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
     setGeneratingCover(true)
     setErrors(prev => ({ ...prev, coverImage: "" }))
     try {
-      const imageUrl = await generateGroupCoverImage(aiPrompt.trim())
+      const imageUrl = await generateCoverImage(aiPrompt.trim())
       const response = await fetch(imageUrl)
       const blob = await response.blob()
       const file = new File([blob], "ai-generated-cover.png", { type: "image/png" })
@@ -85,35 +96,22 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
     }
   }
 
-  function validateForm() {
-    const next = {}
-    if (!form.name.trim()) next.name = "Group name is required"
-    else if (form.name.length > 100) next.name = "Max 100 characters"
-    if (!form.field.trim()) next.field = "Field of study is required"
-    if (form.description && form.description.length > 500) next.description = "Max 500 characters"
-    if (form.exam && form.exam.length > 100) next.exam = "Max 100 characters"
-    if (form.deadline && new Date(form.deadline) <= new Date()) next.deadline = "Deadline must be in the future"
-    if (form.capacity < 1 || form.capacity > 100) next.capacity = "Capacity 1–100"
-    setErrors(next)
-    return Object.keys(next).length === 0
-  }
-
   async function submit(e) {
     e.preventDefault()
     if (!isAuthenticated) {
-      setErrors({ submit: "You must be logged in to edit groups" })
+      setErrors({ submit: "You must be logged in to edit events" })
       return
     }
     if (!validateForm()) return
     setLoading(true)
     try {
       const payload = {
-        name: form.name.trim(),
-        field: form.field.trim(),
-        exam: form.exam.trim() || null,
-        description: form.description.trim() || null,
-        deadline: form.deadline ? new Date(form.deadline).toISOString() : null,
+        title: form.title.trim(),
+        starts_at: new Date(form.starts_at).toISOString(),
+        location: form.location.trim(),
         capacity: form.capacity,
+        description: form.description.trim() || null,
+        exam: form.exam.trim() || null,
       }
 
       // If a new cover image was selected, convert it to base64
@@ -129,17 +127,16 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
         })
       }
 
-      await onUpdate(group.id, payload)
+      await onUpdate(event.id, payload)
     } catch (err) {
-      const message = err?.response?.data?.detail || err?.response?.data?.message || "Failed to update group"
+      const message = err?.response?.data?.detail || err?.response?.data?.message || "Failed to update event"
       setErrors({ submit: message })
     } finally {
       setLoading(false)
     }
   }
 
-
-  if (!group) return null
+  if (!event) return null
 
   return (
     <div className="fixed inset-0 z-above-nav bg-black/50 overflow-y-auto overscroll-contain">
@@ -149,7 +146,7 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
             <div className="flex items-center justify-between">
               <div className="inline-flex items-center gap-3">
                 <span className="px-3 py-1 bg-pink-100 text-pink-700 text-sm font-medium rounded-full">Edit</span>
-                <h2 className="text-2xl font-bold text-gray-900">Update Group</h2>
+                <h2 className="text-2xl font-bold text-gray-900">Update Event</h2>
               </div>
               <button 
                 onClick={onCancel} 
@@ -173,67 +170,75 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
             <form onSubmit={submit} className="space-y-8">
               <section className="bg-gray-50 rounded-xl p-6 space-y-6">
                 <div className="inline-flex items-center gap-3">
-                  <FontAwesomeIcon icon={faUsers} className="w-5 h-5 text-pink-500" />
+                  <FontAwesomeIcon icon={faCalendarAlt} className="w-5 h-5 text-pink-500" />
                   <h3 className="text-xl font-bold text-gray-900">Basic Information</h3>
                 </div>
                 <div className="grid md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="block text-sm font-semibold text-gray-700">Group name *</label>
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="block text-sm font-semibold text-gray-700">Event Title *</label>
                     <input
-                      name="name"
-                      value={form.name}
+                      name="title"
+                      value={form.title}
                       onChange={handleChange}
                       className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                        errors.name ? 'border-red-300' : 'border-gray-300'
+                        errors.title ? 'border-red-300' : 'border-gray-300'
                       }`}
-                      placeholder="e.g., Data Structures Study Group"
-                      maxLength={100}
+                      placeholder="e.g., Study Session for Midterm"
+                      maxLength={200}
                     />
                     <div className="flex items-center justify-between text-sm text-gray-500">
-                      <span>Clear and memorable</span>
-                      <span className={form.name.length > 80 ? "text-orange-600" : ""}>{form.name.length}/100</span>
+                      <span>Clear and descriptive</span>
+                      <span className={form.title.length > 180 ? "text-orange-600" : ""}>{form.title.length}/200</span>
                     </div>
-                    {errors.name && <div className="text-red-600 text-sm">{errors.name}</div>}
+                    {errors.title && <div className="text-red-600 text-sm">{errors.title}</div>}
                   </div>
 
                   <div className="space-y-2">
-                    <label className="block text-sm font-semibold text-gray-700">Field of study *</label>
-                    <select
-                      name="field"
-                      value={form.field}
-                      onChange={handleChange}
-                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                        errors.field ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                    >
-                      <option value="">Select a field…</option>
-                      {fieldOptions.map(f => (
-                        <option key={f} value={f}>{f}</option>
-                      ))}
-                    </select>
-                    {errors.field && <div className="text-red-600 text-sm">{errors.field}</div>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="block text-sm font-semibold text-gray-700">Upcoming exam</label>
+                    <label className="block text-sm font-semibold text-gray-700">Start Date & Time *</label>
                     <input
-                      name="exam"
-                      value={form.exam}
+                      type="datetime-local"
+                      name="starts_at"
+                      value={form.starts_at}
                       onChange={handleChange}
+                      min={new Date().toISOString().slice(0, 16)}
                       className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                        errors.exam ? 'border-red-300' : 'border-gray-300'
+                        errors.starts_at ? 'border-red-300' : 'border-gray-300'
                       }`}
-                      placeholder="e.g., Midterm, Final, Certification"
-                      maxLength={100}
                     />
-                    <div className="flex items-center justify-between text-sm text-gray-500">
-                      <span>What are you preparing for?</span>
-                      <span>{form.exam.length}/100</span>
-                    </div>
-                    {errors.exam && <div className="text-red-600 text-sm">{errors.exam}</div>}
+                    {errors.starts_at && <div className="text-red-600 text-sm">{errors.starts_at}</div>}
                   </div>
 
                   <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-gray-700">Location *</label>
+                    <input
+                      name="location"
+                      value={form.location}
+                      onChange={handleChange}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
+                        errors.location ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder="e.g., Library Room 201"
+                    />
+                    {errors.location && <div className="text-red-600 text-sm">{errors.location}</div>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-gray-700">Capacity *</label>
+                    <input
+                      type="number"
+                      name="capacity"
+                      value={form.capacity}
+                      onChange={handleChange}
+                      min="1"
+                      max="1000"
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
+                        errors.capacity ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                    />
+                    {errors.capacity && <div className="text-red-600 text-sm">{errors.capacity}</div>}
+                  </div>
+
+                  <div className="md:col-span-2 space-y-2">
                     <label className="block text-sm font-semibold text-gray-700">Description</label>
                     <textarea
                       name="description"
@@ -242,46 +247,34 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
                       className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
                         errors.description ? 'border-red-300' : 'border-gray-300'
                       }`}
-                      placeholder="What will you study and how will you collaborate?"
+                      placeholder="What will happen at this event?"
                       rows={4}
-                      maxLength={500}
+                      maxLength={1000}
                     />
                     <div className="flex items-center justify-between text-sm text-gray-500">
-                      <span>Help others understand the focus</span>
-                      <span className={form.description.length > 400 ? "text-orange-600" : ""}>{form.description.length}/500</span>
+                      <span>Help attendees understand the event</span>
+                      <span className={form.description.length > 900 ? "text-orange-600" : ""}>{form.description.length}/1000</span>
                     </div>
                     {errors.description && <div className="text-red-600 text-sm">{errors.description}</div>}
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="block text-sm font-semibold text-gray-700">Group Deadline</label>
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="block text-sm font-semibold text-gray-700">Upcoming exam (optional)</label>
                     <input
-                      type="date"
-                      name="deadline"
-                      value={form.deadline}
+                      name="exam"
+                      value={form.exam}
                       onChange={handleChange}
-                      min={new Date().toISOString().split('T')[0]}
                       className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                        errors.deadline ? 'border-red-300' : 'border-gray-300'
+                        errors.exam ? 'border-red-300' : 'border-gray-300'
                       }`}
+                      placeholder="e.g., Final Exam, Midterm, Bar Exam"
+                      maxLength={100}
                     />
-                    {errors.deadline && <div className="text-red-600 text-sm">{errors.deadline}</div>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="block text-sm font-semibold text-gray-700">Maximum Participants</label>
-                    <input
-                      type="number"
-                      name="capacity"
-                      value={form.capacity}
-                      onChange={handleChange}
-                      min="1"
-                      max="100"
-                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                        errors.capacity ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                    />
-                    {errors.capacity && <div className="text-red-600 text-sm">{errors.capacity}</div>}
+                    <div className="flex items-center justify-between text-sm text-gray-500">
+                      <span>Optional: What exam is this event preparing for?</span>
+                      <span>{form.exam.length}/100</span>
+                    </div>
+                    {errors.exam && <div className="text-red-600 text-sm">{errors.exam}</div>}
                   </div>
                 </div>
               </section>
@@ -323,10 +316,10 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
                 </div>
 
                 {/* Current Cover Image Preview */}
-                {!coverImagePreview && group.cover_image_url && (
+                {!coverImagePreview && event.cover_image_url && (
                   <div className="relative">
                     <img
-                      src={group.cover_image_url}
+                      src={event.cover_image_url}
                       alt="Current cover"
                       className="w-full h-48 object-cover rounded-lg border-2 border-gray-200"
                     />
@@ -429,17 +422,17 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="inline-flex items-center gap-3">
                     <span className="px-3 py-1 bg-gray-100 text-gray-700 text-sm font-medium rounded-full">
-                      Study Group
+                      Event
                     </span>
                     <span className="text-gray-500">Review and save</span>
                   </div>
                   <div className="inline-flex gap-3">
                     <button 
                       type="button" 
-                      onClick={() => setShowPreview(v => !v)} 
+                      onClick={onCancel} 
                       className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
                     >
-                      {showPreview ? "Hide preview" : "Preview"}
+                      Cancel
                     </button>
                     <button 
                       type="submit" 
@@ -455,37 +448,6 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
                     </button>
                   </div>
                 </div>
-
-                {showPreview && (
-                  <div className="bg-gray-50 rounded-lg p-4 mt-4">
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div>
-                        <div className="text-gray-500 text-sm">Name</div>
-                        <div className="font-semibold text-gray-900">{form.name || "—"}</div>
-                      </div>
-                      <div>
-                        <div className="text-gray-500 text-sm">Field</div>
-                        <div className="font-semibold text-gray-900">{form.field || "—"}</div>
-                      </div>
-                      <div className="md:col-span-2">
-                        <div className="text-gray-500 text-sm">Description</div>
-                        <div className="text-gray-900">{form.description || "—"}</div>
-                      </div>
-                      <div>
-                        <div className="text-gray-500 text-sm">Exam</div>
-                        <div className="text-gray-900">{form.exam || "—"}</div>
-                      </div>
-                      <div>
-                        <div className="text-gray-500 text-sm">Deadline</div>
-                        <div className="text-gray-900">{form.deadline ? new Date(form.deadline).toLocaleDateString() : "—"}</div>
-                      </div>
-                      <div>
-                        <div className="text-gray-500 text-sm">Capacity</div>
-                        <div className="text-gray-900">{form.capacity} members</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </section>
             </form>
           </div>
@@ -494,3 +456,4 @@ export default function EditGroupForm({ group, onUpdate, onCancel }) {
     </div>
   )
 }
+

@@ -4,15 +4,15 @@ from typing import List, Optional, Dict
 from datetime import datetime, timezone
 import secrets
 import string
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 from app.db import get_session
-from app.models import Group, GroupMember, User, MissionSubmission, GroupMessage, MessageRead, MessageReaction
+from app.models import Group, GroupMember, User, MissionSubmission, GroupMessage, MessageRead
 from app.schemas.groups import (
     GroupCreate, GroupUpdate, Group as GroupSchema, 
-    GroupMember as GroupMemberSchema, GroupMemberWithUser, LeaderboardEntry
+    GroupMember as GroupMemberSchema, GroupMemberWithUser
 )
-from app.routers.auth import _get_user_from_token
+from app.routers.auth import _get_user_from_token, _get_optional_user_from_token
 from app.services.ai import generate_image
 from app.services.message_sync import MessageSynchronizer, MessageVersion, get_synchronizer
 from pydantic import BaseModel
@@ -31,6 +31,14 @@ PRESENCE_TIMEOUT_SECONDS = 300  # 5 minutes
 # WebSocket connections for group chat (group_id -> {user_id: WebSocket})
 group_connections: Dict[str, Dict[int, WebSocket]] = {}
 
+# Store reference to the main event loop for broadcasting from sync endpoints
+_main_event_loop = None
+
+def set_main_event_loop(loop):
+    """Set the main event loop reference"""
+    global _main_event_loop
+    _main_event_loop = loop
+
 def generate_group_id(name: str) -> str:
     """Generate a unique group ID from the group name"""
     
@@ -48,6 +56,15 @@ def create_group(
     current_user: User = Depends(_get_user_from_token)
 ):
     """Create a new study group"""
+    
+    # Require minimum XP to create groups (ensures graders have platform experience)
+    MIN_XP_TO_CREATE_GROUP = 250
+    user_xp = current_user.xp or 0
+    if user_xp < MIN_XP_TO_CREATE_GROUP:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You need at least {MIN_XP_TO_CREATE_GROUP} XP to create a group. You currently have {user_xp} XP. Earn XP by submitting tasks, attending events, and participating in groups!"
+        )
     
     group_id = generate_group_id(group_data.name)
     
@@ -90,13 +107,14 @@ def create_group(
     
     return group
 
-@router.get("", response_model=List[GroupSchema])
+@router.get("")
 def list_groups(
     field: Optional[str] = None,
     q: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    current_user: Optional[User] = Depends(_get_optional_user_from_token)
 ):
     """List groups with optional filtering"""
     
@@ -116,7 +134,41 @@ def list_groups(
     query = query.offset(offset).limit(limit).order_by(Group.created_at.desc())
     
     groups = session.exec(query).all()
-    return groups
+    
+    # If user is authenticated, enrich groups with join status and member counts
+    if current_user:
+        group_ids = [g.id for g in groups]
+        if group_ids:
+            # Get all member counts in one query
+            all_members = session.exec(
+                select(GroupMember.group_id)
+                .where(GroupMember.group_id.in_(group_ids))
+            ).all()
+            count_map = dict(Counter(all_members))
+            
+            # Get user's joined groups in one query
+            user_joined_groups = session.exec(
+                select(GroupMember.group_id).where(
+                    GroupMember.group_id.in_(group_ids),
+                    GroupMember.user_id == current_user.id
+                )
+            ).all()
+            joined_set = set(user_joined_groups)
+            
+            # Enrich groups with additional data
+            result = []
+            for group in groups:
+                group_dict = group.model_dump()
+                group_dict["member_count"] = count_map.get(group.id, 0)
+                group_dict["is_joined"] = (
+                    group.created_by == current_user.id or 
+                    group.id in joined_set
+                )
+                result.append(group_dict)
+            return result
+    
+    # If not authenticated, return groups as-is
+    return [g.model_dump() for g in groups]
 
 class ImageGenerationRequest(BaseModel):
     prompt: str
@@ -169,40 +221,66 @@ def autocomplete_groups(
         for group in groups
     ]
 
-@router.get("/my-groups", response_model=List[GroupSchema])
-def get_my_groups(
+@router.get("/my-groups/count")
+def get_my_groups_count(
     session: Session = Depends(get_session),
     current_user: User = Depends(_get_user_from_token)
 ):
-    """Get all groups that the current user is a member of or created"""
-    # Get user's memberships
-    user_memberships = session.exec(
-        select(GroupMember).where(GroupMember.user_id == current_user.id)
-    ).all()
+    """Get count of groups that the current user is a member of or created (lightweight)"""
+    from sqlmodel import or_
     
     # Get group IDs user is a member of
-    member_group_ids = {m.group_id for m in user_memberships}
-    
-    # Get groups user created
-    created_groups = session.exec(
-        select(Group).where(Group.created_by == current_user.id)
-    ).all()
-    created_group_ids = {g.id for g in created_groups}
-    
-    # Combine both sets
-    all_group_ids = member_group_ids | created_group_ids
-    
-    if not all_group_ids:
-        return []
-    
-    # Get all groups (member or created), ordered by creation date (newest first)
-    groups = session.exec(
-        select(Group)
-        .where(Group.id.in_(all_group_ids))
-        .order_by(Group.created_at.desc())
+    member_group_ids = session.exec(
+        select(GroupMember.group_id).where(GroupMember.user_id == current_user.id)
     ).all()
     
-    return list(groups)
+    # Build query - handle empty list case
+    if not member_group_ids:
+        # Only created groups
+        query = select(func.count(Group.id)).where(Group.created_by == current_user.id)
+    else:
+        # Groups user is member of OR created
+        query = select(func.count(Group.id)).where(
+            or_(
+                Group.id.in_(member_group_ids),
+                Group.created_by == current_user.id
+            )
+        )
+    
+    count = session.exec(query).one() or 0
+    return {"count": count}
+
+@router.get("/my-groups", response_model=List[GroupSchema])
+def get_my_groups(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(_get_user_from_token),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0)
+):
+    """Get groups that the current user is a member of or created (paginated)"""
+    from sqlmodel import or_
+    
+    # Get group IDs user is a member of
+    member_group_ids = session.exec(
+        select(GroupMember.group_id).where(GroupMember.user_id == current_user.id)
+    ).all()
+    
+    # Build query - handle empty list case
+    if not member_group_ids:
+        # Only created groups
+        query = select(Group).where(Group.created_by == current_user.id)
+    else:
+        # Groups user is member of OR created
+        query = select(Group).where(
+            or_(
+                Group.id.in_(member_group_ids),
+                Group.created_by == current_user.id
+            )
+        )
+    
+    query = query.order_by(Group.created_at.desc()).limit(limit).offset(offset)
+    groups = session.exec(query).all()
+    return groups
 
 @router.get("/{group_id}", response_model=GroupSchema)
 def get_group(
@@ -293,10 +371,11 @@ def join_group(
     ).first()
     
     if existing_membership:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Already a member of this group"
-        )
+        # Already joined - return current count
+        member_count = session.exec(
+            select(func.count()).select_from(GroupMember).where(GroupMember.group_id == group_id)
+        ).one()
+        return {"success": True, "alreadyJoined": True, "member_count": member_count}
     
     
     group_member = GroupMember(
@@ -310,11 +389,17 @@ def join_group(
     group.members += 1
     session.add(group)
     session.commit()
+    session.refresh(group)
+    
+    # Get actual member count from database
+    member_count = session.exec(
+        select(func.count()).select_from(GroupMember).where(GroupMember.group_id == group_id)
+    ).one()
     
     # Update user presence when joining
     user_presence[current_user.id] = datetime.now(timezone.utc)
     
-    return {"message": "Successfully joined group"}
+    return {"success": True, "member_count": member_count}
 
 @router.delete("/{group_id}/leave")
 def leave_group(
@@ -340,10 +425,11 @@ def leave_group(
     ).first()
     
     if not membership:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Not a member of this group"
-        )
+        # Not joined - return current count
+        member_count = session.exec(
+            select(func.count()).select_from(GroupMember).where(GroupMember.group_id == group_id)
+        ).one()
+        return {"success": True, "notJoined": True, "member_count": member_count}
     
     
     if membership.is_leader:
@@ -368,8 +454,14 @@ def leave_group(
     group.members -= 1
     session.add(group)
     session.commit()
+    session.refresh(group)
     
-    return {"message": "Successfully left group"}
+    # Get actual member count from database
+    member_count = session.exec(
+        select(func.count()).select_from(GroupMember).where(GroupMember.group_id == group_id)
+    ).one()
+    
+    return {"success": True, "member_count": member_count}
 
 @router.delete("/{group_id}")
 def delete_group(
@@ -475,81 +567,30 @@ def check_membership(
         "joined_at": membership.joined_at if membership else None
     }
 
-@router.get("/{group_id}/leaderboard", response_model=List[LeaderboardEntry])
-def get_group_leaderboard(
-    group_id: str,
-    session: Session = Depends(get_session)
-):
-    """Get leaderboard for a group based on mission submissions"""
-    
-    group = session.exec(select(Group).where(Group.id == group_id)).first()
-    if not group:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Group not found"
-        )
-    
-    submissions = session.exec(
-        select(MissionSubmission)
-        .where(
-            MissionSubmission.group_id == group_id,
-            MissionSubmission.is_approved == True,
-            MissionSubmission.score.isnot(None)
-        )
-        .order_by(MissionSubmission.score.desc(), MissionSubmission.submitted_at.asc())
-    ).all()
-    
-    if not submissions:
-        return []
-    
-    user_ids = list(set([s.user_id for s in submissions]))
-    if not user_ids:
-        return []
-    
-    users = session.exec(select(User).where(User.id.in_(user_ids))).all()
-    user_map = {u.id: u for u in users}
-    
-    leaderboard = []
-    current_rank = 1
-    previous_score = None
-    
-    for idx, submission in enumerate(submissions):
-        user = user_map.get(submission.user_id)
-        if not user:
-            continue
-        
-        if previous_score is not None and submission.score != previous_score:
-            current_rank = idx + 1
-        
-        previous_score = submission.score
-        
-        leaderboard.append(LeaderboardEntry(
-            user_id=user.id,
-            user_email=user.email,
-            user_name=user.name,
-            user_photo_url=user.photo_url,
-            user_is_verified=user.is_verified,
-            score=submission.score or 0,
-            rank=current_rank,
-            submission_id=submission.id,
-            submitted_at=submission.submitted_at,
-            is_approved=submission.is_approved
-        ))
-    
-    return leaderboard
-
 @router.get("/{group_id}/messages")
-def get_group_messages(group_id: str, session: Session = Depends(get_session), current_user: Optional[User] = Depends(_get_user_from_token)):
-    """Get all messages for a group"""
+def get_group_messages(
+    group_id: str, 
+    session: Session = Depends(get_session), 
+    current_user: Optional[User] = Depends(_get_optional_user_from_token),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0)
+):
+    """Get messages for a group (paginated, most recent first)"""
     group = session.exec(select(Group).where(Group.id == group_id)).first()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
     
+    # Optimized: Load messages with limit, order by desc (newest first) for pagination
     messages = session.exec(
         select(GroupMessage)
         .where(GroupMessage.group_id == group_id)
-        .order_by(GroupMessage.created_at)
+        .order_by(GroupMessage.created_at.desc())
+        .limit(limit)
+        .offset(offset)
     ).all()
+    
+    # Reverse to get chronological order (oldest first for display)
+    messages = list(reversed(messages))
     
     if not messages:
         return []
@@ -572,21 +613,6 @@ def get_group_messages(group_id: str, session: Session = Depends(get_session), c
             read_map[read.message_id] = []
         read_map[read.message_id].append(read.user_id)
     
-    # Get reactions for all messages
-    reaction_records = session.exec(
-        select(MessageReaction).where(
-            MessageReaction.message_id.in_(message_ids),
-            MessageReaction.message_type == "group"
-        )
-    ).all()
-    reaction_map = {}  # {message_id: {emoji: [user_ids]}}
-    for reaction in reaction_records:
-        if reaction.message_id not in reaction_map:
-            reaction_map[reaction.message_id] = {}
-        if reaction.emoji not in reaction_map[reaction.message_id]:
-            reaction_map[reaction.message_id][reaction.emoji] = []
-        reaction_map[reaction.message_id][reaction.emoji].append(reaction.user_id)
-    
     result = []
     for msg in messages:
         user = user_map.get(msg.user_id)
@@ -604,17 +630,6 @@ def get_group_messages(group_id: str, session: Session = Depends(get_session), c
             read_count = len(read_by)
             is_read_by_current_user = current_user and current_user.id in read_by if current_user else False
             
-            # Get reactions for this message
-            message_reactions = reaction_map.get(msg.id, {})
-            reactions = []
-            for emoji, user_ids in message_reactions.items():
-                reactions.append({
-                    "emoji": emoji,
-                    "count": len(user_ids),
-                    "users": user_ids,
-                    "has_reacted": current_user and current_user.id in user_ids if current_user else False
-                })
-            
             result.append({
                 "id": msg.id,
                 "content": msg.content if not msg.is_deleted else None,
@@ -622,7 +637,6 @@ def get_group_messages(group_id: str, session: Session = Depends(get_session), c
                 "created_at": created_at_str,
                 "read_count": read_count,
                 "is_read_by_me": is_read_by_current_user,
-                "reactions": reactions,
                 "user": {
                     "id": user.id,
                     "name": user.name,
@@ -728,7 +742,7 @@ def set_group_typing_status(
 def get_group_typing_status(
     group_id: str,
     session: Session = Depends(get_session),
-    current_user: Optional[User] = Depends(_get_user_from_token)
+    current_user: Optional[User] = Depends(_get_optional_user_from_token)
 ):
     """Get list of users currently typing in the group chat"""
     group = session.exec(select(Group).where(Group.id == group_id)).first()
@@ -772,7 +786,7 @@ def get_group_typing_status(
 def get_group_presence(
     group_id: str,
     session: Session = Depends(get_session),
-    current_user: Optional[User] = Depends(_get_user_from_token)
+    current_user: Optional[User] = Depends(_get_optional_user_from_token)
 ):
     """Get online/offline status for all members of a group"""
     group = session.exec(select(Group).where(Group.id == group_id)).first()
@@ -853,6 +867,45 @@ def delete_group_message(
     session.commit()
     session.refresh(message)
     
+    # Broadcast deletion to all connected clients via WebSocket
+    import asyncio
+    import threading
+    
+    def schedule_broadcast():
+        """Schedule broadcast in the main event loop"""
+        global _main_event_loop
+        try:
+            loop = _main_event_loop
+            if loop is None:
+                # Fallback: try to get the event loop
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = asyncio.get_event_loop()
+            
+            if loop and loop.is_running():
+                # Schedule the coroutine thread-safely
+                asyncio.run_coroutine_threadsafe(
+                    broadcast_to_group(group_id, None, {
+                        "type": "message_deleted",
+                        "message_id": message_id
+                    }),
+                    loop
+                )
+            elif loop:
+                # If loop exists but not running, run it directly
+                loop.run_until_complete(broadcast_to_group(group_id, None, {
+                    "type": "message_deleted",
+                    "message_id": message_id
+                }))
+        except Exception as e:
+            print(f"Failed to broadcast message deletion: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # Run in background thread to avoid blocking the sync endpoint
+    threading.Thread(target=schedule_broadcast, daemon=True).start()
+    
     return {"message": "Message deleted successfully"}
 
 @router.post("/{group_id}/messages/{message_id}/read")
@@ -891,68 +944,19 @@ def mark_group_message_read(
     
     return {"status": "read"}
 
-@router.post("/{group_id}/messages/{message_id}/reactions")
-def add_group_message_reaction(
-    group_id: str,
-    message_id: int,
-    emoji: str = Query(..., min_length=1, max_length=10),
-    session: Session = Depends(get_session),
-    current_user: User = Depends(_get_user_from_token)
-):
-    """Add or remove a reaction to a message"""
-    group = session.exec(select(Group).where(Group.id == group_id)).first()
-    if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
-    
-    message = session.get(GroupMessage, message_id)
-    if not message or message.group_id != group_id:
-        raise HTTPException(status_code=404, detail="Message not found")
-    
-    # Check if user is a member or the group owner
-    is_member = session.exec(
-        select(GroupMember).where(
-            GroupMember.group_id == group_id,
-            GroupMember.user_id == current_user.id
-        )
-    ).first()
-    
-    is_owner = group.created_by == current_user.id
-    
-    if not is_member and not is_owner:
-        raise HTTPException(status_code=403, detail="You must be a member or group owner")
-    
-    # Check if reaction already exists
-    existing_reaction = session.exec(
-        select(MessageReaction).where(
-            MessageReaction.message_id == message_id,
-            MessageReaction.message_type == "group",
-            MessageReaction.user_id == current_user.id,
-            MessageReaction.emoji == emoji
-        )
-    ).first()
-    
-    if existing_reaction:
-        # Remove reaction (toggle off)
-        session.delete(existing_reaction)
-        session.commit()
-        return {"status": "removed", "emoji": emoji}
-    else:
-        # Add reaction
-        reaction = MessageReaction(
-            message_id=message_id,
-            message_type="group",
-            user_id=current_user.id,
-            emoji=emoji
-        )
-        session.add(reaction)
-        session.commit()
-        return {"status": "added", "emoji": emoji}
-
 
 # WebSocket endpoint for real-time group chat
 @router.websocket("/{group_id}/ws")
 async def group_chat_websocket(websocket: WebSocket, group_id: str):
     """WebSocket endpoint for real-time group chat"""
+    # Store reference to the main event loop on first connection
+    global _main_event_loop
+    if _main_event_loop is None:
+        import asyncio
+        try:
+            _main_event_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            _main_event_loop = asyncio.get_event_loop()
     await websocket.accept()
     
     # Get user from token
@@ -969,18 +973,27 @@ async def group_chat_websocket(websocket: WebSocket, group_id: str):
             
             # Get user details
             session_gen = get_session()
-            session = next(session_gen)
             try:
-                user = session.get(User, user_id)
-                if user:
-                    user_name = user.name or user.email
-                    user_email = user.email
-                    user_photo_url = user.photo_url
-            finally:
+                session = next(session_gen)
                 try:
-                    next(session_gen)
-                except StopIteration:
+                    user = session.get(User, user_id)
+                    if user:
+                        user_name = user.name or user.email
+                        user_email = user.email
+                        user_photo_url = user.photo_url
+                finally:
+                    # Close the session by exhausting the generator
+                    try:
+                        next(session_gen)
+                    except StopIteration:
+                        pass
+            except Exception:
+                # If generator fails, try to close it
+                try:
+                    session_gen.close()
+                except:
                     pass
+                raise
     except Exception as e:
         await websocket.close(code=1008, reason="Invalid authentication")
         return
@@ -991,8 +1004,8 @@ async def group_chat_websocket(websocket: WebSocket, group_id: str):
     
     # Verify group exists and user has access
     session_gen = get_session()
-    session = next(session_gen)
     try:
+        session = next(session_gen)
         group = session.exec(select(Group).where(Group.id == group_id)).first()
         if not group:
             await websocket.close(code=1008, reason="Group not found")
@@ -1157,6 +1170,10 @@ async def group_chat_websocket(websocket: WebSocket, group_id: str):
         # Handle messages
         try:
             while True:
+                # Check if WebSocket is still connected
+                if websocket.client_state.name != "CONNECTED":
+                    break
+                
                 try:
                     data = await websocket.receive_json()
                     message_type = data.get("type")
@@ -1298,16 +1315,35 @@ async def group_chat_websocket(websocket: WebSocket, group_id: str):
                             "type": "presence_update",
                             "online_users": online_users
                         })
+                
+                except WebSocketDisconnect:
+                    # Normal disconnect, break out of loop
+                    print("WebSocket disconnected normally")
+                    break
+                except RuntimeError as e:
+                    # Handle "Cannot call receive once disconnected" error
+                    if "disconnect" in str(e).lower():
+                        print("WebSocket disconnected (RuntimeError)")
+                        break
+                    # Re-raise other RuntimeErrors
+                    raise
                 except Exception as e:
-                    # Log error but don't disconnect
+                    # Log error but continue if connection is still open
                     print(f"Error processing WebSocket message: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    # Check if still connected before continuing
+                    if websocket.client_state.name != "CONNECTED":
+                        break
                     continue
                 
         except WebSocketDisconnect:
             print("WebSocket disconnected normally")
             pass
+        except RuntimeError as e:
+            # Handle "Cannot call receive once disconnected" error
+            if "disconnect" in str(e).lower():
+                print("WebSocket disconnected (RuntimeError in outer catch)")
+            else:
+                print(f"WebSocket RuntimeError: {e}")
         except Exception as e:
             # Log unexpected errors
             print(f"WebSocket error in main loop: {e}")
@@ -1327,10 +1363,19 @@ async def group_chat_websocket(websocket: WebSocket, group_id: str):
             except Exception as e:
                 print(f"Error broadcasting user left: {e}")
     finally:
+        # Properly close the session
         try:
-            if session_gen:
-                next(session_gen)
-        except (StopIteration, TypeError):
+            if 'session_gen' in locals():
+                try:
+                    next(session_gen)
+                except StopIteration:
+                    pass
+                except Exception:
+                    try:
+                        session_gen.close()
+                    except:
+                        pass
+        except:
             pass
 
 async def broadcast_to_group(group_id: str, exclude_user_id: Optional[int], message: Dict):

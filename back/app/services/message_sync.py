@@ -6,7 +6,6 @@ for ensuring consistent message ordering across distributed clients.
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime, timezone
 from collections import defaultdict
-import json
 
 class VectorClock:
     """Vector clock for causal ordering of messages"""

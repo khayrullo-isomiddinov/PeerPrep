@@ -16,8 +16,11 @@ const STEPS = [
 
 export default function CreateGroup() {
   const navigate = useNavigate()
-  const { isAuthenticated, isLoading } = useAuth()
+  const { isAuthenticated, isLoading, user, setUser } = useAuth()
+  const MIN_XP_TO_CREATE_GROUP = 250
   const [currentStep, setCurrentStep] = useState(0)
+  const [userXP, setUserXP] = useState(null)
+  const [loadingXP, setLoadingXP] = useState(true)
   const [formData, setFormData] = useState({
     name: "",
     field: "",
@@ -33,9 +36,36 @@ export default function CreateGroup() {
   const [lastUpdate, setLastUpdate] = useState(new Date())
   const [refiningName, setRefiningName] = useState(false)
   const [refiningDescription, setRefiningDescription] = useState(false)
-  const [refiningMissionTitle, setRefiningMissionTitle] = useState(false)
-  const [refiningMissionDescription, setRefiningMissionDescription] = useState(false)
 
+  // Fetch fresh user XP from API (in case cached user object is stale)
+  useEffect(() => {
+    async function fetchUserXP() {
+      if (!isAuthenticated || !user?.id) {
+        setLoadingXP(false)
+        return
+      }
+      
+      try {
+        setLoadingXP(true)
+        const { api } = await import("../utils/api")
+        const response = await api.get("/auth/me")
+        const freshXP = response.data?.xp || 0
+        setUserXP(freshXP)
+        // Also update the user object in AuthContext with fresh XP
+        if (setUser && response.data) {
+          setUser({ ...user, xp: freshXP })
+        }
+      } catch (error) {
+        console.error("Failed to fetch user XP:", error)
+        // Fallback to cached user XP
+        setUserXP(user?.xp || 0)
+      } finally {
+        setLoadingXP(false)
+      }
+    }
+    
+    fetchUserXP()
+  }, [isAuthenticated, user?.id, setUser])
 
   if (!isLoading && !isAuthenticated) {
     navigate("/login", { replace: true })
@@ -160,68 +190,16 @@ export default function CreateGroup() {
     }
   }
 
-  async function handleRefineMissionTitle() {
-    if (!formData.mission_title?.trim()) {
-      setError("Please enter a mission title first before refining.")
-      return
-    }
-    
-    const token = localStorage.getItem("access_token")
-    if (!token) {
-      setError("Please log in to use AI refinement.")
-      navigate("/login")
-      return
-    }
-    
-    setRefiningMissionTitle(true)
-    setError("")
-    try {
-      const refined = await refineEventText(formData.mission_title, "title")
-      updateFormData({ mission_title: refined })
-    } catch (e) {
-      if (e?.response?.status === 401) {
-        setError("Your session has expired. Please log in again.")
-        navigate("/login")
-      } else {
-        setError(e?.response?.data?.detail || "Failed to refine mission title. Please try again.")
-      }
-    } finally {
-      setRefiningMissionTitle(false)
-    }
-  }
-
-  async function handleRefineMissionDescription() {
-    if (!formData.mission_description?.trim()) {
-      setError("Please enter a mission description first before refining.")
-      return
-    }
-    
-    const token = localStorage.getItem("access_token")
-    if (!token) {
-      setError("Please log in to use AI refinement.")
-      navigate("/login")
-      return
-    }
-    
-    setRefiningMissionDescription(true)
-    setError("")
-    try {
-      const refined = await refineEventText(formData.mission_description, "description")
-      updateFormData({ mission_description: refined })
-    } catch (e) {
-      if (e?.response?.status === 401) {
-        setError("Your session has expired. Please log in again.")
-        navigate("/login")
-      } else {
-        setError(e?.response?.data?.detail || "Failed to refine mission description. Please try again.")
-      }
-    } finally {
-      setRefiningMissionDescription(false)
-    }
-  }
-
   async function handleSubmit() {
     setError("")
+    
+    // Check XP requirement (use fresh XP if available)
+    const currentXP = userXP !== null ? userXP : (user?.xp || 0)
+    if (currentXP < MIN_XP_TO_CREATE_GROUP) {
+      setError(`You need at least ${MIN_XP_TO_CREATE_GROUP} XP to create a group. You currently have ${currentXP} XP. Earn XP by submitting tasks, attending events, and participating in groups!`)
+      return
+    }
+    
     const errs = {}
     if (!formData.name.trim()) errs.name = "Group name is required"
     if (!formData.field.trim()) errs.field = "Field of study is required"
@@ -264,7 +242,6 @@ export default function CreateGroup() {
             reader.readAsDataURL(formData.coverImage)
           })
         } catch (e) {
-          console.warn("Failed to read cover image, continuing without it:", e)
         }
       }
 
@@ -315,9 +292,36 @@ export default function CreateGroup() {
     "Wellness", "Productivity", "Other"
   ]
 
+  // Check XP requirement (use fresh XP if available, otherwise fallback to cached)
+  const currentXP = userXP !== null ? userXP : (user?.xp || 0)
+  const hasEnoughXP = currentXP >= MIN_XP_TO_CREATE_GROUP
+  const xpNeeded = MIN_XP_TO_CREATE_GROUP - currentXP
+
   return (
     <div className="min-h-screen bg-gray-50 group-creation-form">
       <div className="nav-spacer" />
+      {!hasEnoughXP && (
+        <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-4">
+          <div className="container-page">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 mt-0.5">
+                <svg className="w-5 h-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-yellow-800 mb-1">
+                  XP Requirement Not Met
+                </h3>
+                <p className="text-sm text-yellow-700">
+                  You need at least <strong>{MIN_XP_TO_CREATE_GROUP} XP</strong> to create a group (you currently have <strong>{currentXP} XP</strong>). 
+                  You need <strong>{xpNeeded} more XP</strong>. Earn XP by submitting tasks, attending events, and participating in groups!
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex flex-col lg:flex-row">
         <div className="w-full lg:w-80 bg-white border-r-0 lg:border-r border-b lg:border-b-0 border-gray-200 p-4 lg:p-6 step-sidebar">
           <div className="mb-8">
@@ -447,7 +451,7 @@ export default function CreateGroup() {
                 ) : (
                   <button
                     onClick={handleSubmit}
-                    disabled={loading || !canCreateGroup()}
+                    disabled={loading || !canCreateGroup() || !hasEnoughXP}
                     className="touch-target w-full sm:w-auto px-6 py-3 bg-pink-500 text-white rounded-lg hover:bg-pink-600 active:bg-pink-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                   >
                     <span>{loading ? "Creating..." : "Create Study Group"}</span>

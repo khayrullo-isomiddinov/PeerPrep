@@ -8,7 +8,7 @@ import GroupCard from "./GroupCard"
 import { deleteGroup } from "../../utils/api"
 import { useAuth } from "../auth/AuthContext"
 
-export default function GroupList({ groups, setGroups, onEdit, showFilters = true }) {
+export default function GroupList({ groups, setGroups, onEdit, onJoinLeave, showFilters = true }) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedField, setSelectedField] = useState("")
   const [showMissionsOnly, setShowMissionsOnly] = useState(false)
@@ -31,7 +31,7 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
       const e = (group.exam || "").toLowerCase()
       const matchesSearch = n.includes(q) || f.includes(q) || d.includes(q) || e.includes(q)
       const matchesField = !selectedField || group.field === selectedField
-      const matchesMission = !showMissionsOnly || group.mission_title
+      const matchesMission = !showMissionsOnly || true // Mission filter disabled - no mission_title field in backend
       return matchesSearch && matchesField && matchesMission
     })
     filtered.sort((a, b) => {
@@ -240,6 +240,7 @@ export default function GroupList({ groups, setGroups, onEdit, showFilters = tru
               canDelete={user && group.created_by === user.id}
               isAuthenticated={isAuthenticated}
               onEdit={onEdit}
+              onJoinLeave={onJoinLeave}
             />
           ))}
         </div>

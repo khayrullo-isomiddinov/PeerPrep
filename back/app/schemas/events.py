@@ -13,6 +13,7 @@ class EventBase(SQLModel):
     kind: EventKind = EventKind.one_off
     cover_image_url: Optional[str] = None
     study_materials: Optional[str] = None
+    exam: Optional[str] = None
 
 class EventCreate(EventBase):
     pass
@@ -32,3 +33,4 @@ class EventUpdate(SQLModel):
     kind: Optional[EventKind] = None
     cover_image_url: Optional[str] = None
     study_materials: Optional[str] = None
+    exam: Optional[str] = None

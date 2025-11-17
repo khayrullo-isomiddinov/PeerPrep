@@ -1,65 +1,113 @@
-﻿import { useState, useEffect } from "react"
+﻿import { useState, useEffect, useCallback, memo, useRef } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
-  faUsers, faTrophy, faAward,
-  faChevronRight, faUserPlus, faUserMinus, faTrash,
-  faGraduationCap, faBook, faStar, faEdit
+  faUsers,
+  faTrash,
+  faGraduationCap, faBook, faEdit
 } from "@fortawesome/free-solid-svg-icons"
-import { checkGroupMembership, joinGroup, leaveGroup, deleteGroup } from "../../utils/api"
+import { checkGroupMembership, joinGroup, leaveGroup, deleteGroup, getGroup } from "../../utils/api"
 import { Link } from "react-router-dom"
+import { usePrefetch } from "../../utils/usePrefetch"
 
-export default function GroupCard({ group, onDelete, isDeleting = false, canDelete = false, isAuthenticated = false, onEdit }) {
-  const [joined, setJoined] = useState(false)
-  const [showDetails, setShowDetails] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [isLeader, setIsLeader] = useState(false)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+function GroupCard({ group, onDelete, isDeleting = false, canDelete = false, isAuthenticated = false, onEdit, onJoinLeave }) {
+  
+  const memberCount = group.member_count ?? group.members ?? 0
+  const isJoinedFromAPI = group.is_joined ?? false
+  
+  const [joined, setJoined] = useState(() => {
+    if (canDelete) return true
+    return isJoinedFromAPI
+  })
+  const [busyJoin, setBusyJoin] = useState(false)
+  const [busyLeave, setBusyLeave] = useState(false)
   const [busyDelete, setBusyDelete] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [err, setErr] = useState("")
   const navigate = useNavigate()
+  const { prefetch } = usePrefetch()
 
+  // Update joined state when API data is available - simple sync
   useEffect(() => {
-    if (isAuthenticated && !canDelete) {
-      checkMembershipStatus()
-    } else {
-      setJoined(false)
+    if (canDelete) {
+      setJoined(true)
+    } else if (!busyJoin && !busyLeave) {
+      // Only update if not in the middle of an operation
+      setJoined(isJoinedFromAPI)
     }
-  }, [isAuthenticated, canDelete])
+  }, [canDelete, isJoinedFromAPI, busyJoin, busyLeave])
 
-  async function checkMembershipStatus() {
+  const full = memberCount >= (group.capacity ?? Infinity)
+
+  async function onJoin() {
+    if (busyJoin || busyLeave) return
+    setErr("")
+    setBusyJoin(true)
+    const previousJoined = joined
+
     try {
-      const membership = await checkGroupMembership(group.id)
-      setJoined(!!membership.is_member)
-      setIsLeader(!!membership.is_leader)
-    } catch (error) {
-      setJoined(false)
-      setIsLeader(false)
+      const result = await joinGroup(group.id)
+
+      if (result?.success) {
+        setJoined(true)
+        const updatedGroup = {
+          ...group,
+          is_joined: true,
+          member_count: result.member_count ?? group.member_count,
+          members: result.member_count ?? group.members
+        }
+        // Invalidate cache to ensure fresh data when navigating
+        import("../../utils/pageCache").then(({ invalidateCache }) => {
+          invalidateCache(`group:${group.id}`)
+          invalidateCache("groups")
+        })
+        onJoinLeave?.(group.id, true, updatedGroup)
+      } else {
+        setErr("Unexpected response from server")
+        setTimeout(() => setErr(""), 5000)
+      }
+    } catch (e) {
+      setJoined(previousJoined) // Revert on error
+      const errorMsg = e?.response?.data?.detail || e?.message || "Join failed"
+      setErr(errorMsg)
+      setTimeout(() => setErr(""), 5000)
+    } finally {
+      setBusyJoin(false)
     }
   }
 
-  const memberCount = group.members || 0
+  async function onLeave() {
+    if (busyJoin || busyLeave) return
+    setErr("")
+    setBusyLeave(true)
+    const previousJoined = joined
 
-  async function handleJoinLeave() {
-    if (!isAuthenticated) {
-      navigate("/login")
-      return
-    }
-    setIsLoading(true)
     try {
-      if (joined) {
-        await leaveGroup(group.id)
+      const result = await leaveGroup(group.id)
+
+      if (result?.success) {
         setJoined(false)
-      } else {
-        await joinGroup(group.id)
-        setJoined(true)
+        const updatedGroup = {
+          ...group,
+          is_joined: false,
+          member_count: result.member_count ?? group.member_count,
+          members: result.member_count ?? group.members
+        }
+        // Invalidate cache to ensure fresh data when navigating
+        import("../../utils/pageCache").then(({ invalidateCache }) => {
+          invalidateCache(`group:${group.id}`)
+          invalidateCache("groups")
+        })
+        onJoinLeave?.(group.id, false, updatedGroup)
       }
-    } catch (error) {
-      setJoined(!joined)
-      console.error('Join/Leave failed:', error)
+    } catch (e) {
+      setJoined(previousJoined) // Revert on error
+      const errorMsg = e?.response?.data?.detail || "Leave failed"
+      setErr(errorMsg)
+      setTimeout(() => setErr(""), 5000)
     } finally {
-      setIsLoading(false)
+      setBusyLeave(false)
     }
   }
 
@@ -88,146 +136,149 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
     }
   }
 
+  const getCategoryIcon = (field) => {
+    const fieldLower = (field || "").toLowerCase()
+    if (fieldLower.includes("math") || fieldLower.includes("calculus") || fieldLower.includes("algebra")) return faGraduationCap
+    if (fieldLower.includes("science") || fieldLower.includes("biology") || fieldLower.includes("chemistry") || fieldLower.includes("physics")) return faBook
+    if (fieldLower.includes("tech") || fieldLower.includes("programming") || fieldLower.includes("coding") || fieldLower.includes("computer")) return faGraduationCap
+    if (fieldLower.includes("literature") || fieldLower.includes("english") || fieldLower.includes("writing")) return faBook
+    return faGraduationCap
+  }
+
   return (
     <Link 
       to={`/groups/${group.id}`}
-      className="block bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden premium-hover hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 backdrop-blur-sm"
+      onMouseEnter={() => prefetch(`group:${group.id}`, () => getGroup(group.id))}
+      className="group block bg-white rounded-xl border border-gray-200/80 overflow-hidden premium-hover hover:border-gray-300 hover:shadow-lg transition-all duration-300"
     >
-      {}
-      <div className="h-52 relative overflow-hidden group">
-        {group.cover_image_url ? (
-          <img
-            src={group.cover_image_url}
-            alt={`${group.name} cover`}
-            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-          />
-        ) : (
-          <div className="h-full bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 group-hover:from-blue-600 group-hover:via-purple-600 group-hover:to-pink-600 transition-all duration-500" />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
-        <div className="absolute top-4 right-4">
-          <button className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors">
-            <FontAwesomeIcon icon={faStar} className="w-4 h-4" />
-          </button>
-        </div>
-        {canDelete && (
-          <div className="absolute top-4 left-4">
-            <span className="px-2 py-1 bg-blue-500 text-white rounded text-xs font-medium">Owner</span>
-          </div>
-        )}
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 via-black/50 to-transparent">
-          <h3 className="text-xl font-bold text-white mb-1 drop-shadow-lg">{group.name}</h3>
-          <div className="flex items-center gap-3 text-blue-100 text-sm drop-shadow-md">
-            <div className="flex items-center gap-1">
-              <FontAwesomeIcon icon={faGraduationCap} className="w-4 h-4" />
-              <span>{group.field}</span>
+      <div className="flex">
+        {/* Compact Image/Thumbnail */}
+        <div className="w-24 h-24 flex-shrink-0 relative overflow-hidden bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
+          {group.cover_image_url ? (
+            <img
+              src={group.cover_image_url}
+              alt={`${group.name} cover`}
+              loading="lazy"
+              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center">
+              <FontAwesomeIcon icon={getCategoryIcon(group.field)} className="w-8 h-8 text-white/80" />
             </div>
-            {group.exam && (
+          )}
+          {canDelete && (
+            <div className="absolute top-1 left-1">
+              <span className="px-1.5 py-0.5 bg-blue-500/90 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
+                Owner
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Content Section */}
+        <div className="flex-1 p-4 flex flex-col justify-between min-w-0">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-bold text-gray-900 mb-2 truncate group-hover:text-indigo-600 transition-colors">
+              {group.name}
+            </h3>
+            
+            <div className="flex items-center gap-2 text-xs text-gray-500 mb-2 flex-wrap">
               <div className="flex items-center gap-1">
-                <span className="text-blue-200">•</span>
-                <FontAwesomeIcon icon={faBook} className="w-4 h-4" />
-                <span>{group.exam}</span>
+                <FontAwesomeIcon icon={faGraduationCap} className="w-3 h-3" />
+                <span className="truncate">{group.field}</span>
               </div>
-            )}
-            <div className="flex items-center gap-1">
-              <span className="text-blue-200">•</span>
-              <FontAwesomeIcon icon={faUsers} className="w-4 h-4" />
-              <span>{memberCount} members</span>
+              {group.exam && (
+                <>
+                  <span className="text-gray-300">•</span>
+                  <div className="flex items-center gap-1">
+                    <FontAwesomeIcon icon={faBook} className="w-3 h-3" />
+                    <span className="truncate">{group.exam}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
-        </div>
-      </div>
 
-      {}
-      <div className="p-6 bg-white/95 backdrop-blur-sm">
-        {group.description && (
-          <p className="text-gray-700 mb-4 line-clamp-2 leading-relaxed text-sm">
-            {group.description}
-          </p>
-        )}
-
-        {group.mission_title && (
-          <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl p-4 mb-4">
-            <div className="flex items-start gap-3">
-              <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-xl">
-                <FontAwesomeIcon icon={faTrophy} className="text-white" />
-              </div>
-              <div className="flex-1">
-                <h4 className="font-semibold text-orange-900 mb-1">{group.mission_title}</h4>
-                {group.mission_description && (
-                  <p className="text-orange-700 text-sm mb-2">{group.mission_description}</p>
-                )}
-                <div className="flex items-center gap-4 text-orange-600 text-sm">
-                  {group.mission_capacity != null && (
-                    <div className="flex items-center gap-1">
-                      <FontAwesomeIcon icon={faUsers} className="text-sm" />
-                      <span>{group.mission_capacity} max</span>
-                    </div>
-                  )}
-                  {group.mission_badge_name && (
-                    <div className="flex items-center gap-1">
-                      <FontAwesomeIcon icon={faAward} className="text-sm" />
-                      <span>Badge: {group.mission_badge_name}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
+          {/* Bottom Actions Bar */}
+          <div className="flex items-center justify-between pt-2 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-1 text-xs text-gray-500">
+              <FontAwesomeIcon icon={faUsers} className="w-3 h-3" />
+              <span className="font-medium">{memberCount}/{group.capacity}</span>
             </div>
-          </div>
-        )}
 
-        {}
-        <div className="flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center gap-2">
-            {!canDelete && (
+            <div className="flex items-center gap-1.5">
+              {!canDelete && isAuthenticated && joined && (
                 <button
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    handleJoinLeave()
+                    if (!busyLeave) onLeave()
                   }}
-                  disabled={isLoading}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${joined ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-pink-500 text-white hover:bg-pink-600'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                  className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-md text-xs font-semibold"
                 >
-                  <FontAwesomeIcon icon={joined ? faUserMinus : faUserPlus} />
-                  <span>{isLoading ? (joined ? 'Leaving...' : 'Joining...') : (joined ? 'Leave' : 'Join Group')}</span>
+                  Leave
                 </button>
-            )}
-            {canDelete && (
-              <>
+              )}
+              {!canDelete && isAuthenticated && !joined && !full && (
                 <button
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    onEdit && onEdit(group)
+                    if (!busyJoin) onJoin()
                   }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors bg-blue-500 text-white hover:bg-blue-600"
+                  className="px-3 py-1.5 bg-indigo-500 text-white rounded-md text-xs font-semibold"
                 >
-                  <FontAwesomeIcon icon={faEdit} />
-                  <span>Edit</span>
+                  Join
                 </button>
+              )}
+              {!canDelete && !isAuthenticated && !full && (
                 <button
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    handleDeleteClick()
+                    navigate("/login")
                   }}
-                  disabled={busyDelete || isDeleting}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md text-xs font-semibold"
                 >
-                  <FontAwesomeIcon icon={faTrash} />
-                  <span>{busyDelete || isDeleting ? 'Deleting...' : 'Delete'}</span>
+                  Join
                 </button>
-              </>
-            )}
+              )}
+              {canDelete && (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      onEdit && onEdit(group)
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md"
+                    title="Edit Group"
+                  >
+                    <FontAwesomeIcon icon={faEdit} className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleDeleteClick()
+                    }}
+                    disabled={busyDelete || isDeleting}
+                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Delete Group"
+                  >
+                    <FontAwesomeIcon icon={faTrash} className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
       {err && (
-        <div className="px-6 pb-4">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-            <p className="text-red-600 text-sm">{err}</p>
+        <div className="fixed top-20 right-4 z-[10000] max-w-xs animate-in fade-in slide-in-from-top-2">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 shadow-lg">
+            <p className="text-red-600 text-sm font-medium">{err}</p>
           </div>
         </div>
       )}
@@ -268,11 +319,6 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
               </div>
             </div>
             
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <p className="text-sm text-red-800">
-                <span className="font-semibold">Warning:</span> This action cannot be undone. All group data, members, and missions will be permanently deleted.
-              </p>
-            </div>
 
             <div className="flex gap-3 pt-2">
               <button
@@ -312,3 +358,5 @@ export default function GroupCard({ group, onDelete, isDeleting = false, canDele
     </Link>
   )
 }
+
+export default memo(GroupCard)

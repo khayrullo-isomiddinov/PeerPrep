@@ -5,7 +5,7 @@ const cache = {
   groups: null,
   groupsParams: null,
   groupsTimestamp: null,
-  CACHE_DURATION: 5 * 60 * 1000,
+  CACHE_DURATION: 10 * 60 * 1000, // 10 minutes - pages stay cached longer
 }
 
 export function getCachedEvents(params) {
@@ -41,7 +41,8 @@ export function getCachedGroups(params) {
     return cache.groups
   }
   
-  return null
+  // Return cached data even if expired - allows instant display while refreshing
+  return cache.groups && cache.groupsParams === paramsKey ? cache.groups : null
 }
 
 export function setCachedGroups(groups, params) {
@@ -49,15 +50,3 @@ export function setCachedGroups(groups, params) {
   cache.groupsParams = JSON.stringify(params || {})
   cache.groupsTimestamp = Date.now()
 }
-
-export function clearCache() {
-  cache.events = null
-  cache.eventsParams = null
-  cache.eventsTimestamp = null
-  cache.groups = null
-  cache.groupsParams = null
-  cache.groupsTimestamp = null
-}
-
-
-

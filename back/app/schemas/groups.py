@@ -54,14 +54,3 @@ class MissionSubmission(BaseModel):
     quality_scores: Optional[dict] = None  # NLP quality analysis results
     auto_feedback: Optional[str] = None  # Auto-generated feedback
 
-class LeaderboardEntry(BaseModel):
-    user_id: int
-    user_email: str
-    user_name: Optional[str] = None
-    user_photo_url: Optional[str] = None
-    user_is_verified: Optional[bool] = None
-    score: int
-    rank: int
-    submission_id: int
-    submitted_at: datetime
-    is_approved: bool

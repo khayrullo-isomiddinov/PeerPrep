@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { useParams, useNavigate, Link } from "react-router-dom"
 import { createPortal } from "react-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
@@ -7,27 +7,31 @@ import {
   faCalendar, faCrown, faUser, faChevronRight, faComments, faPaperPlane, faCheckCircle,
   faUserPlus, faUserMinus, faTrash, faExclamationTriangle, faFire
 } from "@fortawesome/free-solid-svg-icons"
-import { getGroup, getGroupMembers, checkGroupMembership, joinGroup, leaveGroup, getGroupMessages, postGroupMessage, setGroupTypingStatus, getGroupTypingStatus, getGroupPresence, markGroupMessageRead, addGroupMessageReaction, deleteGroupMessage } from "../utils/api"
+import { getGroup, getGroupMembers, checkGroupMembership, joinGroup, leaveGroup, getGroupMessages, postGroupMessage, setGroupTypingStatus, getGroupTypingStatus, getGroupPresence, markGroupMessageRead, deleteGroupMessage, getUserProfile } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
 import MissionSubmissionsList from "../features/groups/MissionSubmissionsList"
+import { usePrefetch } from "../utils/usePrefetch"
+import { startPageLoad, endPageLoad } from "../utils/usePageLoader"
+import { DetailPageSkeleton } from "../components/SkeletonLoader"
 
 export default function GroupDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user, isAuthenticated } = useAuth()
+  const { prefetch } = usePrefetch()
   const [group, setGroup] = useState(null)
+  const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [joined, setJoined] = useState(false)
-  const [isLeader, setIsLeader] = useState(false)
+  const [joined, setJoined] = useState(null) // null = loading, true/false = loaded
   const [isLoading, setIsLoading] = useState(false)
+  const [isLeader, setIsLeader] = useState(false)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState("")
   const [sendingMessage, setSendingMessage] = useState(false)
   const [messagesLoading, setMessagesLoading] = useState(false)
   const [typingUsers, setTypingUsers] = useState([])
   const [presence, setPresence] = useState([])
-  const [showEmojiPicker, setShowEmojiPicker] = useState(null) // messageId or null
   const typingTimeoutRef = useRef(null)
   const messagesEndRef = useRef(null)
   const messagesContainerRef = useRef(null)
@@ -39,29 +43,10 @@ export default function GroupDetail() {
   const reconnectAttemptsRef = useRef(0)
   const messageQueueRef = useRef([])
   const receivedMessageIdsRef = useRef(new Set())
-  
-  // Common emojis for reactions
-  const reactionEmojis = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👏", "💯", "✨"]
+  const markedReadIdsRef = useRef(new Set())
 
-  useEffect(() => {
-    async function loadGroup() {
-      try {
-        setLoading(true)
-        setError("")
-        const data = await getGroup(id)
-        setGroup(data)
-      } catch (err) {
-        console.error("Failed to load group:", err)
-        setError("Group not found")
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadGroup()
-  }, [id])
-
-  async function loadMessages(shouldScroll = false) {
-    if (!group) return
+  const loadMessages = useCallback(async (shouldScroll = false) => {
+    if (!id) return
     try {
       setMessagesLoading(true)
       const container = messagesContainerRef.current
@@ -73,40 +58,221 @@ export default function GroupDetail() {
         wasNearBottom = scrollBottom < 200
       }
       
-      const messagesData = await getGroupMessages(group.id)
-      const previousMessageCount = messages.length
-      const hasNewMessages = (messagesData || []).length > previousMessageCount
-      
-      setMessages(messagesData || [])
-      
-      // Only auto-scroll if:
-      // 1. User explicitly requested it (e.g., after sending a message)
-      // 2. Or if user was already at the bottom and new messages arrived
-      if (container) {
-        if (shouldScroll) {
-          shouldAutoScrollRef.current = true
-          setTimeout(() => {
-            container.scrollTop = container.scrollHeight
-          }, 100)
-        } else if (wasNearBottom && hasNewMessages) {
-          shouldAutoScrollRef.current = true
-          setTimeout(() => {
-            container.scrollTop = container.scrollHeight
-          }, 100)
-        } else {
-          shouldAutoScrollRef.current = false
+      const messagesData = await getGroupMessages(id)
+      setMessages(prevMessages => {
+        const previousMessageCount = prevMessages.length
+        const hasNewMessages = (messagesData || []).length > previousMessageCount
+        
+        // Only auto-scroll if:
+        // 1. User explicitly requested it (e.g., after sending a message)
+        // 2. Or if user was already at the bottom and new messages arrived
+        if (container) {
+          if (shouldScroll) {
+            shouldAutoScrollRef.current = true
+            setTimeout(() => {
+              container.scrollTop = container.scrollHeight
+            }, 100)
+          } else if (wasNearBottom && hasNewMessages) {
+            shouldAutoScrollRef.current = true
+            setTimeout(() => {
+              container.scrollTop = container.scrollHeight
+            }, 100)
+          } else {
+            shouldAutoScrollRef.current = false
+          }
         }
-      }
+        
+        return messagesData || []
+      })
     } catch (err) {
       console.error("Failed to load messages:", err)
     } finally {
       setMessagesLoading(false)
     }
-  }
+  }, [id])
+
+  const loadGroup = useCallback(async (force = false, skipMessages = false) => {
+    if (!isAuthenticated || !id) {
+      return
+    }
+    const pageId = `group:${id}`
+    try {
+      // Check cache first (unless forcing refresh)
+      const { getCachedPage, setCachedPage } = await import("../utils/pageCache")
+      const cached = getCachedPage(`group:${id}`)
+      
+      if (cached && cached.data && !force) {
+        // Show cached data instantly
+        setGroup(cached.data)
+        setLoading(false)
+        endPageLoad(pageId)
+        
+        // Load members and messages in parallel
+        Promise.all([
+          getGroupMembers(id).then(data => {
+            setMembers(data)
+            let userJoined = false
+            if (user && isAuthenticated) {
+              // Check if user is in members list OR is the owner
+              const userMember = data.find(m => m.user_id === user.id)
+              const isOwner = cached.data.created_by === user.id
+              userJoined = !!userMember || isOwner
+              setJoined(userJoined)
+              
+              // Set isLeader
+              if (userMember) {
+                setIsLeader(!!userMember.is_leader)
+              } else {
+                setIsLeader(false)
+              }
+            } else {
+              setJoined(false)
+            }
+            return userJoined || (user && cached.data.created_by === user.id)
+          }),
+          cached.isExpired ? getGroup(id).then(data => {
+            setGroup(data)
+            setCachedPage(`group:${id}`, data)
+          }) : Promise.resolve()
+        ]).then(([shouldLoadMessages]) => {
+          if (shouldLoadMessages && !skipMessages) {
+            loadMessages(false)
+            getGroupPresence(id).then(data => {
+              setPresence(data.presence || [])
+            }).catch(() => {})
+          }
+        })
+        return
+      }
+      
+      // No cache or forcing refresh, load normally
+      if (!force) {
+        startPageLoad(pageId)
+        setLoading(true)
+      }
+      setError("")
+      const data = await getGroup(id)
+      setGroup(data)
+      setCachedPage(`group:${id}`, data)
+      
+      const isOwner = user && data.created_by === user.id
+      
+      // Always refresh members to get updated member counts
+      const membersData = await getGroupMembers(id)
+      setMembers(membersData || [])
+      
+      // Set joined state immediately from members data
+      // User is considered "joined" if they're in the members list OR they're the owner
+      let userJoined = false
+      if (user && isAuthenticated) {
+        const userMember = membersData.find(m => m.user_id === user.id)
+        userJoined = !!userMember || isOwner
+        setJoined(userJoined)
+        
+        // Set isLeader
+        if (userMember) {
+          setIsLeader(!!userMember.is_leader)
+        } else {
+          setIsLeader(false)
+        }
+      } else {
+        setJoined(false)
+      }
+      
+      // Load messages but don't auto-scroll on initial page load
+      // Skip messages if WebSocket is connected (real-time updates handle messages)
+      if ((userJoined || isOwner) && !skipMessages) {
+        loadMessages(false)
+        // Immediately update presence when viewing the page
+        try {
+          const presenceData = await getGroupPresence(id)
+          setPresence(presenceData.presence || [])
+        } catch (err) {
+          // Silently fail
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load group:", err)
+      setError("Group not found")
+    } finally {
+      if (!force) {
+        setLoading(false)
+        endPageLoad(`group:${id}`)
+      }
+    }
+  }, [id, user, isAuthenticated, loadMessages])
+
+  useEffect(() => {
+    loadGroup()
+  }, [loadGroup])
+  
+  // Lightweight polling function that only updates member count without affecting UI state
+  const pollGroupMetadata = useCallback(async () => {
+    if (!id) return
+    
+    try {
+      // Only fetch the group data to get updated member count
+      const data = await getGroup(id)
+      
+      // Update only the metadata fields that matter (member count, capacity, etc.)
+      // without replacing the entire group object to avoid triggering re-renders
+      setGroup(prevGroup => {
+        if (!prevGroup) return data
+        
+        // Only update if member count actually changed
+        if (prevGroup.members !== data.members || prevGroup.capacity !== data.capacity) {
+          return {
+            ...prevGroup,
+            members: data.members,
+            capacity: data.capacity,
+            // Preserve other fields that might affect UI
+            created_by: prevGroup.created_by,
+            is_joined: prevGroup.is_joined
+          }
+        }
+        
+        // Return same reference if nothing changed (prevents re-render)
+        return prevGroup
+      })
+      
+      // Update members list separately
+      try {
+        const membersData = await getGroupMembers(id)
+        setMembers(prevMembers => {
+          // Only update if the count changed
+          if (prevMembers.length !== membersData.length) {
+            return membersData || []
+          }
+          return prevMembers
+        })
+      } catch (err) {
+        // Silently fail - member list update is not critical
+      }
+    } catch (err) {
+      // Silently fail - polling errors shouldn't break the UI
+      console.error("Polling error:", err)
+    }
+  }, [id])
+
+  // Periodic polling to keep data fresh (only metadata, not messages)
+  // Poll every 5 seconds to catch changes from other users (like member counts)
+  // Uses lightweight polling that doesn't affect joined state or trigger membership checks
+  useEffect(() => {
+    if (!id) return
+    
+    const pollInterval = setInterval(() => {
+      if (!document.hidden) {
+        pollGroupMetadata()
+      }
+    }, 5000) // 5 seconds - good balance between freshness and performance
+    
+    return () => clearInterval(pollInterval)
+  }, [id, pollGroupMetadata])
 
   // Mark messages as read when they're viewed
   useEffect(() => {
-    if (!group || !user || (!joined && !(user && group.created_by === user.id)) || messages.length === 0) return
+    const isOwner = user && group && group.created_by === user.id
+    if (!id || !user || joined === null || (!joined && !isOwner) || messages.length === 0) return
     
     // Mark all unread messages as read
     const unreadMessages = messages.filter(msg => 
@@ -114,51 +280,42 @@ export default function GroupDetail() {
     )
     
     if (unreadMessages.length > 0) {
-      // Mark messages as read (debounce to avoid too many requests)
+      // Mark messages as read via WebSocket if connected, otherwise HTTP
       const timeoutId = setTimeout(() => {
-        unreadMessages.forEach(msg => {
-          markGroupMessageRead(group.id, msg.id).catch(err => {
-            // Silently fail - read receipts are not critical
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          unreadMessages.forEach(msg => {
+            wsRef.current.send(JSON.stringify({
+              type: "mark_read",
+              message_id: msg.id
+            }))
           })
-        })
+        } else {
+          // Fallback to HTTP
+          unreadMessages.forEach(msg => {
+            markGroupMessageRead(group.id, msg.id).catch(err => {
+              // Silently fail - read receipts are not critical
+            })
+          })
+        }
       }, 500)
       
       return () => clearTimeout(timeoutId)
     }
-  }, [group, user, joined, messages])
+  }, [id, user, joined, group, messages])
 
+  // Sync joined state when group data changes (e.g., from cache updates)
   useEffect(() => {
-    async function checkMembership() {
-      if (isAuthenticated && group) {
-        try {
-          const membership = await checkGroupMembership(group.id)
-          setJoined(!!membership.is_member)
-          setIsLeader(!!membership.is_leader)
-          
-          // Load messages if user has joined or is owner
-          const isOwner = user && group.created_by === user.id
-          if (membership.is_member || isOwner) {
-            loadMessages(true) // Scroll on initial load
-            // Immediately update presence when viewing the page
-            try {
-              const presenceData = await getGroupPresence(group.id)
-              setPresence(presenceData.presence || [])
-            } catch (err) {
-              // Silently fail
-            }
-          }
-        } catch (err) {
-          setJoined(false)
-          setIsLeader(false)
-        }
+    if (group && group.is_joined !== undefined && joined !== null) {
+      if (group.is_joined !== joined) {
+        setJoined(group.is_joined)
       }
     }
-    checkMembership()
-  }, [isAuthenticated, group, user])
+  }, [group?.is_joined, joined])
 
   // WebSocket connection for real-time chat
   useEffect(() => {
-    if (!group || (!joined && !(user && group.created_by === user.id))) {
+    const isOwner = user && group && group.created_by === user.id
+    if (!id || joined === null || (!joined && !isOwner)) {
       // Disconnect if conditions not met
       if (wsRef.current) {
         wsRef.current.close()
@@ -194,7 +351,6 @@ export default function GroupDetail() {
       const ws = new WebSocket(wsUrl)
       
       ws.onopen = () => {
-        console.log("Group chat WebSocket connected")
         setWsConnected(true)
         reconnectAttemptsRef.current = 0 // Reset on successful connection
         
@@ -241,7 +397,7 @@ export default function GroupDetail() {
       }
       
       ws.onclose = (event) => {
-        console.log("Group chat WebSocket disconnected", event.code, event.reason)
+        // WebSocket disconnected
         setWsConnected(false)
         if (presencePingIntervalRef.current) {
           clearInterval(presencePingIntervalRef.current)
@@ -256,7 +412,7 @@ export default function GroupDetail() {
           
           reconnectTimeoutRef.current = setTimeout(() => {
             if (group && (joined || (user && group.created_by === user.id))) {
-              console.log(`Attempting to reconnect (attempt ${reconnectAttemptsRef.current})...`)
+              // Attempting to reconnect
               connectWebSocket()
             }
           }, delay)
@@ -297,7 +453,7 @@ export default function GroupDetail() {
         setMessages(message.messages || [])
         // Connection is confirmed when we receive initial messages
         setWsConnected(true)
-        console.log("Received initial messages, connection confirmed")
+        // Connection confirmed
         // Auto-scroll to bottom after initial load
         setTimeout(() => {
           if (messagesContainerRef.current) {
@@ -317,7 +473,7 @@ export default function GroupDetail() {
         
         // Prevent duplicate messages
         if (receivedMessageIdsRef.current.has(msgId)) {
-          console.log("Duplicate message detected, ignoring:", msgId)
+          // Duplicate message detected, ignoring
           break
         }
         receivedMessageIdsRef.current.add(msgId)
@@ -341,6 +497,18 @@ export default function GroupDetail() {
         }, 100)
         break
       
+      case "message_deleted":
+        // Update the message to mark it as deleted
+        const deletedMsgId = message.message_id
+        if (deletedMsgId) {
+          setMessages(prev => prev.map(m => 
+            m.id === deletedMsgId 
+              ? { ...m, is_deleted: true, content: "" }
+              : m
+          ))
+        }
+        break
+      
       case "typing":
         if (message.user_id !== user?.id) {
           setTypingUsers(prev => {
@@ -356,11 +524,6 @@ export default function GroupDetail() {
         }
         break
       
-      case "presence_update":
-        // Update presence based on online users
-        // This is a simplified version - you might want to fetch full user details
-        break
-      
       case "user_joined":
         // User joined - could update presence
         break
@@ -371,44 +534,74 @@ export default function GroupDetail() {
     }
   }
   
-  // Close emoji picker when clicking outside
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (showEmojiPicker && !e.target.closest('.emoji-picker-container')) {
-        setShowEmojiPicker(null)
-      }
-    }
-    
-    if (showEmojiPicker) {
-      document.addEventListener('mousedown', handleClickOutside)
-      return () => document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [showEmojiPicker])
-
   async function handleJoinLeave() {
-    if (!isAuthenticated) {
-      navigate("/login")
+    if (!isAuthenticated || joined === null) {
+      if (!isAuthenticated) {
+        navigate("/login")
+      }
       return
     }
     setIsLoading(true)
+    // Track what action we're performing
+    const wasJoined = joined
+    
     try {
-      if (joined) {
-        await leaveGroup(group.id)
-        setJoined(false)
-        setMessages([])
+      if (wasJoined) {
+        const result = await leaveGroup(group.id)
+        if (result && result.success) {
+          // Update state after successful leave
+          setJoined(false)
+          setMessages([])
+          // Use server-provided count for accuracy
+          const updatedGroup = { 
+            ...group, 
+            is_joined: false, 
+            member_count: result.member_count ?? group.member_count 
+          }
+          setGroup(updatedGroup)
+          
+          // Immediately remove current user from members list (optimistic update)
+          if (user) {
+            setMembers(prevMembers => prevMembers.filter(m => m.user_id !== user.id))
+          }
+          
+          // Invalidate all caches to ensure fresh data
+          const { invalidateCache } = await import("../utils/pageCache")
+          invalidateCache(`group:${group.id}`)
+          invalidateCache("groups")
+          
+          // Also fetch fresh members list in background to ensure accuracy
+          getGroupMembers(group.id).then(data => setMembers(data || [])).catch(() => {})
+        }
       } else {
-        await joinGroup(group.id)
-        setJoined(true)
-        loadMessages()
-        // Update presence immediately after joining
-        try {
-          const presenceData = await getGroupPresence(group.id)
-          setPresence(presenceData.presence || [])
-        } catch (err) {
-          // Silently fail
+        const result = await joinGroup(group.id)
+        if (result && result.success) {
+          // Update state immediately for smooth UI
+          setJoined(true)
+          // Use server-provided count for accuracy
+          const updatedGroup = { 
+            ...group, 
+            is_joined: true, 
+            member_count: result.member_count ?? group.member_count 
+          }
+          setGroup(updatedGroup)
+          
+          // Invalidate all caches to ensure fresh data
+          const { invalidateCache } = await import("../utils/pageCache")
+          invalidateCache(`group:${group.id}`)
+          invalidateCache("groups")
+          
+          // Load additional data in parallel (non-blocking)
+          Promise.all([
+            getGroupMembers(group.id).then(data => setMembers(data)).catch(() => {}),
+            getGroupMessages(group.id).then(data => setMessages(data || [])).catch(() => {}),
+            getGroupPresence(group.id).then(data => setPresence(data.presence || [])).catch(() => {})
+          ])
         }
       }
     } catch (error) {
+      // Revert optimistic update on error
+      setJoined(wasJoined)
       console.error('Join/Leave failed:', error)
       alert(error?.response?.data?.detail || "Failed to join/leave group")
     } finally {
@@ -428,8 +621,12 @@ export default function GroupDetail() {
     }
     
     // Check if user is a member or owner
-    if (!joined && !isOwner) {
-      alert("You must join the group to send messages")
+    if (!group || (!joined && !isOwner)) {
+      if (!group) {
+        alert("Please wait while we load the group...")
+      } else {
+        alert("You must join the group to send messages")
+      }
       return
     }
     
@@ -500,7 +697,8 @@ export default function GroupDetail() {
   }
 
   function handleTyping() {
-    if (!group || !isAuthenticated || (!joined && !(user && group.created_by === user.id))) return
+    const isOwner = user && group && group.created_by === user.id
+    if (!group || !isAuthenticated || (!joined && !isOwner)) return
     
     // Send typing status via WebSocket if connected
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -567,15 +765,15 @@ export default function GroupDetail() {
     })
   }
 
-  const [members, setMembers] = useState([])
   const [deletingMessageId, setDeletingMessageId] = useState(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [messageToDelete, setMessageToDelete] = useState(null)
   const isOwner = user && group && group.created_by === user.id
 
+  // Load members when group ID changes (not on every group update)
   useEffect(() => {
     async function loadMembers() {
-      if (!group) return
+      if (!group?.id) return
       try {
         const data = await getGroupMembers(group.id)
         setMembers(data || [])
@@ -584,10 +782,10 @@ export default function GroupDetail() {
         setMembers([])
       }
     }
-    if (group) {
+    if (group?.id) {
       loadMembers()
     }
-  }, [group])
+  }, [group?.id])
 
   async function handleDeleteMessage(messageId) {
     if (!group || !messageId || deletingMessageId) return
@@ -629,21 +827,13 @@ export default function GroupDetail() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen tap-safe premium-scrollbar bg-gradient-to-br from-gray-50 via-slate-50 to-blue-50/30 route-transition">
-        <div className="nav-spacer" />
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center">
-            <div className="mx-auto mb-4 rounded-full h-12 w-12 border-2 border-pink-200 border-t-pink-500 animate-spin" />
-            <p className="text-gray-600 text-lg">Loading group...</p>
-          </div>
-        </div>
-      </div>
-    )
+  // Don't render until data is ready (GitHub-style)
+  // Only show skeleton if loading AND no group data yet (prevents blink when group updates)
+  if (loading && !group) {
+    return <DetailPageSkeleton />
   }
 
-  if (error || !group) {
+  if (error) {
     return (
       <div className="min-h-screen tap-safe premium-scrollbar bg-gradient-to-br from-gray-50 via-slate-50 to-blue-50/30 route-transition">
         <div className="nav-spacer" />
@@ -704,7 +894,7 @@ export default function GroupDetail() {
                     Creator
                   </span>
                 )}
-                {joined && !isOwner && (
+                {joined === true && !isOwner && (
                   <span className="px-3 py-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-full text-xs font-semibold">
                     <FontAwesomeIcon icon={faCheckCircle} className="mr-1.5" />
                     Member
@@ -767,7 +957,13 @@ export default function GroupDetail() {
             {/* Right: Join/Leave Button */}
             {!isOwner && (
               <div className="flex-shrink-0">
-                {!joined && !isFull && (
+                {loading && !isFull && (
+                  <div className="flex items-center gap-2 px-8 py-4 bg-gray-100 text-gray-400 rounded-xl font-bold w-full lg:w-auto">
+                    <div className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+                    <span>Loading...</span>
+                  </div>
+                )}
+                {joined === false && !isFull && (
                   <button
                     onClick={handleJoinLeave}
                     disabled={isLoading}
@@ -777,7 +973,7 @@ export default function GroupDetail() {
                     {isLoading ? "Joining..." : "Join Group"}
                   </button>
                 )}
-                {joined && (
+                {joined === true && (
                   <button
                     onClick={handleJoinLeave}
                     disabled={isLoading}
@@ -826,6 +1022,7 @@ export default function GroupDetail() {
                       <Link
                         key={member.id}
                         to={`/profile/${member.user_id}`}
+                        onMouseEnter={() => prefetch(`profile:${member.user_id}`, () => getUserProfile(member.user_id))}
                         className="group flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-white border-2 border-gray-200 hover:border-orange-300 hover:shadow-lg transition-all duration-300"
                       >
                         <div className="flex-shrink-0 w-8 text-center">
@@ -950,8 +1147,25 @@ export default function GroupDetail() {
                         return (
                           <div
                             key={msg.id}
-                            className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} ${!isConsecutive ? 'mt-3' : 'mt-1'}`}
+                            className={`relative flex ${isOwnMessage ? 'justify-end' : 'justify-start'} ${!isConsecutive ? 'mt-3' : 'mt-1'}`}
                           >
+                            {isOwnMessage && !msg.is_deleted && (
+                              <div className="absolute left-0 top-0">
+                                <button
+                                  onClick={() => handleDeleteClick(msg.id)}
+                                  disabled={deletingMessageId === msg.id}
+                                  className="touch-target p-1.5 hover:bg-gray-100 rounded-lg disabled:opacity-50"
+                                  title="Delete message"
+                                >
+                                  {deletingMessageId === msg.id ? (
+                                    <div className="w-3.5 h-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <FontAwesomeIcon icon={faTrash} className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" />
+                                  )}
+                                </button>
+                              </div>
+                            )}
+                            
                             {!isOwnMessage && (
                               <div className={`flex-shrink-0 ${isConsecutive ? 'opacity-0' : 'opacity-100'} transition-opacity mr-2`}>
                                 {!isConsecutive ? (
@@ -998,148 +1212,12 @@ export default function GroupDetail() {
                                     <span>This message has been deleted</span>
                                   </p>
                                 ) : (
-                                  <>
-                                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words flex-1">
-                                      {msg.content}
-                                    </p>
-                                    {isOwnMessage && !msg.is_deleted && (
-                                      <button
-                                        onClick={() => handleDeleteClick(msg.id)}
-                                        disabled={deletingMessageId === msg.id}
-                                        className="touch-target opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity ml-2 p-2 hover:bg-white/20 rounded-lg disabled:opacity-50"
-                                        title="Delete message"
-                                      >
-                                        {deletingMessageId === msg.id ? (
-                                          <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                        ) : (
-                                          <FontAwesomeIcon icon={faTrash} className="w-3 h-3 text-white/80 hover:text-white" />
-                                        )}
-                                      </button>
-                                    )}
-                                  </>
+                                  <p className="text-sm leading-relaxed whitespace-pre-wrap break-words flex-1">
+                                    {msg.content}
+                                  </p>
                                 )}
                               </div>
                               
-                              {/* Reactions */}
-                              {!msg.is_deleted && msg.reactions && msg.reactions.length > 0 && (
-                                  <div className="flex flex-wrap gap-1.5 mt-1.5 px-1">
-                                    {msg.reactions.map((reaction, rIdx) => (
-                                      <button
-                                        key={rIdx}
-                                        onClick={async () => {
-                                          if (isAuthenticated && user && group) {
-                                            try {
-                                              await addGroupMessageReaction(group.id, msg.id, reaction.emoji)
-                                              // Reload messages to get updated reactions
-                                              const messagesData = await getGroupMessages(group.id)
-                                              setMessages(messagesData || [])
-                                            } catch (err) {
-                                              console.error("Failed to toggle reaction:", err)
-                                            }
-                                          }
-                                        }}
-                                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-all ${
-                                          reaction.has_reacted
-                                            ? 'bg-indigo-100 text-indigo-700 border border-indigo-300'
-                                            : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
-                                        }`}
-                                        title={`${reaction.count} ${reaction.count === 1 ? 'person' : 'people'}`}
-                                      >
-                                        <span>{reaction.emoji}</span>
-                                        <span className="font-medium">{reaction.count}</span>
-                                      </button>
-                                    ))}
-                                    <div className="relative">
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          setShowEmojiPicker(showEmojiPicker === msg.id ? null : msg.id)
-                                        }}
-                                        className="touch-target flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-400 hover:text-gray-600 transition-all opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
-                                        title="Add reaction"
-                                      >
-                                        <span className="text-xs">+</span>
-                                      </button>
-                                      
-                                      {/* Emoji Picker */}
-                                      {showEmojiPicker === msg.id && (
-                                        <div className="emoji-picker-container absolute bottom-full left-0 mb-2 bg-white rounded-xl shadow-2xl border border-gray-200 p-2 z-50">
-                                          <div className="grid grid-cols-5 gap-1">
-                                            {reactionEmojis.map((emoji) => (
-                                              <button
-                                                key={emoji}
-                                                onClick={async (e) => {
-                                                  e.stopPropagation()
-                                                  if (isAuthenticated && user && group) {
-                                                    try {
-                                                      await addGroupMessageReaction(group.id, msg.id, emoji)
-                                                      const messagesData = await getGroupMessages(group.id)
-                                                      setMessages(messagesData || [])
-                                                      setShowEmojiPicker(null)
-                                                    } catch (err) {
-                                                      console.error("Failed to add reaction:", err)
-                                                    }
-                                                  }
-                                                }}
-                                                className="w-8 h-8 flex items-center justify-center text-lg hover:bg-gray-100 rounded-lg transition-colors"
-                                                title={emoji}
-                                              >
-                                                {emoji}
-                                              </button>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                                
-                              {/* Add reaction button for messages without reactions */}
-                              {!msg.is_deleted && (!msg.reactions || msg.reactions.length === 0) && (
-                                  <div className="relative">
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        setShowEmojiPicker(showEmojiPicker === msg.id ? null : msg.id)
-                                      }}
-                                      className="touch-target opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity mt-1.5 px-3 py-2 text-xs text-gray-400 hover:text-gray-600 rounded-lg bg-gray-50 hover:bg-gray-100"
-                                      title="Add reaction"
-                                    >
-                                      Add reaction
-                                    </button>
-                                    
-                                    {/* Emoji Picker */}
-                                    {showEmojiPicker === msg.id && (
-                                      <div className="emoji-picker-container absolute bottom-full left-0 mb-2 bg-white rounded-xl shadow-2xl border border-gray-200 p-2 z-50">
-                                        <div className="grid grid-cols-5 gap-1">
-                                          {reactionEmojis.map((emoji) => (
-                                            <button
-                                              key={emoji}
-                                              onClick={async (e) => {
-                                                e.stopPropagation()
-                                                if (isAuthenticated && user && group) {
-                                                  try {
-                                                    await addGroupMessageReaction(group.id, msg.id, emoji)
-                                                    const messagesData = await getGroupMessages(group.id)
-                                                    setMessages(messagesData || [])
-                                                    setShowEmojiPicker(null)
-                                                  } catch (err) {
-                                                    console.error("Failed to add reaction:", err)
-                                                  }
-                                                }
-                                              }}
-                                              className="w-8 h-8 flex items-center justify-center text-lg hover:bg-gray-100 rounded-lg transition-colors"
-                                              title={emoji}
-                                            >
-                                              {emoji}
-                                            </button>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                                
                               {isOwnMessage && (
                                 <div className="flex items-center gap-1.5 mt-1 px-1">
                                   <p className="text-[10px] text-gray-400">
@@ -1340,7 +1418,7 @@ export default function GroupDetail() {
             </div>
             
             <p className="text-gray-700 mb-6">
-              Are you sure you want to delete this message? It will be replaced with a "This message has been deleted" indicator.
+              Are you sure you want to delete this message?
             </p>
             
             <div className="flex gap-3">

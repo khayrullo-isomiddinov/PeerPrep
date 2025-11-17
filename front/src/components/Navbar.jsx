@@ -1,6 +1,8 @@
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useEffect, useState, useRef } from "react"
 import { useAuth } from "../features/auth/AuthContext"
+import { usePrefetch } from "../utils/usePrefetch"
+import { listGroups, listEvents, getUserProfile } from "../utils/api"
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -10,6 +12,7 @@ export default function Navbar() {
   const loc = useLocation()
   const navigate = useNavigate()
   const createMenuRef = useRef(null)
+  const { prefetch } = usePrefetch()
 
   useEffect(() => {
     setMenuOpen(false)
@@ -68,8 +71,20 @@ export default function Navbar() {
               </Link>
               {!isAuthenticated && (
                 <div className="nav-pages">
-                  <NavLink to="/groups" className={({isActive}) => `nav-link-clean ${isActive ? 'is-active' : ''}`}>Groups</NavLink>
-                  <NavLink to="/events" className={({isActive}) => `nav-link-clean ${isActive ? 'is-active' : ''}`}>Events</NavLink>
+                  <NavLink 
+                    to="/groups" 
+                    className={({isActive}) => `nav-link-clean ${isActive ? 'is-active' : ''}`}
+                    onMouseEnter={() => prefetch("groups", () => listGroups({}))}
+                  >
+                    Groups
+                  </NavLink>
+                  <NavLink 
+                    to="/events" 
+                    className={({isActive}) => `nav-link-clean ${isActive ? 'is-active' : ''}`}
+                    onMouseEnter={() => prefetch("events", () => listEvents({}))}
+                  >
+                    Events
+                  </NavLink>
                 </div>
               )}
             </div>
@@ -77,9 +92,34 @@ export default function Navbar() {
             <div style={{ gridColumn: '2', justifySelf: 'center' }} className="hidden lg:block">
               {isAuthenticated && (
                 <ul className="nav-tabs">
-                  <li><NavLink to="/" end className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}>Explore</NavLink></li>
-                  <li><NavLink to="/groups" className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}>Groups</NavLink></li>
-                  <li><NavLink to="/events" className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}>Upcoming Events</NavLink></li>
+                  <li>
+                    <NavLink 
+                      to="/" 
+                      end 
+                      className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}
+                      onMouseEnter={() => prefetch("home:events", () => listEvents({ limit: 100 }))}
+                    >
+                      Explore
+                    </NavLink>
+                  </li>
+                  <li>
+                    <NavLink 
+                      to="/groups" 
+                      className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}
+                      onMouseEnter={() => prefetch("groups", () => listGroups({}))}
+                    >
+                      Groups
+                    </NavLink>
+                  </li>
+                  <li>
+                    <NavLink 
+                      to="/events" 
+                      className={({isActive}) => `tab-link ${isActive ? 'is-active' : ''}`}
+                      onMouseEnter={() => prefetch("events", () => listEvents({}))}
+                    >
+                      Upcoming Events
+                    </NavLink>
+                  </li>
                 </ul>
               )}
             </div>
@@ -201,7 +241,12 @@ export default function Navbar() {
 
                   {menuOpen && (
                     <div className="profile-dropdown">
-                      <Link to="/profile" className="profile-dropdown-item" onClick={() => setMenuOpen(false)}>
+                      <Link 
+                        to="/profile" 
+                        className="profile-dropdown-item" 
+                        onClick={() => setMenuOpen(false)}
+                        onMouseEnter={() => user && prefetch(`profile:${user.id}`, () => getUserProfile(user.id))}
+                      >
                         <svg width="16" height="16" viewBox="0 0 24 24" className="mr-2">
                           <path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
                         </svg>
@@ -273,6 +318,7 @@ export default function Navbar() {
                   to="/profile"
                   className="block px-4 py-4 rounded-lg font-medium transition-colors touch-target text-gray-700 active:bg-gray-100"
                   onClick={() => setMobileMenuOpen(false)}
+                  onMouseEnter={() => user && prefetch(`profile:${user.id}`, () => getUserProfile(user.id))}
                   style={{ minHeight: '48px', display: 'flex', alignItems: 'center', gap: '0.75rem' }}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" className="text-gray-500">

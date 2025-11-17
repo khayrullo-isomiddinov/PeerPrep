@@ -35,7 +35,6 @@ export default function MissionSubmissionsList({ groupId, isLeader = false }) {
       ])
       setSubmissions(all || [])
       setMySubmissions(my || [])
-      console.log("Loaded submissions:", { all: all?.length || 0, my: my?.length || 0 })
     } catch (err) {
       console.error("Failed to load submissions:", err)
       setError("Failed to load submissions. Please refresh the page.")

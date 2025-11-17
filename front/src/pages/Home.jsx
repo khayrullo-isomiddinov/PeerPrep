@@ -142,9 +142,32 @@ export default function Home() {
   useEffect(() => {
     async function loadEvents() {
       try {
+        // Check cache first
+        const { getCachedPage, setCachedPage } = await import("../utils/pageCache")
+        const cached = getCachedPage("home:events")
+        
+        if (cached && cached.data) {
+          setAllEvents(cached.data)
+          setLoadingEvents(false)
+          // Refresh in background if expired
+          if (cached.isExpired) {
+            setTimeout(async () => {
+              try {
+                const events = await listEvents({ limit: 100 })
+                setAllEvents(events || [])
+                setCachedPage("home:events", events || [])
+              } catch (error) {
+                console.error("Background refresh failed:", error)
+              }
+            }, 100)
+          }
+          return
+        }
+        
         setLoadingEvents(true)
         const events = await listEvents({ limit: 100 })
         setAllEvents(events || [])
+        setCachedPage("home:events", events || [])
       } catch (error) {
         console.error("Failed to load events:", error)
         setAllEvents([])
@@ -243,16 +266,16 @@ export default function Home() {
 
   return (
     <div className="min-h-screen tap-safe premium-scrollbar flex flex-col home-light route-transition">
-      <section className="home-hero premium-fade-in">
+      <section className="home-hero">
         <div className="home-hero-bg" />
-        <div className="home-hero-inner reveal-up">
+        <div className="home-hero-inner">
           <h1 className="home-hero-title">
             <span>Your Wonderful</span>
             <span className="accent">study circle</span>
           </h1> 
         </div>
-        <div className="search-wrap reveal-up" style={{animationDelay:'.06s'}}>
-          <div className="home-search premium-scale-in">
+        <div className="search-wrap">
+          <div className="home-search">
             <div className="field" style={{position:'relative'}}>
               <svg width="16" height="16" viewBox="0 0 24 24" className="flex-shrink-0"><path fill="#ec4899" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z" stroke="#ec4899" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
               <input
@@ -315,7 +338,7 @@ export default function Home() {
       </section>
 
       <section className="home-section">
-        <div className="home-section-inner reveal-up" style={{animationDelay:'.12s'}}>
+        <div className="home-section-inner">
           <div className="home-section-head">
             <h2 className="home-title">New events in <span className="accent">{detectingCity ? "your city" : userCity}</span></h2>
             <Link to={`/events?location=${encodeURIComponent(userCity)}`} className="btn-ghost-pink pill">View more</Link>
@@ -337,7 +360,7 @@ export default function Home() {
           ) : localEvents.length > 0 ? (
             <div className="home-card-grid">
               {localEvents.map((event) => (
-                <Link key={event.id} to={`/events`} className="event-card premium-hover">
+                <Link key={event.id} to={`/events/${event.id}`} className="event-card premium-hover">
                   <img 
                     src={getEventImage(event)} 
                     alt={event.title}
@@ -367,7 +390,7 @@ export default function Home() {
       </section>
 
       <section className="home-section">
-        <div className="home-section-inner reveal-up">
+        <div className="home-section-inner">
           <div className="home-section-head">
             <h2 className="home-title">Upcoming <span className="accent">in 24h</span></h2>
             <Link to="/events" className="btn-ghost-pink pill">View more</Link>
@@ -388,7 +411,7 @@ export default function Home() {
           ) : upcoming24h.length > 0 ? (
             <div className="upcoming-grid">
               {upcoming24h.map((event) => (
-                <Link key={event.id} to={`/events`} className="upcoming-card premium-hover">
+                <Link key={event.id} to={`/events/${event.id}`} className="upcoming-card premium-hover">
                   <img 
                     src={getEventImage(event)} 
                     alt={event.title}
@@ -415,7 +438,7 @@ export default function Home() {
       </section>
 
       <section className="home-section">
-        <div className="home-section-inner reveal-up">
+        <div className="home-section-inner">
           <div className="home-section-head">
             <h2 className="home-title">More events</h2>
             <Link to="/events" className="btn-ghost-pink pill">View more</Link>
@@ -436,7 +459,7 @@ export default function Home() {
           ) : moreEvents.length > 0 ? (
             <div className="home-card-grid">
               {moreEvents.map((event) => (
-                <Link key={event.id} to={`/events`} className="event-card premium-hover">
+                <Link key={event.id} to={`/events/${event.id}`} className="event-card premium-hover">
                   <img 
                     src={getEventImage(event)} 
                     alt={event.title}

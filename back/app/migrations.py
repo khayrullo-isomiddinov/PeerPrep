@@ -176,22 +176,47 @@ def migrate_add_message_reads():
     except Exception as e:
         print(f"Migration note (message_reads): {e}")
 
-def migrate_add_message_reactions():
-    """Add messagereaction table if it doesn't exist"""
+def migrate_add_exam_to_events():
+    """Add exam column to event table if it doesn't exist"""
     try:
         with engine.connect() as conn:
-            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='messagereaction'"))
-            if not result.fetchone():
-                print("Creating messagereaction table...")
-                # Table will be created by SQLModel if it doesn't exist
-                from app.models import MessageReaction
-                from sqlmodel import SQLModel
-                SQLModel.metadata.create_all(engine)
-                print("✓ Message reaction table created")
+            result = conn.execute(text("PRAGMA table_info(event)"))
+            columns = [row[1] for row in result.fetchall()]
+            
+            if 'exam' not in columns:
+                print("Adding exam column to event table...")
+                conn.execute(text("ALTER TABLE event ADD COLUMN exam TEXT"))
+                conn.commit()
+                print("✓ Added exam column to event table")
             else:
-                print("✓ Message reaction table already exists")
+                print("✓ exam column already exists in event table")
     except Exception as e:
-        print(f"Migration note (message_reactions): {e}")
+        print(f"Migration note (exam): {e}")
+
+def migrate_remove_is_active_from_users():
+    """Remove is_active column from user table if it exists (SQLite doesn't support DROP COLUMN easily, so we set default)"""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='user'"))
+            if not result.fetchone():
+                print("User table doesn't exist yet, will be created by init_db")
+                return
+            
+            result = conn.execute(text("PRAGMA table_info(user)"))
+            columns = [row[1] for row in result.fetchall()]
+            
+            if 'is_active' in columns:
+                print("Setting default value for is_active column in existing rows...")
+                # Update existing rows to have is_active=1 (True)
+                conn.execute(text("UPDATE user SET is_active = 1 WHERE is_active IS NULL"))
+                conn.commit()
+                print("✓ Updated existing users with is_active default")
+                # Note: SQLite doesn't easily support DROP COLUMN, so we'll handle it in the model
+                # by ensuring new users don't need this field
+            else:
+                print("✓ is_active column doesn't exist in user table (already removed)")
+    except Exception as e:
+        print(f"Migration note (is_active): {e}")
 
 def run_migrations():
     """Run all pending migrations"""
@@ -203,5 +228,6 @@ def run_migrations():
     migrate_add_is_deleted_to_event_messages()
     migrate_add_is_deleted_to_group_messages()
     migrate_add_message_reads()
-    migrate_add_message_reactions()
+    migrate_add_exam_to_events()
+    migrate_remove_is_active_from_users()
 

@@ -31,7 +31,8 @@ export default function CreateEventForm({ onCreated }) {
     kind: "one_off",
     coverImage: null,
     albumImages: [],
-    studyMaterials: []
+    studyMaterials: [],
+    exam: ""
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -183,7 +184,6 @@ export default function CreateEventForm({ onCreated }) {
             reader.readAsDataURL(formData.coverImage)
           })
         } catch (e) {
-          console.warn("Failed to read cover image, continuing without it:", e)
         }
       }
 
@@ -201,11 +201,10 @@ export default function CreateEventForm({ onCreated }) {
         group_id: null,
         kind: "one_off",
         cover_image_url: coverImageUrl,
-        study_materials: studyMaterialsJson
+        study_materials: studyMaterialsJson,
+        exam: formData.exam.trim() || null
       }
-      console.log('Creating event with payload:', payload)
       const evt = await createEvent(payload)
-      console.log('Event created successfully:', evt)
       onCreated?.(evt)
       navigate("/events", {
         state: { newEvent: evt }
@@ -761,6 +760,24 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, categories, on
             {fieldErrors.category && (
               <p className="mt-1 text-sm text-red-600">{fieldErrors.category}</p>
             )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Upcoming exam (optional)
+            </label>
+            <input
+              type="text"
+              value={formData.exam}
+              onChange={(e) => updateFormData({ exam: e.target.value })}
+              placeholder="e.g., Final Exam, Midterm, Bar Exam"
+              maxLength={100}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
+            />
+            <div className="flex items-center justify-between text-sm text-gray-500 mt-1">
+              <span>Optional: What exam is this event preparing for?</span>
+              <span>{formData.exam.length}/100</span>
+            </div>
           </div>
 
           <StudyMaterialsSection 

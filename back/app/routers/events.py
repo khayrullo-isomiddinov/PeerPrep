@@ -1,16 +1,16 @@
 from typing import List, Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, Query, Header, WebSocket, WebSocketDisconnect
-from sqlmodel import Session, select, func, or_
+from sqlmodel import Session, select, func
 from app.db import get_session
-from app.models import Event, User, EventAttendee, Group, GroupMember, EventMessage, MessageRead, MessageReaction
+from app.models import Event, User, EventAttendee, Group, GroupMember, EventMessage, MessageRead
 from app.schemas.events import EventCreate, EventRead, EventUpdate
-from app.routers.auth import _get_user_from_token
+from app.routers.auth import _get_user_from_token, _get_optional_user_from_token
 from app.routers.badges import award_xp_for_event
-from app.services.ai import generate_event_suggestions, refine_text, generate_image
+from app.services.ai import refine_text, generate_image
 from app.services.message_sync import MessageSynchronizer, MessageVersion, get_synchronizer
 from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -26,6 +26,14 @@ PRESENCE_TIMEOUT_SECONDS = 300  # 5 minutes
 # WebSocket connections for event chat (event_id -> {user_id: WebSocket})
 event_connections: Dict[int, Dict[int, WebSocket]] = {}
 
+# Store reference to the main event loop for broadcasting from sync endpoints
+_main_event_loop = None
+
+def set_main_event_loop(loop):
+    """Set the main event loop reference"""
+    global _main_event_loop
+    _main_event_loop = loop
+
 @router.post("", response_model=EventRead, status_code=201)
 def create_event(data: EventCreate, session: Session = Depends(get_session), current_user: User = Depends(_get_user_from_token)):
     if data.capacity is not None and data.capacity < 1:
@@ -40,15 +48,17 @@ def create_event(data: EventCreate, session: Session = Depends(get_session), cur
     return evt
 
 
-@router.get("", response_model=List[EventRead])
+@router.get("")
 def list_events(
     session: Session = Depends(get_session),
     kind: Optional[str] = None,
     group_id: Optional[int] = None,
     q: Optional[str] = None,
     location: Optional[str] = None,
+    exam: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
+    current_user: Optional[User] = Depends(_get_optional_user_from_token),
 ):
     query = select(Event)
     if kind:
@@ -61,42 +71,171 @@ def list_events(
     if location:
         like_loc = f"%{location}%"
         query = query.where(Event.location.ilike(like_loc))
+    if exam:
+        like_exam = f"%{exam}%"
+        query = query.where(Event.exam.ilike(like_exam))
     query = query.order_by(Event.created_at.desc()).limit(limit).offset(offset)
-    return session.exec(query).all()
+    events = session.exec(query).all()
+    
+    # If user is authenticated, enrich events with join status and attendee counts
+    if current_user:
+        event_ids = [e.id for e in events]
+        if event_ids:
+            # Get all attendee counts in one query using a more efficient approach
+            # Get all attendees for these events, then count in Python (faster than multiple queries)
+            all_attendees = session.exec(
+                select(EventAttendee.event_id)
+                .where(EventAttendee.event_id.in_(event_ids))
+            ).all()
+            # Count attendees per event
+            count_map = dict(Counter(all_attendees))
+            
+            # Get all creator IDs for these events to check if they're in EventAttendee
+            creator_ids = {e.id: e.created_by for e in events}
+            # Check which creators are already in EventAttendee (batch query)
+            creators_in_attendees = session.exec(
+                select(EventAttendee.event_id, EventAttendee.user_id).where(
+                    EventAttendee.event_id.in_(event_ids),
+                    EventAttendee.user_id.in_(set(creator_ids.values()))
+                )
+            ).all()
+            # Create a set of (event_id, user_id) tuples for fast lookup
+            creator_attendee_set = {(ea.event_id, ea.user_id) for ea in creators_in_attendees}
+            
+            # Always include the creator in the count (even if not in EventAttendee for old/seeded events)
+            for event in events:
+                if event.id not in count_map:
+                    count_map[event.id] = 0
+                # Creator is always counted as an attendee (for backwards compatibility with old events)
+                # Check if creator is already in EventAttendee to avoid double-counting
+                if event.created_by and (event.id, event.created_by) not in creator_attendee_set:
+                    # Creator not in EventAttendee (old/seeded event), add them to count
+                    count_map[event.id] += 1
+                # Ensure minimum count of 1 if event has a creator
+                if event.created_by and count_map[event.id] == 0:
+                    count_map[event.id] = 1
+            
+            # Get user's joined events in one query
+            user_joined_events = session.exec(
+                select(EventAttendee.event_id).where(
+                    EventAttendee.event_id.in_(event_ids),
+                    EventAttendee.user_id == current_user.id
+                )
+            ).all()
+            joined_set = set(user_joined_events)
+            
+            # Enrich events with additional data
+            result = []
+            for event in events:
+                event_dict = event.model_dump()
+                event_dict["attendee_count"] = count_map.get(event.id, 0)
+                event_dict["is_joined"] = (
+                    event.created_by == current_user.id or 
+                    event.id in joined_set
+                )
+                result.append(event_dict)
+            return result
+    
+    # If not authenticated, still calculate attendee counts (but not join status)
+    event_ids = [e.id for e in events]
+    if event_ids:
+        # Get all attendee counts
+        all_attendees = session.exec(
+            select(EventAttendee.event_id)
+            .where(EventAttendee.event_id.in_(event_ids))
+        ).all()
+        count_map = dict(Counter(all_attendees))
+        
+        # Get creator IDs and check if they're in EventAttendee
+        creator_ids = {e.id: e.created_by for e in events}
+        creators_in_attendees = session.exec(
+            select(EventAttendee.event_id, EventAttendee.user_id).where(
+                EventAttendee.event_id.in_(event_ids),
+                EventAttendee.user_id.in_(set(creator_ids.values()))
+            )
+        ).all()
+        creator_attendee_set = {(ea.event_id, ea.user_id) for ea in creators_in_attendees}
+        
+        # Always include the creator in the count
+        for event in events:
+            if event.id not in count_map:
+                count_map[event.id] = 0
+            if event.created_by and (event.id, event.created_by) not in creator_attendee_set:
+                count_map[event.id] += 1
+            # Ensure minimum count of 1 if event has a creator
+            if event.created_by and count_map[event.id] == 0:
+                count_map[event.id] = 1
+        
+        # Return events with attendee_count
+        result = []
+        for event in events:
+            event_dict = event.model_dump()
+            event_dict["attendee_count"] = count_map.get(event.id, 0)
+            result.append(event_dict)
+        return result
+    
+    # If no events, return empty list
+    return [e.model_dump() for e in events]
+
+@router.get("/my-events/count")
+def get_my_events_count(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(_get_user_from_token)
+):
+    """Get count of events that the current user is attending or created (lightweight)"""
+    from sqlmodel import or_
+    
+    # Get event IDs user is attending
+    attended_event_ids = session.exec(
+        select(EventAttendee.event_id).where(EventAttendee.user_id == current_user.id)
+    ).all()
+    
+    # Build query - handle empty list case
+    if not attended_event_ids:
+        # Only created events
+        query = select(func.count(Event.id)).where(Event.created_by == current_user.id)
+    else:
+        # Events user is attending OR created
+        query = select(func.count(Event.id)).where(
+            or_(
+                Event.id.in_(attended_event_ids),
+                Event.created_by == current_user.id
+            )
+        )
+    
+    count = session.exec(query).one() or 0
+    return {"count": count}
 
 @router.get("/my-events", response_model=List[EventRead])
 def get_my_events(
     session: Session = Depends(get_session),
-    current_user: User = Depends(_get_user_from_token)
+    current_user: User = Depends(_get_user_from_token),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0)
 ):
-    """Get all events that the current user is attending or created"""
-    # Get user's attendances
-    user_attendances = session.exec(
-        select(EventAttendee).where(EventAttendee.user_id == current_user.id)
-    ).all()
+    """Get events that the current user is attending or created (paginated)"""
+    from sqlmodel import or_
     
     # Get event IDs user is attending
-    attended_event_ids = {a.event_id for a in user_attendances}
-    
-    # Get events user created
-    created_events = session.exec(
-        select(Event).where(Event.created_by == current_user.id)
-    ).all()
-    created_event_ids = {e.id for e in created_events}
-    
-    # Combine both sets
-    all_event_ids = attended_event_ids | created_event_ids
-    
-    if not all_event_ids:
-        return []
-    
-    # Get all events (attending or created), ordered by start date (upcoming first)
-    events = session.exec(
-        select(Event)
-        .where(Event.id.in_(all_event_ids))
-        .order_by(Event.starts_at.asc())
+    attended_event_ids = session.exec(
+        select(EventAttendee.event_id).where(EventAttendee.user_id == current_user.id)
     ).all()
     
+    # Build query - handle empty list case
+    if not attended_event_ids:
+        # Only created events
+        query = select(Event).where(Event.created_by == current_user.id)
+    else:
+        # Events user is attending OR created
+        query = select(Event).where(
+            or_(
+                Event.id.in_(attended_event_ids),
+                Event.created_by == current_user.id
+            )
+        )
+    
+    query = query.order_by(Event.starts_at.asc()).limit(limit).offset(offset)
+    events = session.exec(query).all()
     return list(events)
 
 @router.get("/autocomplete")
@@ -159,37 +298,88 @@ def delete_event(event_id: int, session: Session = Depends(get_session), current
     session.commit()
     return None
 
-@router.post("/{event_id}/join", status_code=204)
+@router.post("/{event_id}/join")
 def join_event(event_id: int, session: Session = Depends(get_session), current_user: User = Depends(_get_user_from_token)):
     evt = session.get(Event, event_id)
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
     exists = session.exec(select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == current_user.id)).first()
     if exists:
-        raise HTTPException(status_code=409, detail="Already joined")
+        # Already joined - return current count (including creator)
+        count = session.exec(select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)).one()
+        # Check if creator is in EventAttendee, if not add 1
+        creator_in_attendees = session.exec(
+            select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
+        ).first()
+        if not creator_in_attendees:
+            count += 1
+        return {"success": True, "alreadyJoined": True, "attendee_count": count}
     count = session.exec(select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)).one()
+    # Check if creator is in EventAttendee, if not add 1
+    creator_in_attendees = session.exec(
+        select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
+    ).first()
+    if not creator_in_attendees:
+        count += 1
     if count >= evt.capacity:
         raise HTTPException(status_code=409, detail="Event is full")
     rec = EventAttendee(event_id=event_id, user_id=current_user.id)
     session.add(rec)
     session.commit()
     
+    # Get updated count after join (including creator)
+    count = session.exec(select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)).one()
+    # Check if creator is in EventAttendee, if not add 1
+    creator_in_attendees = session.exec(
+        select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
+    ).first()
+    if not creator_in_attendees:
+        count += 1
+    
     # Update user presence when joining
     user_presence[current_user.id] = datetime.now(timezone.utc)
     
-    if evt.starts_at < datetime.now(timezone.utc):
+    # Compare datetimes - ensure both are timezone-aware
+    now_utc = datetime.now(timezone.utc)
+    event_starts_at = evt.starts_at
+    # If event datetime is naive, make it aware (assume UTC)
+    if event_starts_at.tzinfo is None:
+        event_starts_at = event_starts_at.replace(tzinfo=timezone.utc)
+    
+    if event_starts_at < now_utc:
         award_xp_for_event(current_user.id, event_id, session)
     
-    return None
+    return {"success": True, "attendee_count": count}
 
-@router.delete("/{event_id}/join", status_code=204)
+@router.delete("/{event_id}/join")
 def leave_event(event_id: int, session: Session = Depends(get_session), current_user: User = Depends(_get_user_from_token)):
+    evt = session.get(Event, event_id)
+    if not evt:
+        raise HTTPException(status_code=404, detail="Event not found")
     rec = session.exec(select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == current_user.id)).first()
     if not rec:
-        raise HTTPException(status_code=404, detail="Not joined")
+        # Not joined - return current count (including creator)
+        count = session.exec(select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)).one()
+        # Check if creator is in EventAttendee, if not add 1
+        creator_in_attendees = session.exec(
+            select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
+        ).first()
+        if not creator_in_attendees:
+            count += 1
+        return {"success": True, "notJoined": True, "attendee_count": count}
     session.delete(rec)
     session.commit()
-    return None
+    
+    # Get updated count after leave (including creator)
+    count = session.exec(select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)).one()
+    # Check if creator is in EventAttendee, if not add 1
+    creator_in_attendees = session.exec(
+        select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
+    ).first()
+    if not creator_in_attendees:
+        count += 1
+    
+    return {"success": True, "attendee_count": count}
 
 @router.get("/{event_id}/attendees", response_model=List[int])
 def list_attendees(event_id: int, session: Session = Depends(get_session)):
@@ -199,7 +389,7 @@ def list_attendees(event_id: int, session: Session = Depends(get_session)):
 
 @router.get("/{event_id}/attendees/details")
 def list_attendees_with_details(event_id: int, session: Session = Depends(get_session)):
-    """Get list of attendees with user details"""
+    """Get list of attendees with user details (includes event owner)"""
     evt = session.get(Event, event_id)
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -210,10 +400,13 @@ def list_attendees_with_details(event_id: int, session: Session = Depends(get_se
         .order_by(EventAttendee.joined_at)
     ).all()
     
-    if not attendee_records:
-        return []
-    
+    # Collect user IDs from attendees
     user_ids = [a.user_id for a in attendee_records]
+    
+    # Always include the event owner in the list (even if they haven't explicitly joined)
+    if evt.created_by and evt.created_by not in user_ids:
+        user_ids.append(evt.created_by)
+    
     if not user_ids:
         return []
     
@@ -221,7 +414,28 @@ def list_attendees_with_details(event_id: int, session: Session = Depends(get_se
     user_map = {u.id: u for u in users}
     
     result = []
+    
+    # First, add the event owner if they exist
+    if evt.created_by:
+        owner = user_map.get(evt.created_by)
+        if owner:
+            # Check if owner has an attendee record (explicit join)
+            owner_attendee = next((a for a in attendee_records if a.user_id == evt.created_by), None)
+            result.append({
+                "id": owner.id,
+                "name": owner.name,
+                "email": owner.email,
+                "photo_url": owner.photo_url,
+                "is_verified": owner.is_verified,
+                "joined_at": owner_attendee.joined_at.isoformat() if owner_attendee and owner_attendee.joined_at else evt.created_at.isoformat() if evt.created_at else None
+            })
+    
+    # Then add all other attendees (excluding owner if already added)
     for attendee_rec in attendee_records:
+        # Skip if this is the owner (already added above)
+        if attendee_rec.user_id == evt.created_by:
+            continue
+            
         user = user_map.get(attendee_rec.user_id)
         if user:
             result.append({
@@ -236,17 +450,29 @@ def list_attendees_with_details(event_id: int, session: Session = Depends(get_se
     return result
 
 @router.get("/{event_id}/messages")
-def get_event_messages(event_id: int, session: Session = Depends(get_session), current_user: Optional[User] = Depends(_get_user_from_token)):
-    """Get all messages for an event"""
+def get_event_messages(
+    event_id: int, 
+    session: Session = Depends(get_session), 
+    current_user: Optional[User] = Depends(_get_optional_user_from_token),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0)
+):
+    """Get messages for an event (paginated, most recent first)"""
     evt = session.get(Event, event_id)
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
     
+    # Optimized: Load messages with limit, order by desc (newest first) for pagination
     messages = session.exec(
         select(EventMessage)
         .where(EventMessage.event_id == event_id)
-        .order_by(EventMessage.created_at)
+        .order_by(EventMessage.created_at.desc())
+        .limit(limit)
+        .offset(offset)
     ).all()
+    
+    # Reverse to get chronological order (oldest first for display)
+    messages = list(reversed(messages))
     
     if not messages:
         return []
@@ -269,21 +495,6 @@ def get_event_messages(event_id: int, session: Session = Depends(get_session), c
             read_map[read.message_id] = []
         read_map[read.message_id].append(read.user_id)
     
-    # Get reactions for all messages
-    reaction_records = session.exec(
-        select(MessageReaction).where(
-            MessageReaction.message_id.in_(message_ids),
-            MessageReaction.message_type == "event"
-        )
-    ).all()
-    reaction_map = {}  # {message_id: {emoji: [user_ids]}}
-    for reaction in reaction_records:
-        if reaction.message_id not in reaction_map:
-            reaction_map[reaction.message_id] = {}
-        if reaction.emoji not in reaction_map[reaction.message_id]:
-            reaction_map[reaction.message_id][reaction.emoji] = []
-        reaction_map[reaction.message_id][reaction.emoji].append(reaction.user_id)
-    
     result = []
     for msg in messages:
         user = user_map.get(msg.user_id)
@@ -301,17 +512,6 @@ def get_event_messages(event_id: int, session: Session = Depends(get_session), c
             read_count = len(read_by)
             is_read_by_current_user = current_user and current_user.id in read_by if current_user else False
             
-            # Get reactions for this message
-            message_reactions = reaction_map.get(msg.id, {})
-            reactions = []
-            for emoji, user_ids in message_reactions.items():
-                reactions.append({
-                    "emoji": emoji,
-                    "count": len(user_ids),
-                    "users": user_ids,
-                    "has_reacted": current_user and current_user.id in user_ids if current_user else False
-                })
-            
             result.append({
                 "id": msg.id,
                 "content": msg.content if not msg.is_deleted else None,
@@ -319,7 +519,6 @@ def get_event_messages(event_id: int, session: Session = Depends(get_session), c
                 "created_at": created_at_str,
                 "read_count": read_count,
                 "is_read_by_me": is_read_by_current_user,
-                "reactions": reactions,
                 "user": {
                     "id": user.id,
                     "name": user.name,
@@ -418,6 +617,45 @@ def delete_event_message(
     session.add(message)
     session.commit()
     session.refresh(message)
+    
+    # Broadcast deletion to all connected clients via WebSocket
+    import asyncio
+    import threading
+    
+    def schedule_broadcast():
+        """Schedule broadcast in the main event loop"""
+        global _main_event_loop
+        try:
+            loop = _main_event_loop
+            if loop is None:
+                # Fallback: try to get the event loop
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = asyncio.get_event_loop()
+            
+            if loop and loop.is_running():
+                # Schedule the coroutine thread-safely
+                asyncio.run_coroutine_threadsafe(
+                    broadcast_to_event(event_id, None, {
+                        "type": "message_deleted",
+                        "message_id": message_id
+                    }),
+                    loop
+                )
+            elif loop:
+                # If loop exists but not running, run it directly
+                loop.run_until_complete(broadcast_to_event(event_id, None, {
+                    "type": "message_deleted",
+                    "message_id": message_id
+                }))
+        except Exception as e:
+            print(f"Failed to broadcast message deletion: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # Run in background thread to avoid blocking the sync endpoint
+    threading.Thread(target=schedule_broadcast, daemon=True).start()
     
     return {"message": "Message deleted successfully"}
 
@@ -588,130 +826,6 @@ def mark_event_message_read(
     
         return {"status": "read"}
 
-@router.post("/{event_id}/messages/{message_id}/reactions")
-def add_event_message_reaction(
-    event_id: int,
-    message_id: int,
-    emoji: str = Query(..., min_length=1, max_length=10),
-    session: Session = Depends(get_session),
-    current_user: User = Depends(_get_user_from_token)
-):
-    """Add or remove a reaction to a message"""
-    evt = session.get(Event, event_id)
-    if not evt:
-        raise HTTPException(status_code=404, detail="Event not found")
-    
-    message = session.get(EventMessage, message_id)
-    if not message or message.event_id != event_id:
-        raise HTTPException(status_code=404, detail="Message not found")
-    
-    # Check if user is an attendee or the event owner
-    is_attendee = session.exec(
-        select(EventAttendee).where(
-            EventAttendee.event_id == event_id,
-            EventAttendee.user_id == current_user.id
-        )
-    ).first()
-    
-    is_owner = evt.created_by == current_user.id
-    
-    if not is_attendee and not is_owner:
-        raise HTTPException(status_code=403, detail="You must be an attendee or event organizer")
-    
-    # Check if reaction already exists
-    existing_reaction = session.exec(
-        select(MessageReaction).where(
-            MessageReaction.message_id == message_id,
-            MessageReaction.message_type == "event",
-            MessageReaction.user_id == current_user.id,
-            MessageReaction.emoji == emoji
-        )
-    ).first()
-    
-    if existing_reaction:
-        # Remove reaction (toggle off)
-        session.delete(existing_reaction)
-        session.commit()
-        return {"status": "removed", "emoji": emoji}
-    else:
-        # Add reaction
-        reaction = MessageReaction(
-            message_id=message_id,
-            message_type="event",
-            user_id=current_user.id,
-            emoji=emoji
-        )
-        session.add(reaction)
-        session.commit()
-        return {"status": "added", "emoji": emoji}
-
-@router.get("/ai-suggest")
-async def get_ai_event_suggestions(
-    num_suggestions: int = Query(3, ge=1, le=3),
-    preferred_location: Optional[str] = Query(None),
-    session: Session = Depends(get_session),
-    current_user: User = Depends(_get_user_from_token)
-):
-    """
-    Generate AI-powered event suggestions based on user's context.
-    Gathers user's groups, recent events, and preferences to create personalized suggestions.
-    """
-    try:
-        memberships = session.exec(
-            select(GroupMember).where(GroupMember.user_id == current_user.id)
-        ).all()
-        
-        groups_context = []
-        for membership in memberships:
-            group = session.get(Group, membership.group_id)
-            if not group:
-                continue
-            group_data = {
-                "name": group.name,
-                "field": group.field,
-                "exam": group.exam,
-                "deadline": group.deadline.isoformat() if group.deadline else None,
-                "description": group.description
-            }
-            groups_context.append(group_data)
-        
-        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
-        attendee_records = session.exec(
-            select(EventAttendee).where(EventAttendee.user_id == current_user.id)
-        ).all()
-        
-        recent_events_context = []
-        for attendee in attendee_records[:10]:
-            event = session.get(Event, attendee.event_id)
-            if event and event.starts_at >= thirty_days_ago:
-                recent_events_context.append({
-                    "title": event.title,
-                    "location": event.location,
-                    "category": getattr(event, "category", None)
-                })
-                if len(recent_events_context) >= 5:
-                    break
-        
-        user_context = {
-            "groups": groups_context,
-            "recent_events": recent_events_context
-        }
-        
-        if preferred_location:
-            user_context["preferred_location"] = preferred_location
-        
-        suggestions = await generate_event_suggestions(
-            user_context=user_context,
-            num_suggestions=num_suggestions
-        )
-        
-        return suggestions
-        
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=f"AI service configuration error: {str(e)}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate suggestions: {str(e)}")
-
 class TextRefinementRequest(BaseModel):
     text: str
     field_type: str = "general"
@@ -793,6 +907,14 @@ async def generate_cover_image(
 @router.websocket("/{event_id}/ws")
 async def event_chat_websocket(websocket: WebSocket, event_id: int):
     """WebSocket endpoint for real-time event chat"""
+    # Store reference to the main event loop on first connection
+    global _main_event_loop
+    if _main_event_loop is None:
+        import asyncio
+        try:
+            _main_event_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            _main_event_loop = asyncio.get_event_loop()
     await websocket.accept()
     
     # Get user from token
@@ -809,18 +931,27 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             
             # Get user details
             session_gen = get_session()
-            session = next(session_gen)
             try:
-                user = session.get(User, user_id)
-                if user:
-                    user_name = user.name or user.email
-                    user_email = user.email
-                    user_photo_url = user.photo_url
-            finally:
+                session = next(session_gen)
                 try:
-                    next(session_gen)
-                except StopIteration:
+                    user = session.get(User, user_id)
+                    if user:
+                        user_name = user.name or user.email
+                        user_email = user.email
+                        user_photo_url = user.photo_url
+                finally:
+                    # Close the session by exhausting the generator
+                    try:
+                        next(session_gen)
+                    except StopIteration:
+                        pass
+            except Exception:
+                # If generator fails, try to close it
+                try:
+                    session_gen.close()
+                except:
                     pass
+                raise
     except Exception as e:
         await websocket.close(code=1008, reason="Invalid authentication")
         return
@@ -831,8 +962,8 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
     
     # Verify event exists and user has access
     session_gen = get_session()
-    session = next(session_gen)
     try:
+        session = next(session_gen)
         evt = session.get(Event, event_id)
         if not evt:
             await websocket.close(code=1008, reason="Event not found")
@@ -948,146 +1079,198 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
         # Handle messages
         try:
             while True:
-                data = await websocket.receive_json()
-                message_type = data.get("type")
+                # Check if WebSocket is still connected
+                if websocket.client_state.name != "CONNECTED":
+                    break
                 
-                # Handle incoming message sync (from other clients)
-                if message_type == "sync_message":
-                    # Client is sending a message with vector clock for sync
-                    incoming_msg = data.get("message")
-                    if incoming_msg:
-                        synchronizer = get_synchronizer(str(event_id), "event")
-                        msg_version = MessageVersion(
-                            message_id=incoming_msg.get("id"),
-                            vector_clock=incoming_msg.get("vector_clock", {}),
-                            content=incoming_msg.get("content", ""),
-                            user_id=incoming_msg.get("user_id"),
-                            created_at=datetime.fromisoformat(incoming_msg.get("created_at", "").replace('Z', '+00:00'))
-                        )
-                        is_new, merged = synchronizer.merge_message(msg_version)
-                        if is_new:
-                            # Broadcast the merged message
-                            await broadcast_to_event(event_id, user_id, {
-                                "type": "new_message",
-                                "message": incoming_msg
-                            })
-                    continue
-                
-                if message_type == "message":
-                    # Send a new message
-                    content = data.get("content", "").strip()
-                    if not content or len(content) > 1000:
+                try:
+                    data = await websocket.receive_json()
+                    message_type = data.get("type")
+                    
+                    # Handle incoming message sync (from other clients)
+                    if message_type == "sync_message":
+                        # Client is sending a message with vector clock for sync
+                        incoming_msg = data.get("message")
+                        if incoming_msg:
+                            synchronizer = get_synchronizer(str(event_id), "event")
+                            msg_version = MessageVersion(
+                                message_id=incoming_msg.get("id"),
+                                vector_clock=incoming_msg.get("vector_clock", {}),
+                                content=incoming_msg.get("content", ""),
+                                user_id=incoming_msg.get("user_id"),
+                                created_at=datetime.fromisoformat(incoming_msg.get("created_at", "").replace('Z', '+00:00'))
+                            )
+                            is_new, merged = synchronizer.merge_message(msg_version)
+                            if is_new:
+                                # Broadcast the merged message
+                                await broadcast_to_event(event_id, user_id, {
+                                    "type": "new_message",
+                                    "message": incoming_msg
+                                })
                         continue
                     
-                    # Get synchronizer for this event
-                    synchronizer = get_synchronizer(str(event_id), "event")
-                    
-                    # Create message in database
-                    message = EventMessage(
-                        event_id=event_id,
-                        user_id=user_id,
-                        content=content
-                    )
-                    session.add(message)
-                    session.commit()
-                    session.refresh(message)
-                    
-                    # Create message version with vector clock
-                    created_at = message.created_at
-                    if created_at.tzinfo is None:
-                        created_at = created_at.replace(tzinfo=timezone.utc)
-                    
-                    msg_version = synchronizer.create_message_version(
-                        message_id=message.id,
-                        user_id=user_id,
-                        content=content,
-                        created_at=created_at
-                    )
-                    
-                    # Update presence
-                    user_presence[user_id] = datetime.now(timezone.utc)
-                    
-                    # Format created_at
-                    created_at_str = message.created_at.isoformat()
-                    if message.created_at.tzinfo is None:
-                        created_at_str = message.created_at.replace(tzinfo=timezone.utc).isoformat()
-                    if not created_at_str.endswith('Z') and message.created_at.tzinfo == timezone.utc:
-                        created_at_str = created_at_str.replace('+00:00', 'Z')
-                    
-                    # Get user for message
-                    msg_user = session.get(User, user_id)
-                    
-                    # Broadcast message to all connected users with vector clock
-                    await broadcast_to_event(event_id, None, {
-                        "type": "new_message",
-                        "message": {
-                            "id": message.id,
-                            "content": message.content,
-                            "is_deleted": False,
-                            "created_at": created_at_str,
-                            "vector_clock": msg_version.vector_clock,  # Include vector clock
-                            "version": msg_version.version,
-                            "is_read_by_me": False,
-                            "user": {
-                                "id": user_id,
-                                "name": msg_user.name if msg_user else user_name,
-                                "email": msg_user.email if msg_user else user_email,
-                                "photo_url": msg_user.photo_url if msg_user else user_photo_url,
-                                "is_verified": msg_user.is_verified if msg_user else False
-                            }
-                        }
-                    })
-                
-                elif message_type == "typing":
-                    # Update typing status
-                    typing_status[event_id][user_id] = datetime.now(timezone.utc)
-                    user_presence[user_id] = datetime.now(timezone.utc)
-                    
-                    # Broadcast typing indicator
-                    await broadcast_to_event(event_id, user_id, {
-                        "type": "typing",
-                        "user_id": user_id,
-                        "user_name": user_name
-                    })
-                
-                elif message_type == "presence_ping":
-                    # Update presence
-                    user_presence[user_id] = datetime.now(timezone.utc)
-                    
-                    # Send current presence
-                    now = datetime.now(timezone.utc)
-                    online_users = []
-                    if event_id in event_connections:
-                        for uid in event_connections[event_id].keys():
-                            if uid != user_id and uid in user_presence:
-                                if (now - user_presence[uid]).total_seconds() < PRESENCE_TIMEOUT_SECONDS:
-                                    online_users.append(uid)
-                    
-                    await websocket.send_json({
-                        "type": "presence_update",
-                        "online_users": online_users
-                    })
-                
-                elif message_type == "mark_read":
-                    # Mark message as read
-                    message_id = data.get("message_id")
-                    if message_id:
-                        read_record = MessageRead(
-                            message_id=message_id,
-                            user_id=user_id
-                        )
-                        session.add(read_record)
-                        session.commit()
+                    if message_type == "message":
+                        # Send a new message
+                        content = data.get("content", "").strip()
+                        if not content or len(content) > 1000:
+                            continue
                         
-                        # Broadcast read receipt
-                        await broadcast_to_event(event_id, user_id, {
-                            "type": "message_read",
-                            "message_id": message_id,
-                            "user_id": user_id
+                        # Get synchronizer for this event
+                        synchronizer = get_synchronizer(str(event_id), "event")
+                        
+                        # Create message in database
+                        message = EventMessage(
+                            event_id=event_id,
+                            user_id=user_id,
+                            content=content
+                        )
+                        session.add(message)
+                        session.commit()
+                        session.refresh(message)
+                        
+                        # Create message version with vector clock
+                        created_at = message.created_at
+                        if created_at.tzinfo is None:
+                            created_at = created_at.replace(tzinfo=timezone.utc)
+                        
+                        msg_version = synchronizer.create_message_version(
+                            message_id=message.id,
+                            user_id=user_id,
+                            content=content,
+                            created_at=created_at
+                        )
+                        
+                        # Update presence
+                        user_presence[user_id] = datetime.now(timezone.utc)
+                        
+                        # Format created_at
+                        created_at_str = message.created_at.isoformat()
+                        if message.created_at.tzinfo is None:
+                            created_at_str = message.created_at.replace(tzinfo=timezone.utc).isoformat()
+                        if not created_at_str.endswith('Z') and message.created_at.tzinfo == timezone.utc:
+                            created_at_str = created_at_str.replace('+00:00', 'Z')
+                        
+                        # Get user for message
+                        msg_user = session.get(User, user_id)
+                        
+                        # Broadcast message to all connected users with vector clock
+                        await broadcast_to_event(event_id, None, {
+                            "type": "new_message",
+                            "message": {
+                                "id": message.id,
+                                "content": message.content,
+                                "is_deleted": False,
+                                "created_at": created_at_str,
+                                "vector_clock": msg_version.vector_clock,  # Include vector clock
+                                "version": msg_version.version,
+                                "is_read_by_me": False,
+                                "user": {
+                                    "id": user_id,
+                                    "name": msg_user.name if msg_user else user_name,
+                                    "email": msg_user.email if msg_user else user_email,
+                                    "photo_url": msg_user.photo_url if msg_user else user_photo_url,
+                                    "is_verified": msg_user.is_verified if msg_user else False
+                                }
+                            }
                         })
+                    
+                    elif message_type == "typing":
+                        # Update typing status
+                        typing_status[event_id][user_id] = datetime.now(timezone.utc)
+                        user_presence[user_id] = datetime.now(timezone.utc)
+                        
+                        # Broadcast typing indicator
+                        await broadcast_to_event(event_id, user_id, {
+                            "type": "typing",
+                            "user_id": user_id,
+                            "user_name": user_name
+                        })
+                    
+                    elif message_type == "presence_ping":
+                        # Update presence
+                        user_presence[user_id] = datetime.now(timezone.utc)
+                        
+                        # Send current presence
+                        now = datetime.now(timezone.utc)
+                        online_users = []
+                        if event_id in event_connections:
+                            for uid in event_connections[event_id].keys():
+                                if uid != user_id and uid in user_presence:
+                                    if (now - user_presence[uid]).total_seconds() < PRESENCE_TIMEOUT_SECONDS:
+                                        online_users.append(uid)
+                        
+                        await websocket.send_json({
+                            "type": "presence_update",
+                            "online_users": online_users
+                        })
+                    
+                    elif message_type == "mark_read":
+                        # Mark message as read
+                        message_id = data.get("message_id")
+                        if message_id:
+                            try:
+                                # Check if already read to avoid duplicates
+                                existing_read = session.exec(
+                                    select(MessageRead).where(
+                                        MessageRead.message_id == message_id,
+                                        MessageRead.message_type == "event",
+                                        MessageRead.user_id == user_id
+                                    )
+                                ).first()
+                                
+                                if not existing_read:
+                                    read_record = MessageRead(
+                                        message_id=message_id,
+                                        message_type="event",  # Required field!
+                                        user_id=user_id
+                                    )
+                                    session.add(read_record)
+                                    session.commit()
+                                    
+                                    # Broadcast read receipt
+                                    await broadcast_to_event(event_id, user_id, {
+                                        "type": "message_read",
+                                        "message_id": message_id,
+                                        "user_id": user_id
+                                    })
+                            except Exception as e:
+                                # Rollback on error to prevent session issues
+                                session.rollback()
+                                print(f"Error marking message as read: {e}")
+                                # Don't break the connection, just log the error
+                except WebSocketDisconnect:
+                    # Normal disconnect, break out of loop
+                    print("WebSocket disconnected normally")
+                    break
+                except RuntimeError as e:
+                    # Handle "Cannot call receive once disconnected" error
+                    if "disconnect" in str(e).lower():
+                        print("WebSocket disconnected (RuntimeError)")
+                        break
+                    # Re-raise other RuntimeErrors
+                    raise
+                except Exception as e:
+                    # Log error but continue if connection is still open
+                    print(f"Error processing WebSocket message: {e}")
+                    # Check if still connected before continuing
+                    if websocket.client_state.name != "CONNECTED":
+                        break
+                    continue
                 
         except WebSocketDisconnect:
+            print("WebSocket disconnected normally")
             pass
+        except RuntimeError as e:
+            # Handle "Cannot call receive once disconnected" error
+            if "disconnect" in str(e).lower():
+                print("WebSocket disconnected (RuntimeError in outer catch)")
+            else:
+                print(f"WebSocket RuntimeError: {e}")
+        except Exception as e:
+            # Log unexpected errors
+            print(f"WebSocket error in main loop: {e}")
+            import traceback
+            traceback.print_exc()
         finally:
             # Remove connection
             if event_id in event_connections and user_id in event_connections[event_id]:
@@ -1099,9 +1282,19 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                 "user_id": user_id
             })
     finally:
+        # Properly close the session
         try:
-            next(session_gen)
-        except StopIteration:
+            if 'session_gen' in locals():
+                try:
+                    next(session_gen)
+                except StopIteration:
+                    pass
+                except Exception:
+                    try:
+                        session_gen.close()
+                    except:
+                        pass
+        except:
             pass
 
 async def broadcast_to_event(event_id: int, exclude_user_id: Optional[int], message: Dict):

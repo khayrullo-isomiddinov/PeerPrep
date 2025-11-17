@@ -2,13 +2,12 @@
 Advanced Gamification Engine with Multi-Factor XP Calculation,
 Engagement Prediction, and Dynamic Badge Unlocking Algorithms
 """
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 from datetime import datetime, timezone, timedelta
 from sqlmodel import Session, select, func
-from collections import defaultdict
-import math
 
-from app.models import User, MissionSubmission, EventAttendee, Event, GroupMember, GroupMessage
+from app.models import User, MissionSubmission, EventAttendee, Event, GroupMember
+from app.config import settings
 
 
 class EngagementPredictor:
@@ -52,7 +51,12 @@ class EngagementPredictor:
             select(User).where(User.id == user_id)
         ).first()
         if account_age_days and account_age_days.created_at:
-            age = (now - account_age_days.created_at).days or 1
+            # Ensure both datetimes are timezone-aware for comparison
+            created_at = account_age_days.created_at
+            if created_at.tzinfo is None:
+                # If naive, assume it's UTC
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            age = (now - created_at).days or 1
             frequency_score = min(1.0, total_submissions / max(age, 1) * 7)  # submissions per week
         else:
             frequency_score = 0.0
@@ -129,7 +133,6 @@ class DynamicXPCalculator:
     
     BASE_XP_SUBMISSION = 50
     BASE_XP_EVENT = 30
-    BASE_XP_MESSAGE = 1  # Small XP for active chat participation
     
     @staticmethod
     def calculate_submission_xp(user_id: int, submission_id: int, 
@@ -176,7 +179,12 @@ class DynamicXPCalculator:
         # Note: We'd need mission deadline in Group model for this
         # For now, use submission recency as proxy
         if submission.submitted_at:
-            days_ago = (datetime.now(timezone.utc) - submission.submitted_at).days
+            # Ensure both datetimes are timezone-aware for comparison
+            submitted_at = submission.submitted_at
+            if submitted_at.tzinfo is None:
+                # If naive, assume it's UTC
+                submitted_at = submitted_at.replace(tzinfo=timezone.utc)
+            days_ago = (datetime.now(timezone.utc) - submitted_at).days
             if days_ago < 1:
                 time_bonus = 1.1  # 10% bonus for same-day submission
         
@@ -200,33 +208,6 @@ class DynamicXPCalculator:
         engagement_multiplier = 1.0 + (engagement * 0.15)
         
         return int(base_xp * engagement_multiplier)
-    
-    @staticmethod
-    def calculate_chat_xp(user_id: int, group_id: str, message_count: int, 
-                          session: Session) -> int:
-        """
-        Award small XP for active chat participation
-        Encourages collaboration
-        """
-        if message_count < 10:
-            return 0
-        
-        # 1 XP per 10 messages, capped at 5 XP per day
-        xp = min(5, message_count // 10)
-        
-        # Check if user already got chat XP today
-        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        today_messages = session.exec(
-            select(func.count(GroupMessage.id)).where(
-                GroupMessage.user_id == user_id,
-                GroupMessage.group_id == group_id,
-                GroupMessage.created_at >= today_start
-            )
-        ).one() or 0
-        
-        if today_messages >= 10:
-            return xp
-        return 0
 
 
 class AdvancedBadgeSystem:
@@ -304,6 +285,24 @@ class AdvancedBadgeSystem:
         user = session.get(User, user_id)
         if not user:
             return None
+        
+        # Admin always gets Master badge
+        if user.email == settings.ADMIN_EMAIL:
+            return {
+                "name": "Master",
+                "min_xp": 4000,
+                "requirements": {
+                    "xp": 4000,
+                    "submissions": 40,
+                    "events": 20,
+                    "engagement": 0.9,
+                    "streak_days": 14,
+                    "groups": 5,
+                    "avg_score": 80
+                },
+                "icon": "👑",
+                "color": "gold"
+            }
         
         total_xp = user.xp or 0
         
@@ -424,6 +423,30 @@ class AdvancedBadgeSystem:
 def award_dynamic_xp_for_submission(user_id: int, submission_id: int, session: Session) -> int:
     """Award dynamically calculated XP for submission"""
     xp = DynamicXPCalculator.calculate_submission_xp(user_id, submission_id, session)
+    user = session.get(User, user_id)
+    if user:
+        user.xp = (user.xp or 0) + xp
+        session.add(user)
+        session.commit()
+    return xp
+
+def award_dynamic_xp_for_event(user_id: int, event_id: int, session: Session) -> int:
+    """Award dynamically calculated XP for event attendance (only after event date passes)"""
+    from app.models import Event
+    event = session.get(Event, event_id)
+    if not event:
+        return 0
+    
+    # Only award XP if event has already started
+    event_start = event.starts_at
+    if event_start.tzinfo is None:
+        event_start = event_start.replace(tzinfo=timezone.utc)
+    
+    now = datetime.now(timezone.utc)
+    if event_start > now:
+        return 0  # Event hasn't started yet, don't award XP
+    
+    xp = DynamicXPCalculator.calculate_event_xp(user_id, event_id, session)
     user = session.get(User, user_id)
     if user:
         user.xp = (user.xp or 0) + xp

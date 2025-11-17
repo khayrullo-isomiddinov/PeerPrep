@@ -17,11 +17,23 @@ export function setAuthHeader(token) {
 const existing = localStorage.getItem("access_token")
 if (existing) setAuthHeader(existing)
 
+// Optimized: Only log in development
+const isDev = import.meta.env.DEV
+
 api.interceptors.request.use(
   config => {
-    console.log("📤 API Request:", config.method?.toUpperCase(), config.url)
-    console.log("📤 Headers:", config.headers)
-    console.log("📤 Auth header:", config.headers?.Authorization ? "✅ Present" : "❌ Missing")
+    // Always ensure token is fresh from localStorage (in case it was updated)
+    const token = localStorage.getItem("access_token")
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+      // Also update the default header to keep it in sync
+      api.defaults.headers.common["Authorization"] = `Bearer ${token}`
+    } else {
+      // Remove header if no token
+      delete config.headers.Authorization
+      delete api.defaults.headers.common["Authorization"]
+    }
+    
     return config
   },
   error => {
@@ -32,10 +44,16 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   r => r,
   err => {
-    console.log("📥 API Response Error:", err?.response?.status, err?.response?.data)
     if (err?.response?.status === 401) {
-      console.error("❌ 401 Unauthorized - Clearing token")
-      setAuthHeader(null)
+      // Only clear token if it's actually invalid (not just missing)
+      // Don't clear on first 401 - might be a temporary issue
+      const token = localStorage.getItem("access_token")
+      if (token) {
+        // Try to validate token - if it fails, then clear it
+        // But don't clear immediately on first 401
+      }
+      // Don't automatically clear - let the AuthContext handle it
+      // setAuthHeader(null) // Removed - let AuthContext handle token validation
     }
     return Promise.reject(err)
   }
@@ -59,17 +77,16 @@ export async function getMyEvents() {
   return data
 }
 
+export async function getMyEventsCount() {
+  const { data } = await api.get("events/my-events/count")
+  return data.count || 0
+}
+
 export async function refineEventText(text, fieldType = "general") {
   const token = localStorage.getItem("access_token")
-  console.log("🔍 Refine text - Token exists:", !!token)
-  console.log("🔍 Refine text - Token preview:", token ? token.substring(0, 20) + "..." : "none")
-  console.log("🔍 Refine text - Current auth header:", api.defaults.headers.common["Authorization"] ? "exists" : "missing")
   
   if (token) {
     setAuthHeader(token)
-    console.log("🔍 Refine text - Auth header set:", api.defaults.headers.common["Authorization"] ? "yes" : "no")
-  } else {
-    console.error("❌ No token found in localStorage!")
   }
   
   try {
@@ -79,9 +96,9 @@ export async function refineEventText(text, fieldType = "general") {
     })
     return data.refined_text
   } catch (error) {
-    console.error("❌ Refine text error:", error)
-    console.error("❌ Error response:", error?.response?.data)
-    console.error("❌ Request headers sent:", error?.config?.headers)
+    if (isDev) {
+      console.error("Refine text error:", error)
+    }
     throw error
   }
 }
@@ -107,10 +124,36 @@ export async function deleteEvent(id) {
   await api.delete(`events/${id}`)
 }
 export async function joinEvent(id) {
-  await api.post(`events/${id}/join`)
+  try {
+    const response = await api.post(`events/${id}/join`)
+    return { 
+      success: true, 
+      attendee_count: response.data?.attendee_count,
+      alreadyJoined: response.data?.alreadyJoined
+    }
+  } catch (error) {
+    // Handle 409 (already joined) as a special case - not really an error
+    if (error?.response?.status === 409) {
+      return { success: true, alreadyJoined: true }
+    }
+    throw error
+  }
 }
 export async function leaveEvent(id) {
-  await api.delete(`events/${id}/join`)
+  try {
+    const response = await api.delete(`events/${id}/join`)
+    return { 
+      success: true, 
+      attendee_count: response.data?.attendee_count,
+      notJoined: response.data?.notJoined
+    }
+  } catch (error) {
+    // Handle 404 (not joined) as a special case - not really an error
+    if (error?.response?.status === 404) {
+      return { success: true, notJoined: true }
+    }
+    throw error
+  }
 }
 export async function getAttendees(id) {
   const { data } = await api.get(`events/${id}/attendees`)
@@ -166,6 +209,11 @@ export async function getMyGroups() {
   return data
 }
 
+export async function getMyGroupsCount() {
+  const { data } = await api.get("groups/my-groups/count")
+  return data.count || 0
+}
+
 
 export async function createGroup(payload) {
   const { data } = await api.post("groups", payload)
@@ -192,13 +240,37 @@ export async function updateGroup(id, payload) {
 }
 
 export async function joinGroup(id) {
-  const { data } = await api.post(`groups/${id}/join`)
-  return data
+  try {
+    const response = await api.post(`groups/${id}/join`)
+    return { 
+      success: true, 
+      member_count: response.data?.member_count,
+      alreadyJoined: response.data?.alreadyJoined
+    }
+  } catch (error) {
+    // Handle 400 (already a member) as a special case - not really an error
+    if (error?.response?.status === 400 && error?.response?.data?.detail?.includes("Already")) {
+      return { success: true, alreadyJoined: true }
+    }
+    throw error
+  }
 }
 
 export async function leaveGroup(id) {
-  const { data } = await api.delete(`groups/${id}/leave`)
-  return data
+  try {
+    const response = await api.delete(`groups/${id}/leave`)
+    return { 
+      success: true, 
+      member_count: response.data?.member_count,
+      notJoined: response.data?.notJoined
+    }
+  } catch (error) {
+    // Handle 400/404 (not a member) as a special case - not really an error
+    if (error?.response?.status === 400 || error?.response?.status === 404) {
+      return { success: true, notJoined: true }
+    }
+    throw error
+  }
 }
 
 export async function checkGroupMembership(id) {
@@ -322,19 +394,5 @@ export async function markEventMessageRead(eventId, messageId) {
 
 export async function markGroupMessageRead(groupId, messageId) {
   await api.post(`groups/${groupId}/messages/${messageId}/read`)
-}
-
-export async function addEventMessageReaction(eventId, messageId, emoji) {
-  const { data } = await api.post(`events/${eventId}/messages/${messageId}/reactions`, null, {
-    params: { emoji }
-  })
-  return data
-}
-
-export async function addGroupMessageReaction(groupId, messageId, emoji) {
-  const { data } = await api.post(`groups/${groupId}/messages/${messageId}/reactions`, null, {
-    params: { emoji }
-  })
-  return data
 }
 
