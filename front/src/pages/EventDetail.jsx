@@ -22,9 +22,9 @@ export default function EventDetail() {
   const [attendees, setAttendees] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [joined, setJoined] = useState(null) // null = loading, true/false = loaded
+  const [joined, setJoined] = useState(null) 
   const [isLoading, setIsLoading] = useState(false)
-  const [isJoining, setIsJoining] = useState(false) // Track if we're joining (true) or leaving (false)
+  const [isJoining, setIsJoining] = useState(false) 
   const [isOwner, setIsOwner] = useState(false)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState("")
@@ -80,7 +80,7 @@ export default function EventDetail() {
       // Check cache first (unless forcing refresh)
       const { getCachedPage, setCachedPage } = await import("../utils/pageCache")
       const cached = getCachedPage(`event:${id}`)
-      
+
       if (cached && cached.data && !force) {
         // Show cached data instantly
         setEvent(cached.data)
@@ -88,7 +88,7 @@ export default function EventDetail() {
         setIsOwner(userIsOwner)
         setLoading(false)
         endPageLoad(pageId)
-        
+
         // Load attendees and messages in parallel
         Promise.all([
           getEventAttendeesWithDetails(id).then(data => {
@@ -113,12 +113,12 @@ export default function EventDetail() {
             loadMessages(false)
             getEventPresence(id).then(data => {
               setPresence(data.presence || [])
-            }).catch(() => {})
+            }).catch(() => { })
           }
         })
         return
       }
-      
+
       // No cache or forcing refresh, load normally
       if (!force) {
         startPageLoad(pageId)
@@ -128,14 +128,14 @@ export default function EventDetail() {
       const data = await getEvent(id)
       setEvent(data)
       setCachedPage(`event:${id}`, data)
-      
+
       const userIsOwner = user && data.created_by === user.id
       setIsOwner(userIsOwner)
-      
+
       // Always refresh attendees to get updated member counts
       const attendeesData = await getEventAttendeesWithDetails(id)
       setAttendees(attendeesData)
-      
+
       // Set joined state immediately from attendees data
       // User is considered "joined" if they're in the attendees list OR they're the owner
       let userJoined = false
@@ -146,7 +146,7 @@ export default function EventDetail() {
       } else {
         setJoined(false)
       }
-      
+
       // Load messages but don't auto-scroll on initial page load
       // Skip messages if WebSocket is connected (real-time updates handle messages)
       if ((userJoined || userIsOwner) && !skipMessages) {
@@ -173,13 +173,13 @@ export default function EventDetail() {
   useEffect(() => {
     loadEvent()
   }, [loadEvent])
-  
+
   // Periodic polling to keep data fresh (only metadata, not messages)
   // Poll every 5 seconds to catch changes from other users (like member counts)
   // Skip messages if WebSocket is connected to avoid flickering read marks
   useEffect(() => {
     if (!id || !event) return
-    
+
     const pollInterval = setInterval(() => {
       if (!document.hidden && event) {
         // Only update metadata (event data, attendees) but skip messages
@@ -188,10 +188,10 @@ export default function EventDetail() {
         loadEvent(true, isWsConnected) // Skip messages if WebSocket is connected
       }
     }, 5000) // 5 seconds - good balance between freshness and performance
-    
+
     return () => clearInterval(pollInterval)
   }, [id, event, loadEvent, wsConnected])
-  
+
   // Sync joined state when event data changes (e.g., from cache updates)
   useEffect(() => {
     if (event && event.is_joined !== undefined && joined !== null) {
@@ -205,21 +205,21 @@ export default function EventDetail() {
   // Use a ref to track which messages we've already marked to prevent re-marking
   useEffect(() => {
     if (!id || !user || joined === null || (!joined && !isOwner) || messages.length === 0) return
-    
+
     // Mark all unread messages as read (only if not already marked)
-    const unreadMessages = messages.filter(msg => 
-      msg.user.id !== user.id && 
-      !msg.is_read_by_me && 
+    const unreadMessages = messages.filter(msg =>
+      msg.user.id !== user.id &&
+      !msg.is_read_by_me &&
       !markedReadIdsRef.current.has(msg.id)
     )
-    
+
     if (unreadMessages.length > 0) {
       // Mark messages as read via WebSocket if connected, otherwise HTTP
       const timeoutId = setTimeout(() => {
         unreadMessages.forEach(msg => {
           // Track that we're marking this message
           markedReadIdsRef.current.add(msg.id)
-          
+
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({
               type: "mark_read",
@@ -234,7 +234,7 @@ export default function EventDetail() {
           }
         })
       }, 500)
-      
+
       return () => clearTimeout(timeoutId)
     }
   }, [id, user, joined, isOwner, messages])
@@ -256,30 +256,30 @@ export default function EventDetail() {
       messageQueueRef.current = []
       return
     }
-    
+
     if (!isAuthenticated || !user) return
-    
+
     const token = localStorage.getItem("access_token")
     if (!token) return
-    
+
     function connectWebSocket() {
       // Clear any existing reconnection timeout
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
         reconnectTimeoutRef.current = null
       }
-      
+
       // Connect WebSocket
       const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
       const wsProtocol = apiBase.startsWith("https") ? "wss" : "ws"
       const wsHost = apiBase.replace(/^https?:\/\//, "").replace(/\/$/, "")
       const wsUrl = `${wsProtocol}://${wsHost}/api/events/${id}/ws?token=${token}`
       const ws = new WebSocket(wsUrl)
-      
+
       ws.onopen = () => {
         setWsConnected(true)
         reconnectAttemptsRef.current = 0 // Reset on successful connection
-        
+
         // Send queued messages
         while (messageQueueRef.current.length > 0) {
           const queuedMessage = messageQueueRef.current.shift()
@@ -292,7 +292,7 @@ export default function EventDetail() {
             break
           }
         }
-        
+
         // Start presence ping interval
         presencePingIntervalRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
@@ -300,30 +300,30 @@ export default function EventDetail() {
           }
         }, 30000) // Ping every 30 seconds
       }
-      
+
       ws.onmessage = (event) => {
         const message = JSON.parse(event.data)
         handleWebSocketMessage(message)
       }
-      
+
       ws.onerror = (error) => {
         console.error("Event chat WebSocket error:", error)
         setWsConnected(false)
       }
-      
+
       ws.onclose = (event) => {
         setWsConnected(false)
         if (presencePingIntervalRef.current) {
           clearInterval(presencePingIntervalRef.current)
           presencePingIntervalRef.current = null
         }
-        
+
         // Only attempt reconnection if it wasn't a manual close (code 1000) or auth error (1008)
         if (event.code !== 1000 && event.code !== 1008) {
           // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
           const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000)
           reconnectAttemptsRef.current++
-          
+
           reconnectTimeoutRef.current = setTimeout(() => {
             if (id && (joined || isOwner)) {
               // Attempting to reconnect
@@ -334,12 +334,12 @@ export default function EventDetail() {
           reconnectAttemptsRef.current = 0
         }
       }
-      
+
       wsRef.current = ws
     }
-    
+
     connectWebSocket()
-    
+
     return () => {
       if (presencePingIntervalRef.current) {
         clearInterval(presencePingIntervalRef.current)
@@ -357,7 +357,7 @@ export default function EventDetail() {
       reconnectAttemptsRef.current = 0
     }
   }, [id, joined, isOwner, user, isAuthenticated])
-  
+
   function handleWebSocketMessage(message) {
     switch (message.type) {
       case "initial_messages":
@@ -372,18 +372,18 @@ export default function EventDetail() {
           }
         }, 100)
         break
-      
+
       case "new_message":
         const msgId = message.message?.id
         if (!msgId) break
-        
+
         // Prevent duplicate messages
         if (receivedMessageIdsRef.current.has(msgId)) {
           // Duplicate message detected, ignoring
           break
         }
         receivedMessageIdsRef.current.add(msgId)
-        
+
         setMessages(prev => {
           // Double-check for duplicates in state
           if (prev.some(m => m.id === msgId)) {
@@ -402,19 +402,19 @@ export default function EventDetail() {
           }
         }, 100)
         break
-      
+
       case "message_deleted":
         // Update the message to mark it as deleted
         const deletedMsgId = message.message_id
         if (deletedMsgId) {
-          setMessages(prev => prev.map(m => 
-            m.id === deletedMsgId 
+          setMessages(prev => prev.map(m =>
+            m.id === deletedMsgId
               ? { ...m, is_deleted: true, content: "" }
               : m
           ))
         }
         break
-      
+
       case "typing":
         if (message.user_id !== user?.id) {
           setTypingUsers(prev => {
@@ -429,30 +429,30 @@ export default function EventDetail() {
           }, 3000)
         }
         break
-      
+
       case "presence_update":
         // Update presence based on online users
         break
-      
+
       case "message_read":
         // Update read status for a message
-        setMessages(prev => prev.map(msg => 
-          msg.id === message.message_id 
+        setMessages(prev => prev.map(msg =>
+          msg.id === message.message_id
             ? { ...msg, is_read_by_me: true }
             : msg
         ))
         break
-      
+
       case "user_joined":
         // User joined - could update presence
         break
-      
+
       case "user_left":
         // User left - could update presence
         break
     }
   }
-  
+
   async function handleJoinLeave() {
     if (!isAuthenticated || joined === null) {
       if (!isAuthenticated) {
@@ -466,7 +466,7 @@ export default function EventDetail() {
     setIsJoining(!wasJoined) // true if joining, false if leaving
     // Don't do optimistic update - keep button in original state during loading
     // setJoined(wasJoined ? false : true)
-    
+
     try {
       if (wasJoined) {
         const result = await leaveEvent(id)
@@ -475,26 +475,26 @@ export default function EventDetail() {
           setJoined(false)
           setMessages([])
           // Use server-provided count for accuracy
-          const updatedEvent = { 
-            ...event, 
-            is_joined: false, 
-            attendee_count: result.attendee_count ?? event.attendee_count 
+          const updatedEvent = {
+            ...event,
+            is_joined: false,
+            attendee_count: result.attendee_count ?? event.attendee_count
           }
           setEvent(updatedEvent)
-          
+
           // Immediately remove current user from attendees list (optimistic update)
           if (user) {
             setAttendees(prevAttendees => prevAttendees.filter(a => a.id !== user.id))
           }
-          
+
           // Invalidate all caches to ensure fresh data
           const { invalidateCache } = await import("../utils/pageCache")
           invalidateCache(`event:${id}`)
           invalidateCache("events")
           invalidateCache("home:events")
-          
+
           // Also fetch fresh attendees list in background to ensure accuracy
-          getEventAttendeesWithDetails(id).then(data => setAttendees(data || [])).catch(() => {})
+          getEventAttendeesWithDetails(id).then(data => setAttendees(data || [])).catch(() => { })
         }
       } else {
         const result = await joinEvent(id)
@@ -502,24 +502,24 @@ export default function EventDetail() {
           // Update state immediately for smooth UI
           setJoined(true)
           // Use server-provided count for accuracy
-          const updatedEvent = { 
-            ...event, 
-            is_joined: true, 
-            attendee_count: result.attendee_count ?? event.attendee_count 
+          const updatedEvent = {
+            ...event,
+            is_joined: true,
+            attendee_count: result.attendee_count ?? event.attendee_count
           }
           setEvent(updatedEvent)
-          
+
           // Invalidate all caches to ensure fresh data
           const { invalidateCache } = await import("../utils/pageCache")
           invalidateCache(`event:${id}`)
           invalidateCache("events")
           invalidateCache("home:events")
-          
+
           // Load additional data in parallel (non-blocking)
           Promise.all([
-            getEventAttendeesWithDetails(id).then(data => setAttendees(data)).catch(() => {}),
-            getEventMessages(id).then(data => setMessages(data || [])).catch(() => {}),
-            getEventPresence(id).then(data => setPresence(data.presence || [])).catch(() => {})
+            getEventAttendeesWithDetails(id).then(data => setAttendees(data)).catch(() => { }),
+            getEventMessages(id).then(data => setMessages(data || [])).catch(() => { }),
+            getEventPresence(id).then(data => setPresence(data.presence || [])).catch(() => { })
           ])
         }
       }
@@ -538,7 +538,7 @@ export default function EventDetail() {
     e.preventDefault()
     e.stopPropagation()
     if (!newMessage.trim() || sendingMessage || !id) return
-    
+
     // Send via WebSocket if connected, otherwise queue or fallback to HTTP
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       setSendingMessage(true)
@@ -549,7 +549,7 @@ export default function EventDetail() {
         }
         wsRef.current.send(JSON.stringify(messageData))
         setNewMessage("")
-        
+
         // Clear typing timeout when message is sent
         if (typingTimeoutRef.current) {
           clearTimeout(typingTimeoutRef.current)
@@ -580,13 +580,13 @@ export default function EventDetail() {
       try {
         await postEventMessage(id, newMessage.trim())
         setNewMessage("")
-        
+
         // Clear typing timeout when message is sent
         if (typingTimeoutRef.current) {
           clearTimeout(typingTimeoutRef.current)
           typingTimeoutRef.current = null
         }
-        
+
         const messagesData = await getEventMessages(id)
         setMessages(messagesData || [])
         setTimeout(() => {
@@ -605,7 +605,7 @@ export default function EventDetail() {
 
   function handleTyping() {
     if (!id || !isAuthenticated || joined === null || (!joined && !isOwner)) return
-    
+
     // Send typing status via WebSocket if connected
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "typing" }))
@@ -615,12 +615,12 @@ export default function EventDetail() {
         // Silently fail - typing indicators are not critical
       })
     }
-    
+
     // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current)
     }
-    
+
     // Set new timeout to stop typing indicator after 2 seconds of inactivity
     typingTimeoutRef.current = setTimeout(() => {
       // Typing status will expire on backend after 3 seconds
@@ -639,10 +639,10 @@ export default function EventDetail() {
 
   async function handleDeleteConfirm() {
     if (!id || !messageToDelete || deletingMessageId) return
-    
+
     setShowDeleteConfirm(false)
     setDeletingMessageId(messageToDelete)
-    
+
     try {
       await deleteEventMessage(id, messageToDelete)
       const messagesData = await getEventMessages(id)
@@ -651,7 +651,7 @@ export default function EventDetail() {
       console.error("Failed to delete message:", error)
       const errorMessage = error?.response?.data?.detail || "Failed to delete message"
       alert(errorMessage)
-      
+
       // If unauthorized, redirect to login
       if (error?.response?.status === 401) {
         navigate("/login")
@@ -682,23 +682,23 @@ export default function EventDetail() {
 
   function formatMessageTime(dateString) {
     if (!dateString) return "Just now"
-    
+
     try {
       const date = new Date(dateString)
       const now = new Date()
-      
+
       if (isNaN(date.getTime())) {
         return "Just now"
       }
-      
+
       const diff = now.getTime() - date.getTime()
       if (diff < 0) {
         return "Just now"
       }
-      
+
       const seconds = Math.floor(diff / 1000)
       const minutes = Math.floor(seconds / 60)
-      
+
       if (seconds < 5) return "Just now"
       if (seconds < 60) return `${seconds}s ago`
       if (minutes < 1) return "Just now"
@@ -780,12 +780,19 @@ export default function EventDetail() {
 
   const studyMaterials = parseStudyMaterials(event.study_materials)
   const isFull = attendees.length >= event.capacity
+  const isPast = (() => {
+    if (!event) return false
+    const start = new Date(event.starts_at)
+    const end = new Date(event.ends_at ?? event.starts_at)
+    const now = new Date()
+    return end < now
+  })()
   const attendancePercentage = event.capacity > 0 ? Math.round((attendees.length / event.capacity) * 100) : 0
 
   return (
     <div className="min-h-screen tap-safe premium-scrollbar bg-gradient-to-br from-gray-50 via-slate-50 to-blue-50/30 route-transition">
       <div className="nav-spacer" />
-      
+
       {/* Cover Image - Thin */}
       {event.cover_image_url && (
         <section className="relative w-full">
@@ -799,7 +806,7 @@ export default function EventDetail() {
           </div>
         </section>
       )}
-      
+
       <div className="container-page section space-y-6">
         {/* Back Button */}
         <Link
@@ -815,6 +822,13 @@ export default function EventDetail() {
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             {/* Left: Event Info */}
             <div className="flex-1">
+              {isPast && (
+                <span className="px-3 py-1 bg-gray-800 text-white rounded-full text-xs font-semibold">
+                  <FontAwesomeIcon icon={faCheckCircle} className="mr-1.5" />
+                  Completed
+                </span>
+              )}
+
               <div className="flex flex-wrap items-center gap-3 mb-4">
                 {isOwner && (
                   <span className="px-3 py-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-full text-xs font-semibold">
@@ -859,6 +873,15 @@ export default function EventDetail() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <FontAwesomeIcon icon={faClock} className="text-teal-500 w-4 h-4" />
+                  <div>
+                    <p className="text-xs text-gray-500">Duration</p>
+                    <p className="text-sm font-semibold text-gray-900">
+                      {event.duration === 8 ? "All day" : `${event.duration} hour${event.duration === 1 ? '' : 's'}`}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
                   <FontAwesomeIcon icon={faMapMarkerAlt} className="text-indigo-500 w-4 h-4" />
                   <div className="min-w-0">
                     <p className="text-xs text-gray-500">Location</p>
@@ -874,6 +897,7 @@ export default function EventDetail() {
                     </p>
                   </div>
                 </div>
+
                 {event.exam && (
                   <div className="flex items-center gap-2">
                     <FontAwesomeIcon icon={faGraduationCap} className="text-green-500 w-4 h-4" />
@@ -887,14 +911,11 @@ export default function EventDetail() {
             </div>
 
             {/* Right: Join/Leave Button */}
-            {!isOwner && (
+            {/* Right: Join/Leave Button */}
+            {!isOwner && !isPast && (
               <div className="flex-shrink-0">
-                {joined === null && !isFull && (
-                  <div className="flex items-center gap-2 px-8 py-4 bg-gray-100 text-gray-400 rounded-xl font-bold w-full lg:w-auto">
-                    <div className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
-                    <span>Loading...</span>
-                  </div>
-                )}
+
+                {/* If not joined + not full + loading */}
                 {joined === false && !isFull && (
                   <button
                     onClick={handleJoinLeave}
@@ -902,9 +923,11 @@ export default function EventDetail() {
                     className="touch-target bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-600 text-white font-bold rounded-xl px-8 py-4 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none w-full lg:w-auto"
                   >
                     <FontAwesomeIcon icon={faUserPlus} className="w-5 h-5 inline mr-2" />
-                    {isLoading ? (isJoining ? "Joining..." : "Leaving...") : "Join Event"}
+                    {isLoading ? "Joining..." : "Join Event"}
                   </button>
                 )}
+
+                {/* If joined + not past */}
                 {joined === true && (
                   <button
                     onClick={handleJoinLeave}
@@ -912,11 +935,13 @@ export default function EventDetail() {
                     className="touch-target bg-gray-100 text-gray-700 font-bold rounded-xl px-8 py-4 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none border-2 border-gray-300 w-full lg:w-auto"
                   >
                     <FontAwesomeIcon icon={faUserMinus} className="w-5 h-5 inline mr-2" />
-                    {isLoading ? (isJoining ? "Joining..." : "Leaving...") : "Leave Event"}
+                    {isLoading ? "Leaving..." : "Leave Event"}
                   </button>
                 )}
+
               </div>
             )}
+
           </div>
         </section>
 
@@ -936,7 +961,7 @@ export default function EventDetail() {
                   </div>
                 </div>
               </div>
-              
+
               <div className="p-4 space-y-3 flex-1 overflow-y-auto premium-scrollbar">
                 {attendees.length === 0 ? (
                   <div className="text-center py-12">
@@ -949,7 +974,7 @@ export default function EventDetail() {
                   attendees.map((attendee, index) => {
                     const userPresence = presence.find(p => p.id === attendee.id)
                     const isOnline = userPresence?.is_online || false
-                    
+
                     return (
                       <Link
                         key={attendee.id}
@@ -958,12 +983,11 @@ export default function EventDetail() {
                         className="group flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-white border-2 border-gray-200 hover:border-orange-300 hover:shadow-lg transition-all duration-300"
                       >
                         <div className="flex-shrink-0 w-8 text-center">
-                          <span className={`text-lg font-bold ${
-                            index === 0 ? 'text-yellow-500' :
+                          <span className={`text-lg font-bold ${index === 0 ? 'text-yellow-500' :
                             index === 1 ? 'text-gray-400' :
-                            index === 2 ? 'text-orange-400' :
-                            'text-gray-400'
-                          }`}>
+                              index === 2 ? 'text-orange-400' :
+                                'text-gray-400'
+                            }`}>
                             {index + 1}
                           </span>
                         </div>
@@ -980,9 +1004,8 @@ export default function EventDetail() {
                             </div>
                           )}
                           {/* Online Status Indicator */}
-                          <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white ${
-                            isOnline ? 'bg-green-500' : 'bg-gray-400'
-                          }`} title={isOnline ? 'Online' : 'Offline'} />
+                          <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white ${isOnline ? 'bg-green-500' : 'bg-gray-400'
+                            }`} title={isOnline ? 'Online' : 'Offline'} />
                           {index === 0 && (
                             <div className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full flex items-center justify-center border-2 border-white">
                               <FontAwesomeIcon icon={faTrophy} className="text-white text-xs" />
@@ -1014,8 +1037,13 @@ export default function EventDetail() {
 
           {/* Right: Group Chat - Large Messaging Area */}
           <div className="lg:col-span-2">
-            {(joined || isOwner) ? (
+            {(joined || isOwner) && !isPast ? (
+
+              /* ===========================
+                        CHAT UI (YOUR FULL CODE)
+                 =========================== */
               <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden flex flex-col h-[400px] lg:h-[600px]">
+
                 {/* Chat Header */}
                 <div className="relative bg-gradient-to-br from-slate-900 via-indigo-900 to-purple-900 p-5 flex-shrink-0">
                   <div className="flex items-center gap-3">
@@ -1035,16 +1063,20 @@ export default function EventDetail() {
                         )}
                       </div>
                       <p className="text-indigo-200 text-xs">
-                        {messages.length > 0 ? `${messages.length} message${messages.length !== 1 ? 's' : ''} • ${wsConnected ? 'Connected' : 'Reconnecting...'}` : wsConnected ? 'Start chatting' : 'Connecting...'}
+                        {messages.length > 0
+                          ? `${messages.length} message${messages.length !== 1 ? 's' : ''} • ${wsConnected ? 'Connected' : 'Reconnecting...'}`
+                          : wsConnected
+                            ? 'Start chatting'
+                            : 'Connecting...'}
                       </p>
                     </div>
                   </div>
                 </div>
 
                 {/* Messages Container */}
-                <div 
+                <div
                   ref={messagesContainerRef}
-                  className="flex-1 overflow-y-auto premium-scrollbar p-4" 
+                  className="flex-1 overflow-y-auto premium-scrollbar p-4"
                   style={{
                     background: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)',
                   }}
@@ -1064,15 +1096,18 @@ export default function EventDetail() {
                       {messages.map((msg, index) => {
                         const isOwnMessage = user && msg.user.id === user.id
                         const prevMsg = index > 0 ? messages[index - 1] : null
-                        const nextMsg = index < messages.length - 1 ? messages[index + 1] : null
-                        const isConsecutive = prevMsg && prevMsg.user.id === msg.user.id && 
-                          (new Date(msg.created_at) - new Date(prevMsg.created_at)) < 300000
-                        
+                        const isConsecutive =
+                          prevMsg &&
+                          prevMsg.user.id === msg.user.id &&
+                          new Date(msg.created_at) - new Date(prevMsg.created_at) < 300000
+
                         return (
                           <div
                             key={msg.id}
-                            className={`relative flex ${isOwnMessage ? 'justify-end' : 'justify-start'} ${!isConsecutive ? 'mt-3' : 'mt-1'}`}
+                            className={`relative flex ${isOwnMessage ? 'justify-end' : 'justify-start'} ${!isConsecutive ? 'mt-3' : 'mt-1'
+                              }`}
                           >
+                            {/* Own Message Delete Button */}
                             {isOwnMessage && !msg.is_deleted && (
                               <div className="absolute left-0 top-0">
                                 <button
@@ -1089,19 +1124,20 @@ export default function EventDetail() {
                                 </button>
                               </div>
                             )}
-                            
+
+                            {/* Avatar */}
                             {!isOwnMessage && (
                               <div className={`flex-shrink-0 ${isConsecutive ? 'opacity-0' : 'opacity-100'} transition-opacity mr-2`}>
                                 {!isConsecutive ? (
                                   msg.user.photo_url ? (
                                     <img
                                       src={msg.user.photo_url}
-                                      alt={msg.user.name || "User"}
+                                      alt={msg.user.name || 'User'}
                                       className="w-8 h-8 rounded-lg object-cover ring-2 ring-white shadow-sm"
                                     />
                                   ) : (
                                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold ring-2 ring-white shadow-sm">
-                                      {(msg.user.name || msg.user.email || "U")[0].toUpperCase()}
+                                      {(msg.user.name || msg.user.email || 'U')[0].toUpperCase()}
                                     </div>
                                   )
                                 ) : (
@@ -1109,79 +1145,45 @@ export default function EventDetail() {
                                 )}
                               </div>
                             )}
-                            
-                            <div className={`flex flex-col ${isOwnMessage ? 'items-end' : 'items-start'} flex-1 min-w-0 max-w-[75%] group`}>
+
+                            {/* Message Bubble */}
+                            <div
+                              className={`flex flex-col ${isOwnMessage ? 'items-end' : 'items-start'
+                                } flex-1 min-w-0 max-w-[75%] group`}
+                            >
                               {!isOwnMessage && !isConsecutive && (
                                 <div className="flex items-center gap-2 mb-1 px-1">
                                   <span className="text-xs font-bold text-gray-700">
-                                    {msg.user.name || msg.user.email || "User"}
+                                    {msg.user.name || msg.user.email || 'User'}
                                   </span>
-                                  <span className="text-[10px] text-gray-400">
-                                    {formatMessageTime(msg.created_at)}
-                                  </span>
+                                  <span className="text-[10px] text-gray-400">{formatMessageTime(msg.created_at)}</span>
                                 </div>
                               )}
-                              <div className={`relative flex items-center gap-2 ${
-                                isOwnMessage 
-                                  ? msg.is_deleted 
-                                    ? 'bg-gray-300/50 text-gray-500 border border-gray-300/50' 
+
+                              <div
+                                className={`relative flex items-center gap-2 ${isOwnMessage
+                                  ? msg.is_deleted
+                                    ? 'bg-gray-300/50 text-gray-500 border border-gray-300/50'
                                     : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white'
                                   : msg.is_deleted
                                     ? 'bg-gray-200/50 text-gray-500 border border-gray-300/50'
                                     : 'bg-white text-gray-800 border border-gray-200/80'
-                              } rounded-xl px-3 py-2 shadow-sm ${msg.is_deleted ? 'italic' : ''}`}>
+                                  } rounded-xl px-3 py-2 shadow-sm ${msg.is_deleted ? 'italic' : ''}`}
+                              >
                                 {msg.is_deleted ? (
                                   <p className="text-xs leading-relaxed flex-1 flex items-center gap-2">
                                     <FontAwesomeIcon icon={faTrash} className="w-3 h-3 opacity-50" />
                                     <span>This message has been deleted</span>
                                   </p>
                                 ) : (
-                                  <p className="text-sm leading-relaxed whitespace-pre-wrap break-words flex-1">
-                                    {msg.content}
-                                  </p>
+                                  <p className="text-sm leading-relaxed whitespace-pre-wrap break-words flex-1">{msg.content}</p>
                                 )}
                               </div>
-                              
-                              {isOwnMessage && (
-                                <div className="flex items-center gap-1.5 mt-1 px-1">
-                                  <p className="text-[10px] text-gray-400">
-                                    {formatMessageTime(msg.created_at)}
-                                  </p>
-                                  {!msg.is_deleted && msg.read_count > 0 && (
-                                    <div className="flex items-center gap-1" title={`Read by ${msg.read_count} ${msg.read_count === 1 ? 'person' : 'people'}`}>
-                                      <FontAwesomeIcon icon={faCheckCircle} className={`w-3 h-3 ${msg.read_count >= attendees.length ? 'text-blue-500' : 'text-gray-400'}`} />
-                                      {msg.read_count > 1 && (
-                                        <span className="text-[9px] text-gray-400">{msg.read_count}</span>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
                             </div>
-                            
-                            {isOwnMessage && (
-                              <div className={`flex-shrink-0 ml-2 ${isConsecutive ? 'opacity-0' : 'opacity-100'} transition-opacity`}>
-                                {!isConsecutive ? (
-                                  user?.photo_url ? (
-                                    <img
-                                      src={user.photo_url}
-                                      alt={user.name || "You"}
-                                      className="w-8 h-8 rounded-lg object-cover ring-2 ring-white shadow-sm"
-                                    />
-                                  ) : (
-                                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold ring-2 ring-white shadow-sm">
-                                      {(user?.name || user?.email || "U")[0].toUpperCase()}
-                                    </div>
-                                  )
-                                ) : (
-                                  <div className="w-8" />
-                                )}
-                              </div>
-                            )}
                           </div>
                         )
                       })}
-                      
+
                       {/* Typing Indicator */}
                       {typingUsers.length > 0 && (
                         <div className="flex items-center gap-2 px-4 py-2 text-sm text-gray-500 italic">
@@ -1191,14 +1193,13 @@ export default function EventDetail() {
                             <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                           </div>
                           <span>
-                            {typingUsers.length === 1 
+                            {typingUsers.length === 1
                               ? `${typingUsers[0].name} is typing...`
-                              : `${typingUsers.length} people are typing...`
-                            }
+                              : `${typingUsers.length} people are typing...`}
                           </span>
                         </div>
                       )}
-                      
+
                       <div ref={messagesEndRef} />
                     </div>
                   )}
@@ -1206,13 +1207,17 @@ export default function EventDetail() {
 
                 {/* Message Input */}
                 <div className="p-4 bg-gradient-to-b from-white to-gray-50/50 border-t border-gray-200/60 flex-shrink-0">
-                  <form onSubmit={handleSendMessage} className="relative" onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      handleSendMessage(e)
-                    }
-                  }}>
+                  <form
+                    onSubmit={handleSendMessage}
+                    className="relative"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        handleSendMessage(e)
+                      }
+                    }}
+                  >
                     <div className="flex items-center gap-2 bg-white rounded-xl border-2 border-gray-200/60 shadow-md hover:border-indigo-300/60 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all p-1">
                       <input
                         type="text"
@@ -1220,13 +1225,6 @@ export default function EventDetail() {
                         onChange={(e) => {
                           setNewMessage(e.target.value)
                           handleTyping()
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            handleSendMessage(e)
-                          }
                         }}
                         placeholder="Write a message..."
                         className="flex-1 px-3 py-2 bg-transparent border-0 outline-none text-gray-900 placeholder-gray-400 text-sm"
@@ -1236,16 +1234,10 @@ export default function EventDetail() {
                       <button
                         type="submit"
                         disabled={!newMessage.trim() || sendingMessage}
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          handleSendMessage(e)
-                        }}
-                        className={`touch-target w-11 h-11 flex items-center justify-center rounded-lg transition-all ${
-                          newMessage.trim() && !sendingMessage
-                            ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white hover:scale-110 active:scale-95'
-                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        }`}
+                        className={`touch-target w-11 h-11 flex items-center justify-center rounded-lg transition-all ${newMessage.trim() && !sendingMessage
+                          ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white hover:scale-110 active:scale-95'
+                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          }`}
                       >
                         {sendingMessage ? (
                           <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1257,7 +1249,25 @@ export default function EventDetail() {
                   </form>
                 </div>
               </div>
+
+            ) : isPast ? (
+
+              /* ===========================
+                      EVENT ENDED UI
+                 =========================== */
+              <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 p-12 text-center">
+                <div className="w-20 h-20 bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <FontAwesomeIcon icon={faCheckCircle} className="w-10 h-10 text-gray-500" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">Event Ended</h3>
+                <p className="text-gray-500">Chat is closed for completed events.</p>
+              </div>
+
             ) : (
+
+              /* ===========================
+                     JOIN TO CHAT UI
+                 =========================== */
               <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 p-12 text-center">
                 <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
                   <FontAwesomeIcon icon={faComments} className="w-10 h-10 text-gray-400" />
@@ -1271,7 +1281,9 @@ export default function EventDetail() {
                   Join Event
                 </button>
               </div>
+
             )}
+
           </div>
         </div>
 
@@ -1287,7 +1299,7 @@ export default function EventDetail() {
                 <p className="text-gray-600 text-sm">{studyMaterials.length} file{studyMaterials.length !== 1 ? 's' : ''} available</p>
               </div>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {studyMaterials.map((material, index) => (
                 <div
@@ -1319,7 +1331,7 @@ export default function EventDetail() {
 
       {/* Delete Message Confirmation Modal */}
       {showDeleteConfirm && createPortal(
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{
             backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -1331,7 +1343,7 @@ export default function EventDetail() {
             setMessageToDelete(null)
           }}
         >
-          <div 
+          <div
             className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 transform transition-all"
             style={{
               animation: 'slideUpFadeIn 0.3s ease-out'
@@ -1347,11 +1359,11 @@ export default function EventDetail() {
                 <p className="text-sm text-gray-600">This action cannot be undone</p>
               </div>
             </div>
-            
+
             <p className="text-gray-700 mb-6">
-              Are you sure you want to delete this message? 
+              Are you sure you want to delete this message?
             </p>
-            
+
             <div className="flex gap-3">
               <button
                 onClick={handleDeleteConfirm}

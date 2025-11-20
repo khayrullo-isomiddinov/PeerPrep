@@ -1,0 +1,14 @@
+/* Utility Classes */
+
+@layer utilities {
+  .rounded-s { border-radius: var(--radius-sm); }
+  .rounded-pill { border-radius: var(--radius-pill); }
+
+  .text-muted { color: #64748b; }
+
+  .tap-safe { -webkit-tap-highlight-color: transparent; }
+}
+
+
+
+

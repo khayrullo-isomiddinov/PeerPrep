@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { 
-  faImage, faInfo, faMapMarkerAlt, faEye, faChevronRight, 
+import {
+  faImage, faInfo, faMapMarkerAlt, faEye, faChevronRight,
   faChevronLeft, faCalendarAlt, faClock, faUsers, faGraduationCap,
   faBook, faTrash, faUpload, faCheck, faWandMagicSparkles, faTimes
 } from "@fortawesome/free-solid-svg-icons"
@@ -28,6 +28,7 @@ export default function CreateEventForm({ onCreated }) {
     state: "",
     country: "",
     capacity: 8,
+    duration: 2,
     kind: "one_off",
     coverImage: null,
     albumImages: [],
@@ -43,35 +44,97 @@ export default function CreateEventForm({ onCreated }) {
   const navigate = useNavigate()
 
   useEffect(() => {
-    setLastUpdate(new Date())
-  }, [formData])
+    setFieldErrors(prev => {
+      const updated = { ...prev }
+
+      if (formData.startsAt && isInPast(formData.startsAt)) {
+        updated.startsAt = "Start date/time cannot be in the past"
+      } else {
+        delete updated.startsAt
+      }
+
+      return updated
+    })
+  }, [formData.startsAt])
+
+  useEffect(() => {
+    if (!formData.startsAt) return
+
+    const selected = new Date(formData.startsAt)
+    const now = new Date()
+
+    // minimum allowed = now + 5 minutes
+    const minAllowed = new Date(now.getTime() + 5 * 60000)
+
+    // If already valid → do nothing (prevents infinite loop)
+    if (selected >= minAllowed) return
+
+    // Otherwise auto-correct once
+    const iso = minAllowed.toISOString().slice(0, 16)
+    updateFormData({ startsAt: iso })
+  }, [formData.startsAt])
+
+
+
+
+
+  function isInPast(dateString) {
+    const selected = new Date(dateString);
+    const now = new Date();
+    return selected < now;
+  }
+
+  function isToday(dateString) {
+    const d = new Date(dateString)
+    const now = new Date()
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    )
+  }
+
+
 
   function validateStep(step) {
     const errs = {}
     switch (step) {
-      case 0: 
-        // Cover image is optional
+      case 0:
         break
-      case 1: 
+
+      case 1:
         if (!formData.title.trim()) errs.title = "Title is required"
         if (!formData.category) errs.category = "Category is required"
         break
-      case 2: 
-        if (!formData.startsAt) errs.startsAt = "Start date/time is required"
+
+      case 2:
+        if (!formData.startsAt) {
+          errs.startsAt = "Start date/time is required"
+        } else if (isInPast(formData.startsAt)) {
+          errs.startsAt = "Start date/time cannot be in the past"
+        }
+
         if (!formData.location.trim()) errs.location = "Location is required"
         if (!formData.address.trim()) errs.address = "Address is required"
         if (!formData.city.trim()) errs.city = "City is required"
         break
+
       case 3:
-        // Cover image is optional
         if (!formData.title.trim()) errs.title = "Title is required"
         if (!formData.category) errs.category = "Category is required"
-        if (!formData.startsAt) errs.startsAt = "Start date/time is required"
+
+        if (!formData.startsAt) {
+          errs.startsAt = "Start date/time is required"
+        } else if (isInPast(formData.startsAt)) {
+          errs.startsAt = "Start date/time cannot be in the past"
+        }
+
         if (!formData.location.trim()) errs.location = "Location is required"
         break
     }
     return errs
   }
+
 
   function canProceedToNext() {
     const errs = validateStep(currentStep)
@@ -79,8 +142,16 @@ export default function CreateEventForm({ onCreated }) {
   }
 
   function canPublishEvent() {
-    return formData.title.trim() && formData.category && formData.startsAt && formData.location.trim() && formData.coverImage
+    return (
+      formData.title.trim() &&
+      formData.category &&
+      formData.startsAt &&
+      !isInPast(formData.startsAt) &&
+      formData.location.trim() &&
+      formData.coverImage
+    )
   }
+
 
   function nextStep() {
     if (canProceedToNext() && currentStep < STEPS.length - 1) {
@@ -103,14 +174,14 @@ export default function CreateEventForm({ onCreated }) {
       setError("Please enter a title first before refining.")
       return
     }
-    
+
     const token = localStorage.getItem("access_token")
     if (!token) {
       setError("Please log in to use AI refinement.")
       navigate("/login")
       return
     }
-    
+
     setRefiningTitle(true)
     setError("")
     try {
@@ -134,14 +205,14 @@ export default function CreateEventForm({ onCreated }) {
       setError("Please enter a description first before refining.")
       return
     }
-    
+
     const token = localStorage.getItem("access_token")
     if (!token) {
       setError("Please log in to use AI refinement.")
       navigate("/login")
       return
     }
-    
+
     setRefiningDescription(true)
     setError("")
     try {
@@ -165,8 +236,15 @@ export default function CreateEventForm({ onCreated }) {
     const errs = {}
     if (!formData.title.trim()) errs.title = "Title is required"
     if (!formData.category) errs.category = "Category is required"
-    if (!formData.startsAt) errs.startsAt = "Start date/time is required"
+
+    if (!formData.startsAt) {
+      errs.startsAt = "Start date/time is required"
+    } else if (isInPast(formData.startsAt)) {
+      errs.startsAt = "Start date/time cannot be in the past"
+    }
+
     if (!formData.location.trim()) errs.location = "Location is required"
+
     // Cover image is optional
 
     setFieldErrors(errs)
@@ -194,11 +272,11 @@ export default function CreateEventForm({ onCreated }) {
 
       const payload = {
         title: formData.title.trim(),
-        starts_at: new Date(formData.startsAt).toISOString(),
+        starts_at: formData.startsAt,
         location: formData.location.trim(),
         capacity: Number(formData.capacity),
+        duration: Number(formData.duration),
         description: formData.description?.trim() || null,
-        group_id: null,
         kind: "one_off",
         cover_image_url: coverImageUrl,
         study_materials: studyMaterialsJson,
@@ -237,22 +315,22 @@ export default function CreateEventForm({ onCreated }) {
   return (
     <div className="min-h-screen bg-gray-50 event-creation-form">
       <div className="flex">
-        {}
+        { }
         <div className="w-80 bg-white border-r border-gray-200 p-6 step-sidebar">
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Create a Study Event</h1>
-            <div className="text-sm text-gray-500 mb-1">
-              Last update: {lastUpdate.toLocaleDateString('en-US', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              })} | {lastUpdate.toLocaleTimeString('en-US', { 
-                hour: '2-digit', 
-                minute: '2-digit' 
+            <div className="text-sm text-gray-700 mb-1">
+              Last update: {lastUpdate.toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              })} | {lastUpdate.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit'
               })}
             </div>
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-700">
               Status: <span className="text-orange-600 font-medium">Draft</span>
             </div>
           </div>
@@ -266,7 +344,7 @@ export default function CreateEventForm({ onCreated }) {
               }, {})
             ).map(([section, steps]) => (
               <div key={section}>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-3">
                   {section}
                 </h3>
                 <div className="space-y-2">
@@ -278,24 +356,22 @@ export default function CreateEventForm({ onCreated }) {
                       (stepIndex === 1 && formData.title.trim() && formData.category) ||
                       (stepIndex === 2 && formData.startsAt && formData.location.trim())
                     )
-                    
+
                     return (
                       <button
                         key={step.id}
                         onClick={() => setCurrentStep(stepIndex)}
-                        className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left step-button ${
-                          isActive 
-                            ? 'bg-pink-50 text-pink-600 border border-pink-200' 
-                            : isCompleted
+                        className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left step-button ${isActive
+                          ? 'bg-pink-50 text-pink-600 border border-pink-200'
+                          : isCompleted
                             ? 'text-gray-600 hover:bg-gray-50'
                             : 'text-gray-400 hover:text-gray-600'
-                        }`}
-                      >
-                        <FontAwesomeIcon 
-                          icon={step.icon} 
-                          className={`w-4 h-4 ${
-                            isActive ? 'text-pink-600' : isCompleted ? 'text-green-500' : ''
                           }`}
+                      >
+                        <FontAwesomeIcon
+                          icon={step.icon}
+                          className={`w-4 h-4 ${isActive ? 'text-pink-600' : isCompleted ? 'text-green-500' : ''
+                            }`}
                         />
                         <span className="text-sm font-medium">{step.title}</span>
                         {isCompleted && (
@@ -310,10 +386,10 @@ export default function CreateEventForm({ onCreated }) {
           </div>
         </div>
 
-        {}
+        { }
         <div className="flex-1 p-8">
           <div className="max-w-4xl mx-auto">
-            {}
+            { }
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6 step-content">
               {error && (
                 <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -321,14 +397,14 @@ export default function CreateEventForm({ onCreated }) {
                 </div>
               )}
               {currentStep === 0 && (
-                <UploadCoverStep 
-                  formData={formData} 
+                <UploadCoverStep
+                  formData={formData}
                   updateFormData={updateFormData}
                   fieldErrors={fieldErrors}
                 />
               )}
               {currentStep === 1 && (
-                <GeneralInfoStep 
+                <GeneralInfoStep
                   formData={formData}
                   updateFormData={updateFormData}
                   fieldErrors={fieldErrors}
@@ -340,30 +416,32 @@ export default function CreateEventForm({ onCreated }) {
                 />
               )}
               {currentStep === 2 && (
-                <LocationTimeStep 
-                  formData={formData} 
+                <LocationTimeStep
+                  formData={formData}
                   updateFormData={updateFormData}
                   fieldErrors={fieldErrors}
+                  isToday={isToday}
                 />
               )}
+
               {currentStep === 3 && (
-                <ReviewPublishStep 
-                  formData={formData} 
+                <ReviewPublishStep
+                  formData={formData}
                   updateFormData={updateFormData}
                   error={error}
                 />
               )}
-          </div>
+            </div>
 
-            {}
+            { }
             <div className="flex items-center justify-between">
               <button
                 onClick={cancel}
-                className="text-gray-500 hover:text-gray-700 font-medium"
+                className="text-gray-700 hover:text-gray-700 font-medium"
               >
                 ✕ Cancel
               </button>
-              
+
               <div className="flex items-center space-x-4">
                 <button
                   onClick={saveDraft}
@@ -371,7 +449,7 @@ export default function CreateEventForm({ onCreated }) {
                 >
                   Save draft
                 </button>
-                
+
                 {currentStep < STEPS.length - 1 ? (
                   <button
                     onClick={nextStep}
@@ -382,14 +460,14 @@ export default function CreateEventForm({ onCreated }) {
                     <FontAwesomeIcon icon={faChevronRight} className="w-4 h-4" />
                   </button>
                 ) : (
-              <button
+                  <button
                     onClick={handleSubmit}
                     disabled={loading || !canPublishEvent()}
                     className="px-6 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                   >
                     <span>{loading ? "Publishing..." : "Publish Event"}</span>
                     <FontAwesomeIcon icon={faChevronRight} className="w-4 h-4" />
-              </button>
+                  </button>
                 )}
               </div>
             </div>
@@ -422,7 +500,7 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
     e.preventDefault()
     e.stopPropagation()
     setDragActive(false)
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0]
       if (file.type.startsWith('image/')) {
@@ -471,9 +549,9 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
         <FontAwesomeIcon icon={faImage} className="w-6 h-6 text-pink-500" />
         <h2 className="text-2xl font-bold text-gray-900">Upload cover</h2>
       </div>
-      
+
       <p className="text-gray-600 mb-6">
-        Upload a cover image or generate one with AI to capture your event's focus and attract participants (optional).
+        Upload a cover image or generate one with AI. 
       </p>
 
       <div className="flex items-center space-x-4 mb-6">
@@ -488,11 +566,10 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
               }, 100)
             }
           }}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            mode === "upload"
-              ? "bg-pink-500 text-white"
-              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          }`}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${mode === "upload"
+            ? "bg-pink-500 text-white"
+            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
         >
           Upload Image
         </button>
@@ -501,11 +578,10 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
             setMode("generate")
             setGenerateError("")
           }}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
-            mode === "generate"
-              ? "bg-pink-500 text-white"
-              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          }`}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${mode === "generate"
+            ? "bg-pink-500 text-white"
+            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
         >
           <FontAwesomeIcon icon={faWandMagicSparkles} className="w-4 h-4" />
           <span>Generate with AI</span>
@@ -513,61 +589,60 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
       </div>
 
       {mode === "upload" ? (
-        <div className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-          dragActive ? 'border-pink-400 bg-pink-50' : 'border-gray-300 hover:border-pink-400'
-        }`}
-        onDragEnter={handleDrag}
-        onDragLeave={handleDrag}
-        onDragOver={handleDrag}
-        onDrop={handleDrop}>
+        <div className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${dragActive ? 'border-pink-400 bg-pink-50' : 'border-gray-300 hover:border-pink-400'
+          }`}
+          onDragEnter={handleDrag}
+          onDragLeave={handleDrag}
+          onDragOver={handleDrag}
+          onDrop={handleDrop}>
           {formData.coverImage ? (
-          <div className="space-y-4">
-            <img 
-              src={URL.createObjectURL(formData.coverImage)}
-              alt="Cover preview" 
-              className="mx-auto max-h-64 rounded-lg shadow-lg"
-            />
-            <div className="flex items-center justify-center space-x-4">
-              <span className="text-sm text-gray-600">{formData.coverImage.name}</span>
-              <button 
-                onClick={removeImage}
-                className="text-red-500 hover:text-red-700 text-sm font-medium flex items-center space-x-1"
-              >
-                <FontAwesomeIcon icon={faTrash} className="w-3 h-3" />
-                <span>Remove</span>
-              </button>
-              <label className="bg-pink-500 text-white px-4 py-2 rounded-lg hover:bg-pink-600 transition-colors text-sm font-medium cursor-pointer">
-                Change
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileInput}
-                  className="hidden"
-                />
-              </label>
+            <div className="space-y-4">
+              <img
+                src={URL.createObjectURL(formData.coverImage)}
+                alt="Cover preview"
+                className="mx-auto max-h-64 rounded-lg shadow-lg"
+              />
+              <div className="flex items-center justify-center space-x-4">
+                <span className="text-sm text-gray-600">{formData.coverImage.name}</span>
+                <button
+                  onClick={removeImage}
+                  className="text-red-500 hover:text-red-700 text-sm font-medium flex items-center space-x-1"
+                >
+                  <FontAwesomeIcon icon={faTrash} className="w-3 h-3" />
+                  <span>Remove</span>
+                </button>
+                <label className="bg-pink-500 text-white px-4 py-2 rounded-lg hover:bg-pink-600 transition-colors text-sm font-medium cursor-pointer">
+                  Change
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileInput}
+                    className="hidden"
+                  />
+                </label>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mx-auto">
-              <FontAwesomeIcon icon={faUpload} className="w-8 h-8 text-pink-500" />
+          ) : (
+            <div className="space-y-4">
+              <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mx-auto">
+                <FontAwesomeIcon icon={faUpload} className="w-8 h-8 text-pink-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Upload cover image</h3>
+                <p className="text-gray-600 mb-4">Drag and drop or click to browse (optional)</p>
+                <label className="bg-pink-500 text-white px-6 py-2 rounded-lg hover:bg-pink-600 transition-colors font-medium cursor-pointer">
+                  Choose File
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileInput}
+                    className="hidden"
+                  />
+                </label>
+              </div>
             </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Upload cover image</h3>
-              <p className="text-gray-600 mb-4">Drag and drop or click to browse (optional)</p>
-              <label className="bg-pink-500 text-white px-6 py-2 rounded-lg hover:bg-pink-600 transition-colors font-medium cursor-pointer">
-                Choose File
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileInput}
-                  className="hidden"
-                />
-              </label>
-            </div>
-          </div>
           )}
         </div>
       ) : (
@@ -593,11 +668,10 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
                 }}
                 placeholder="e.g., A modern illustration of ADA programming language with code snippets and syntax highlighting"
                 rows={4}
-                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                  generateError ? 'border-red-300' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${generateError ? 'border-red-300' : 'border-gray-300'
+                  }`}
               />
-              <p className="text-xs text-gray-500 mt-2">
+              <p className="text-xs text-gray-700 mt-2">
                 Be specific about what you want. Include subject, style, and any important details.
               </p>
               {generateError && (
@@ -642,7 +716,7 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
                     <FontAwesomeIcon icon={faTrash} className="w-4 h-4" />
                   </button>
                 </div>
-                <p className="text-xs text-gray-500 mt-2 text-center">
+                <p className="text-xs text-gray-700 mt-2 text-center">
                   You can generate a new image or switch to upload mode to use a different image
                 </p>
               </div>
@@ -697,9 +771,8 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, categories, on
               value={formData.title}
               onChange={(e) => updateFormData({ title: e.target.value })}
               placeholder="Make it catchy and memorable"
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                fieldErrors.title ? 'border-red-300' : 'border-gray-300'
-              }`}
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${fieldErrors.title ? 'border-red-300' : 'border-gray-300'
+                }`}
             />
             {fieldErrors.title && (
               <p className="mt-1 text-sm text-red-600">{fieldErrors.title}</p>
@@ -748,9 +821,8 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, categories, on
             <select
               value={formData.category}
               onChange={(e) => updateFormData({ category: e.target.value })}
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                fieldErrors.category ? 'border-red-300' : 'border-gray-300'
-              }`}
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${fieldErrors.category ? 'border-red-300' : 'border-gray-300'
+                }`}
             >
               <option value="">Choose the subject for your study group</option>
               {categories.map(cat => (
@@ -774,15 +846,15 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, categories, on
               maxLength={100}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
             />
-            <div className="flex items-center justify-between text-sm text-gray-500 mt-1">
+            <div className="flex items-center justify-between text-sm text-gray-700 mt-1">
               <span>Optional: What exam is this event preparing for?</span>
               <span>{formData.exam.length}/100</span>
             </div>
           </div>
 
-          <StudyMaterialsSection 
-            formData={formData} 
-            updateFormData={updateFormData} 
+          <StudyMaterialsSection
+            formData={formData}
+            updateFormData={updateFormData}
           />
         </div>
       </div>
@@ -807,7 +879,7 @@ function StudyMaterialsSection({ formData, updateFormData }) {
     e.preventDefault()
     e.stopPropagation()
     setDragActive(false)
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       await processFiles(Array.from(e.dataTransfer.files))
     }
@@ -821,7 +893,7 @@ function StudyMaterialsSection({ formData, updateFormData }) {
 
   async function processFiles(files) {
     const newMaterials = []
-    
+
     for (const file of files) {
       // Check file size (max 10MB per file)
       if (file.size > 10 * 1024 * 1024) {
@@ -850,8 +922,8 @@ function StudyMaterialsSection({ formData, updateFormData }) {
     }
 
     if (newMaterials.length > 0) {
-      updateFormData({ 
-        studyMaterials: [...formData.studyMaterials, ...newMaterials] 
+      updateFormData({
+        studyMaterials: [...formData.studyMaterials, ...newMaterials]
       })
     }
   }
@@ -883,12 +955,11 @@ function StudyMaterialsSection({ formData, updateFormData }) {
       <label className="block text-sm font-semibold text-gray-700 mb-2">
         Study Materials <span className="text-gray-400 font-normal">(Optional)</span>
       </label>
-      <div 
-        className={`border-2 border-dashed rounded-lg p-6 transition-colors ${
-          dragActive 
-            ? 'border-pink-400 bg-pink-50' 
-            : 'border-gray-300 hover:border-pink-400'
-        }`}
+      <div
+        className={`border-2 border-dashed rounded-lg p-6 transition-colors ${dragActive
+          ? 'border-pink-400 bg-pink-50'
+          : 'border-gray-300 hover:border-pink-400'
+          }`}
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
@@ -897,7 +968,7 @@ function StudyMaterialsSection({ formData, updateFormData }) {
         {formData.studyMaterials.length > 0 ? (
           <div className="space-y-3">
             {formData.studyMaterials.map((material, index) => (
-              <div 
+              <div
                 key={index}
                 className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
               >
@@ -905,7 +976,7 @@ function StudyMaterialsSection({ formData, updateFormData }) {
                   <div className="text-2xl flex-shrink-0">{getFileIcon(material.type)}</div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{material.name}</p>
-                    <p className="text-xs text-gray-500">{formatFileSize(material.size)}</p>
+                    <p className="text-xs text-gray-700">{formatFileSize(material.size)}</p>
                   </div>
                 </div>
                 <button
@@ -935,7 +1006,7 @@ function StudyMaterialsSection({ formData, updateFormData }) {
             <FontAwesomeIcon icon={faUpload} className="w-8 h-8 text-gray-400 mx-auto" />
             <div>
               <p className="text-sm text-gray-600 mb-2">Upload study materials, notes, or resources</p>
-              <p className="text-xs text-gray-500 mb-4">Supports PDFs, documents, images, and more (max 10MB per file)</p>
+              <p className="text-xs text-gray-700 mb-4">Supports PDFs, documents, images, and more (max 10MB per file)</p>
             </div>
             <label className="inline-block">
               <span className="bg-pink-500 text-white px-6 py-2 rounded-lg hover:bg-pink-600 transition-colors text-sm font-medium cursor-pointer inline-flex items-center gap-2">
@@ -957,194 +1028,156 @@ function StudyMaterialsSection({ formData, updateFormData }) {
   )
 }
 
-function LocationTimeStep({ formData, updateFormData, fieldErrors }) {
+function LocationTimeStep({ formData, updateFormData, fieldErrors, isToday }) {
   return (
-    <div className="space-y-8">
-      <div className="flex items-center space-x-3 mb-6">
-        <FontAwesomeIcon icon={faMapMarkerAlt} className="w-6 h-6 text-pink-500" />
-        <h2 className="text-2xl font-bold text-gray-900">Location and time</h2>
+    <div className="space-y-10">
+      {/* Header */}
+      <div className="flex items-center space-x-3">
+        <FontAwesomeIcon icon={faMapMarkerAlt} className="w-5 h-5 text-pink-500" />
+        <h2 className="text-xl font-bold text-gray-900">Location & Time</h2>
       </div>
 
-      {}
+      {/* ---- Location Section ---- */}
       <div className="space-y-6">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Location</h3>
-          <p className="text-gray-600 mb-4">
-            Specify where your study group will meet - online or in person.
-          </p>
-        </div>
+        <h3 className="text-sm font-semibold text-gray-800 tracking-wide">
+          LOCATION
+        </h3>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Study Location *
-              </label>
-              <input
-                type="text"
-                value={formData.location}
-                onChange={(e) => updateFormData({ location: e.target.value })}
-                placeholder="e.g., Library Room 3B, Zoom Meeting, Coffee Shop"
-                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                  fieldErrors.location ? 'border-red-300' : 'border-gray-300'
-                }`}
-              />
-              {fieldErrors.location && (
-                <p className="mt-1 text-sm text-red-600">{fieldErrors.location}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Address
-              </label>
-              <input
-                type="text"
-                value={formData.address}
-                onChange={(e) => updateFormData({ address: e.target.value })}
-                placeholder="Street address"
-                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                  fieldErrors.address ? 'border-red-300' : 'border-gray-300'
-                }`}
-              />
-              {fieldErrors.address && (
-                <p className="mt-1 text-sm text-red-600">{fieldErrors.address}</p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  City *
-                </label>
-                <input
-                  type="text"
-                  value={formData.city}
-                  onChange={(e) => updateFormData({ city: e.target.value })}
-                  placeholder="City"
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                    fieldErrors.city ? 'border-red-300' : 'border-gray-300'
-                  }`}
-                />
-                {fieldErrors.city && (
-                  <p className="mt-1 text-sm text-red-600">{fieldErrors.city}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  State/Province
-                </label>
-                <input
-                  type="text"
-                  value={formData.state}
-                  onChange={(e) => updateFormData({ state: e.target.value })}
-                  placeholder="State"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
-                />
-              </div>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">Study Location *</label>
+            <input
+              type="text"
+              value={formData.location}
+              onChange={(e) => updateFormData({ location: e.target.value })}
+              placeholder="Library • Zoom • Café"
+              className={`w-full text-gray-800 px-3 py-2.5 rounded-lg border 
+              ${fieldErrors.location ? "border-red-300" : "border-gray-300"}
+              focus:ring-2 focus:ring-pink-500 focus:border-pink-500`}
+            />
+            {fieldErrors.location && <p className="text-red-600 text-sm">{fieldErrors.location}</p>}
           </div>
 
-          <div className="bg-gray-100 rounded-lg p-4 flex items-center justify-center">
-            <div className="text-center text-gray-500">
-              <FontAwesomeIcon icon={faMapMarkerAlt} className="w-12 h-12 mb-2" />
-              <p className="text-sm">Map integration would go here</p>
-            </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">Address</label>
+            <input
+              type="text"
+              value={formData.address}
+              onChange={(e) => updateFormData({ address: e.target.value })}
+              placeholder="Street, building, etc."
+              className="w-full text-gray-800 px-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">City *</label>
+            <input
+              type="text"
+              value={formData.city}
+              onChange={(e) => updateFormData({ city: e.target.value })}
+              placeholder="City"
+              className={`w-full text-gray-800 px-3 py-2.5 rounded-lg border 
+              ${fieldErrors.city ? "border-red-300" : "border-gray-300"}
+              focus:ring-2 focus:ring-pink-500 focus:border-pink-500`}
+            />
+            {fieldErrors.city && <p className="text-red-600 text-sm">{fieldErrors.city}</p>}
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">State/Province</label>
+            <input
+              type="text"
+              value={formData.state}
+              onChange={(e) => updateFormData({ state: e.target.value })}
+              placeholder="Optional"
+              className="w-full text-gray-800 px-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+            />
           </div>
         </div>
       </div>
 
       {}
       <div className="space-y-6">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Schedule</h3>
-          <p className="text-gray-600 mb-4">
-            Choose when your study group will meet.
-          </p>
-        </div>
+        <h3 className="text-sm font-semibold text-gray-800 tracking-wide">
+          DATE & TIME
+        </h3>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Study Date *
-              </label>
-              <input
-                type="date"
-                value={formData.startsAt ? formData.startsAt.split('T')[0] : ''}
-                onChange={(e) => {
-                  const date = e.target.value
-                  const time = formData.startsAt ? formData.startsAt.split('T')[1] : '18:00'
-                  updateFormData({ startsAt: `${date}T${time}` })
-                }}
-                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                  fieldErrors.startsAt ? 'border-red-300' : 'border-gray-300'
-                }`}
-              />
-              {fieldErrors.startsAt && (
-                <p className="mt-1 text-sm text-red-600">{fieldErrors.startsAt}</p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Start Time
-                </label>
-                <input
-                  type="time"
-                  value={formData.startsAt ? formData.startsAt.split('T')[1] : '18:00'}
-                  onChange={(e) => {
-                    const date = formData.startsAt ? formData.startsAt.split('T')[0] : new Date().toISOString().split('T')[0]
-                    const time = e.target.value
-                    updateFormData({ startsAt: `${date}T${time}` })
-                  }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Duration
-                </label>
-                <select
-                  value={formData.capacity}
-                  onChange={(e) => updateFormData({ capacity: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
-                >
-                  <option value="1">1 hour</option>
-                  <option value="2">2 hours</option>
-                  <option value="3">3 hours</option>
-                  <option value="4">4 hours</option>
-                  <option value="8">All day</option>
-                </select>
-              </div>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">Date *</label>
+            <input
+              type="date"
+              min={new Date().toISOString().split("T")[0]}
+              value={formData.startsAt ? formData.startsAt.split("T")[0] : ""}
+              onChange={(e) => {
+                const date = e.target.value;
+                const time = formData.startsAt ? formData.startsAt.split("T")[1] : "18:00";
+                updateFormData({ startsAt: `${date}T${time}` });
+              }}
+              className={`w-full text-gray-600 px-3 py-2.5 rounded-lg border 
+              ${fieldErrors.startsAt ? "border-red-300" : "border-gray-300"}
+              focus:ring-2 focus:ring-pink-500 focus:border-pink-500`}
+            />
           </div>
 
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Group Size
-              </label>
-              <input
-                type="number"
-                min="2"
-                max="50"
-                value={formData.capacity}
-                onChange={(e) => updateFormData({ capacity: e.target.value })}
-                placeholder="Maximum participants"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white"
-              />
-            </div>
-
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">Start Time</label>
+            <input
+              type="time"
+              min={isToday(formData.startsAt) ? new Date().toTimeString().slice(0, 5) : undefined}
+              value={formData.startsAt ? formData.startsAt.split("T")[1] : "18:00"}
+              onChange={(e) => {
+                const date = formData.startsAt
+                  ? formData.startsAt.split("T")[0]
+                  : new Date().toISOString().split("T")[0];
+                updateFormData({ startsAt: `${date}T${e.target.value}` });
+              }}
+              className={`w-full text-gray-600 px-3 py-2.5 rounded-lg border 
+              ${fieldErrors.startsAt ? "border-red-300" : "border-gray-300"}
+              focus:ring-2 focus:ring-pink-500 focus:border-pink-500`}
+            />
           </div>
         </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">Duration</label>
+            <select
+              value={formData.duration}
+              onChange={(e) => updateFormData({ duration: Number(e.target.value) })}
+              className="w-full text-gray-600 px-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+            >
+              <option value="1">1 hour</option>
+              <option value="2">2 hours</option>
+              <option value="3">3 hours</option>
+              <option value="4">4 hours</option>
+              <option value="8">All day</option>
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">Max Participants</label>
+            <input
+              type="number"
+              min="2"
+              max="50"
+              value={formData.capacity}
+              onChange={(e) => updateFormData({ capacity: e.target.value })}
+              className="w-full text-gray-600 px-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+            />
+          </div>
+        </div>
+
+        {fieldErrors.startsAt && (
+          <p className="text-red-600 text-sm">{fieldErrors.startsAt}</p>
+        )}
       </div>
     </div>
-  )
+  );
 }
+
 
 function ReviewPublishStep({ formData, updateFormData, error }) {
   return (
@@ -1175,7 +1208,7 @@ function ReviewPublishStep({ formData, updateFormData, error }) {
             />
           </div>
         ) : (
-          <p className="text-gray-500 text-sm">No cover image selected (optional)</p>
+          <p className="text-gray-700 text-sm">No cover image selected</p>
         )}
       </div>
 
@@ -1185,15 +1218,15 @@ function ReviewPublishStep({ formData, updateFormData, error }) {
             <h3 className="text-lg font-semibold text-gray-900">Study Group Details</h3>
             <div className="space-y-3">
               <div>
-                <span className="text-sm font-medium text-gray-500">Name:</span>
+                <span className="text-sm font-medium text-gray-700">Name:</span>
                 <p className="text-gray-900">{formData.title || "Not specified"}</p>
               </div>
               <div>
-                <span className="text-sm font-medium text-gray-500">Category:</span>
+                <span className="text-sm font-medium text-gray-700">Category:</span>
                 <p className="text-gray-900">{formData.category || "Not specified"}</p>
               </div>
               <div>
-                <span className="text-sm font-medium text-gray-500">Description:</span>
+                <span className="text-sm font-medium text-gray-700">Description:</span>
                 <p className="text-gray-900">{formData.description || "No description provided"}</p>
               </div>
             </div>
@@ -1203,26 +1236,32 @@ function ReviewPublishStep({ formData, updateFormData, error }) {
             <h3 className="text-lg font-semibold text-gray-900">Schedule & Location</h3>
             <div className="space-y-3">
               <div>
-                <span className="text-sm font-medium text-gray-500">Date & Time:</span>
+                <span className="text-sm font-medium text-gray-700">Date & Time:</span>
                 <p className="text-gray-900">
-                  {formData.startsAt 
-                    ? new Date(formData.startsAt).toLocaleString() 
+                  {formData.startsAt
+                    ? new Date(formData.startsAt).toLocaleString()
                     : "Not specified"
                   }
                 </p>
               </div>
               <div>
-                <span className="text-sm font-medium text-gray-500">Location:</span>
+                <span className="text-sm font-medium text-gray-700">Location:</span>
                 <p className="text-gray-900">{formData.location || "Not specified"}</p>
               </div>
               <div>
-                <span className="text-sm font-medium text-gray-500">Address:</span>
+                <span className="text-sm font-medium text-gray-700">Address:</span>
                 <p className="text-gray-900">
                   {[formData.address, formData.city, formData.state].filter(Boolean).join(", ") || "Not specified"}
                 </p>
               </div>
               <div>
-                <span className="text-sm font-medium text-gray-500">Max Participants:</span>
+                <span className="text-sm font-medium text-gray-700">Duration:</span>
+                <p className="text-gray-900">
+                  {formData.duration === 8 ? "All day" : `${formData.duration} ${formData.duration === 1 ? 'hour' : 'hours'}`}
+                </p>
+              </div>
+              <div>
+                <span className="text-sm font-medium text-gray-700">Max Participants:</span>
                 <p className="text-gray-900">{formData.capacity}</p>
               </div>
             </div>

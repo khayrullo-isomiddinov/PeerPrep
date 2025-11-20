@@ -10,7 +10,6 @@ export default function RegisterForm() {
   const [msg, setMsg] = useState("")
   const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [agree, setAgree] = useState(false)
 
   async function submit(e) {
     e.preventDefault()
@@ -38,7 +37,7 @@ export default function RegisterForm() {
           <input
             type="email"
             value={email}
-            onChange={e=>setEmail(e.target.value)}
+            onChange={e => setEmail(e.target.value)}
             className="auth-input"
             placeholder="you@example.com"
             required
@@ -52,7 +51,7 @@ export default function RegisterForm() {
             <input
               type={show ? "text" : "password"}
               value={password}
-              onChange={e=>setPassword(e.target.value)}
+              onChange={e => setPassword(e.target.value)}
               className="auth-input pr-12"
               placeholder="••••••••"
               required
@@ -60,7 +59,7 @@ export default function RegisterForm() {
             />
             <button
               type="button"
-              onClick={()=>setShow(s=>!s)}
+              onClick={() => setShow(s => !s)}
               className="absolute inset-y-0 right-2 my-auto px-2 rounded-s premium-hover text-muted"
               aria-label="Toggle password visibility"
             >
@@ -75,15 +74,10 @@ export default function RegisterForm() {
           </div>
         </div>
 
-        <label className="inline-flex items-center gap-2 text-sm text-muted">
-          <input type="checkbox" className="checkbox checkbox-sm" checked={agree} onChange={e=>setAgree(e.target.checked)} required />
-          I agree to the <a className="link-quiet" href="#">Privacy Policy</a>
-        </label>
-
         <button
           type="submit"
           className="btn-pink-pill w-full premium-focus disabled:opacity-60 disabled:cursor-not-allowed"
-          disabled={loading || !agree}
+          disabled={loading}
         >
           {loading ? "Creating account..." : "Sign Up"}
         </button>

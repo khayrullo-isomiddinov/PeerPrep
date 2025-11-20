@@ -8,14 +8,10 @@ import PageLoader from "./components/PageLoader"
 import { useAuth } from "./features/auth/AuthContext"
 import { useLocation } from "react-router-dom"
 
-// Lazy load pages for better performance
 const Home = lazy(() => import("./pages/Home"))
-const Groups = lazy(() => import("./pages/Groups"))
-const GroupDetail = lazy(() => import("./pages/GroupDetail"))
 const Events = lazy(() => import("./pages/Events"))
 const EventDetail = lazy(() => import("./pages/EventDetail"))
 const CreateEvent = lazy(() => import("./pages/CreateEvent"))
-const CreateGroup = lazy(() => import("./pages/CreateGroup"))
 const Profile = lazy(() => import("./pages/Profile"))
 const RegisterForm = lazy(() => import("./features/auth/RegisterForm"))
 const LoginForm = lazy(() => import("./features/auth/LoginForm"))
@@ -40,11 +36,12 @@ export default function App() {
   }
 
   const getSkeleton = (path) => {
-    if (path.includes("/groups/") || path.includes("/events/")) {
+    if (path.includes("/events/")) {
       return <DetailPageSkeleton />
     }
     return <PageSkeleton />
   }
+
 
   return (
     <ErrorBoundary>
@@ -56,9 +53,6 @@ export default function App() {
             <Suspense fallback={getSkeleton(location.pathname)}>
               <Routes>
                 <Route path="/" element={<Home />} />
-                <Route path="/groups" element={<Groups />} />
-                <Route path="/groups/:id" element={<GroupDetail />} />
-                <Route path="/groups/create" element={<CreateGroup />} />
                 <Route path="/events" element={<Events />} />
                 <Route path="/events/:id" element={<EventDetail />} />
                 <Route path="/events/create" element={<CreateEvent />} />

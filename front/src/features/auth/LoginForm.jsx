@@ -35,7 +35,7 @@ export default function LoginForm() {
       auth.login({ access_token: data.access_token, user: data.user })
       setMsg(`Welcome back, ${data.user.email}`)
       setSuccess(true)
-      navigate("/groups", { replace: true })
+      navigate("/events", { replace: true })
     } catch (err) {
       setMsg(err?.response?.data?.detail || "Login failed")
       setSuccess(false)

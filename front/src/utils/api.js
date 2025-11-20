@@ -72,13 +72,13 @@ export async function listEvents(params = {}) {
   return data
 }
 
-export async function getMyEvents() {
-  const { data } = await api.get("events/my-events")
+export async function getMyEvents(params = {}) {
+  const { data } = await api.get("events/my-events", { params })
   return data
 }
 
-export async function getMyEventsCount() {
-  const { data } = await api.get("events/my-events/count")
+export async function getMyEventsCount(params = {}) {
+  const { data } = await api.get("events/my-events/count", { params })
   return data.count || 0
 }
 
@@ -199,114 +199,6 @@ export async function getEventPresence(eventId) {
   return data
 }
 
-export async function listGroups(params = {}) {
-  const { data } = await api.get("groups", { params })
-  return data
-}
-
-export async function getMyGroups() {
-  const { data } = await api.get("groups/my-groups")
-  return data
-}
-
-export async function getMyGroupsCount() {
-  const { data } = await api.get("groups/my-groups/count")
-  return data.count || 0
-}
-
-
-export async function createGroup(payload) {
-  const { data } = await api.post("groups", payload)
-  return data
-}
-
-export async function generateGroupCoverImage(prompt) {
-  const token = localStorage.getItem("access_token")
-  if (token) {
-    setAuthHeader(token)
-  }
-  const { data } = await api.post("groups/generate-image", { prompt })
-  return data.image_url
-}
-
-export async function getGroup(id) {
-  const { data } = await api.get(`groups/${id}`)
-  return data
-}
-
-export async function updateGroup(id, payload) {
-  const { data } = await api.put(`groups/${id}`, payload)
-  return data
-}
-
-export async function joinGroup(id) {
-  try {
-    const response = await api.post(`groups/${id}/join`)
-    return { 
-      success: true, 
-      member_count: response.data?.member_count,
-      alreadyJoined: response.data?.alreadyJoined
-    }
-  } catch (error) {
-    // Handle 400 (already a member) as a special case - not really an error
-    if (error?.response?.status === 400 && error?.response?.data?.detail?.includes("Already")) {
-      return { success: true, alreadyJoined: true }
-    }
-    throw error
-  }
-}
-
-export async function leaveGroup(id) {
-  try {
-    const response = await api.delete(`groups/${id}/leave`)
-    return { 
-      success: true, 
-      member_count: response.data?.member_count,
-      notJoined: response.data?.notJoined
-    }
-  } catch (error) {
-    // Handle 400/404 (not a member) as a special case - not really an error
-    if (error?.response?.status === 400 || error?.response?.status === 404) {
-      return { success: true, notJoined: true }
-    }
-    throw error
-  }
-}
-
-export async function checkGroupMembership(id) {
-  const { data } = await api.get(`groups/${id}/membership`)
-  return data
-}
-
-export async function getGroupMembers(id) {
-  const { data } = await api.get(`groups/${id}/members`)
-  return data
-}
-
-
-export async function submitMission(groupId, payload) {
-  const { data } = await api.post(`groups/${groupId}/missions`, payload)
-  return data
-}
-
-export async function getGroupMissions(groupId) {
-  const { data } = await api.get(`groups/${groupId}/missions`)
-  return data
-}
-
-export async function getMyMissions(groupId) {
-  const { data } = await api.get(`groups/${groupId}/missions/my-submissions`)
-  return data
-}
-
-export async function reviewMission(groupId, submissionId, payload) {
-  const { data } = await api.patch(`groups/${groupId}/missions/${submissionId}`, payload)
-  return data
-}
-
-export async function deleteMission(groupId, submissionId) {
-  await api.delete(`groups/${groupId}/missions/${submissionId}`)
-}
 
 export async function getUserBadge(userId) {
   const { data } = await api.get(`badges/user/${userId}`)
@@ -318,10 +210,6 @@ export async function getMyBadge() {
   return data
 }
 
-export async function deleteGroup(id) {
-  const { data } = await api.delete(`groups/${id}`)
-  return data
-}
 
 export async function getProfile() {
   const { data } = await api.get("auth/me")
@@ -353,46 +241,8 @@ export async function autocompleteEvents(query) {
   return data 
 }
 
-export async function autocompleteGroups(query) {
-  const { data } = await api.get("groups/autocomplete", { params: { q: query } })
-  return data 
-}
-
-
-export async function getGroupMessages(groupId) {
-  const { data } = await api.get(`groups/${groupId}/messages`)
-  return data
-}
-
-export async function postGroupMessage(groupId, content) {
-  const { data } = await api.post(`groups/${groupId}/messages?content=${encodeURIComponent(content)}`)
-  return data
-}
-
-export async function deleteGroupMessage(groupId, messageId) {
-  const { data } = await api.delete(`groups/${groupId}/messages/${messageId}`)
-  return data
-}
-
-export async function setGroupTypingStatus(groupId) {
-  await api.post(`groups/${groupId}/typing`)
-}
-
-export async function getGroupTypingStatus(groupId) {
-  const { data } = await api.get(`groups/${groupId}/typing`)
-  return data
-}
-
-export async function getGroupPresence(groupId) {
-  const { data } = await api.get(`groups/${groupId}/presence`)
-  return data
-}
 
 export async function markEventMessageRead(eventId, messageId) {
   await api.post(`events/${eventId}/messages/${messageId}/read`)
-}
-
-export async function markGroupMessageRead(groupId, messageId) {
-  await api.post(`groups/${groupId}/messages/${messageId}/read`)
 }
 

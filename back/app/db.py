@@ -22,8 +22,11 @@ else:
     )
 
 def init_db() -> None:
-    from app import models
+    from app.models import (
+        User, Event, EventAttendee, EventMessage, MessageRead
+    )
     SQLModel.metadata.create_all(engine)
+
 
 def get_session():
     with Session(engine) as session:

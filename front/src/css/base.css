@@ -1,0 +1,43 @@
+/* Base HTML Element Styles */
+
+html { 
+  scroll-behavior: smooth; 
+  color-scheme: light;
+  background: #f8fafc; /* Prevent dark blue background on pull-down */
+}
+@media (prefers-reduced-motion: reduce) { 
+  html { scroll-behavior: auto; } 
+}
+
+@layer base {
+  body {
+    @apply antialiased font-sans;
+    background:
+      radial-gradient(90rem 70rem at -10% 0%, rgba(99,102,241,.08) 0%, transparent 65%),
+      radial-gradient(70rem 60rem at 120% 100%, rgba(16,185,129,.08) 0%, transparent 65%),
+      linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    color: #1e293b;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(transparent 0%, rgba(255,255,255,.03) 100%),
+      linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px),
+      linear-gradient(0deg, rgba(255,255,255,.05) 1px, transparent 1px);
+    background-size: auto, 56px 56px, 56px 56px;
+    mix-blend-mode: soft-light;
+  }
+
+  h1,h2,h3,h4,h5,h6 { @apply tracking-tight; }
+  h1 { @apply text-4xl md:text-6xl font-extrabold; }
+  h2 { @apply text-3xl md:text-4xl font-extrabold; }
+  h3 { @apply text-2xl md:text-3xl font-bold; }
+  h4 { @apply text-xl md:text-2xl font-semibold; }
+  p, span, li, div { color: inherit; }
+  * { @apply transition-colors duration-300 ease-in-out; }
+}
+

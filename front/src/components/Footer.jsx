@@ -32,7 +32,6 @@ export default function Footer() {
             <h3 className="footer-title">Quick Links</h3>
             <ul className="footer-list">
               <li><Link to="/">Home</Link></li>
-              <li><Link to="/groups">Study Groups</Link></li>
               <li><Link to="/events">Events</Link></li>
             </ul>
           </nav>
@@ -40,7 +39,6 @@ export default function Footer() {
           <nav className="footer-col">
             <h3 className="footer-title">Features</h3>
             <ul className="footer-list">
-              <li><Link to="/groups">Study Groups</Link></li>
               <li><Link to="/events">Study Events</Link></li>
             </ul>
           </nav>

@@ -107,7 +107,7 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
     try {
       const payload = {
         title: form.title.trim(),
-        starts_at: new Date(form.starts_at).toISOString(),
+        starts_at: form.starts_at,
         location: form.location.trim(),
         capacity: form.capacity,
         description: form.description.trim() || null,

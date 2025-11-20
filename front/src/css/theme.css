@@ -1,0 +1,39 @@
+/* Theme Variables and DaisyUI Configuration */
+
+@theme {
+  --brand: #34d399;
+  --brand-strong: #10b981;
+  --radius-sm: .65rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.5rem;
+  --radius-xl: 2rem;
+  --radius-pill: 999rem;
+}
+
+/* Set light theme for daisyui */
+:root,
+[data-theme] {
+  color-scheme: light;
+  --p: 236 72 153;
+  --pc: 255 255 255;
+  --s: 129 140 248;
+  --sc: 16 20 24;
+  --a: 251 113 133;
+  --ac: 16 20 24;
+  --b1: 15 20 32;
+  --b2: 20 26 42;
+  --b3: 23 28 43;
+  --bc: 230 232 235;
+  --n: 28 34 50;
+  --nc: 230 232 235;
+  --in: 56 189 248;
+  --su: 74 222 128;
+  --wa: 250 204 21;
+  --er: 248 113 113;
+  --rounded-box: 1rem;
+  --rounded-btn: 999rem;
+  --rounded-badge: 999rem;
+  --animation-btn: 0.2s;
+  --border-btn: 1px;
+}
+
