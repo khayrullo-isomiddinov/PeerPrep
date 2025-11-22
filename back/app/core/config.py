@@ -25,8 +25,8 @@ class Settings(BaseSettings):
 
     OPENAI_API_KEY: str = ""
 
-    ADMIN_EMAIL: str = "harryshady131@gmail.com"
-    ADMIN_PASSWORD: str = "Khayrullo2003"
+    ADMIN_EMAIL: str = "harry@gmail.com"
+    ADMIN_PASSWORD: str = "password123"
 
     @classmethod
     def parse_origins(cls, v: Union[str, List[str]]):

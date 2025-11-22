@@ -2,27 +2,23 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from app.config import settings
-from app.db import init_db, engine
+from app.core.config import settings
+from app.core.db import init_db, engine
 from app.seed import seed_db
 from sqlmodel import Session
-from app.routers import health as health_router
-from app.routers import events as events_router
-from app.routers import locations as locations_router
-from app.routers import auth as auth_router
-from app.routers import badges as badges_router
+from app.api.version_one import health as health_router
+from app.api.version_one import auth as auth_router
+from app.api.version_one import badges as badges_router
+from app.api.version_one import events as events_router
+from app.api.version_one import event_attendees as event_attendees_router
+from app.api.version_one import event_messages as event_messages_router
+from app.api.version_one import event_ws as event_ws_router
+
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     init_db()
-    try:
-        from app.migrations import run_migrations
-        run_migrations()
-    except Exception as e:
-        print(f"Migration warning: {e}")
-    
-    # Seed database
     try:
         with Session(engine) as session:
             seed_db(session)
@@ -47,6 +43,9 @@ app.add_middleware(GZipMiddleware, minimum_size=2000)
 
 app.include_router(health_router.router, prefix=settings.API_PREFIX)
 app.include_router(auth_router.router, prefix=settings.API_PREFIX)
-app.include_router(events_router.router, prefix=settings.API_PREFIX)
-app.include_router(locations_router.router, prefix=settings.API_PREFIX)
 app.include_router(badges_router.router, prefix=settings.API_PREFIX)
+app.include_router(events_router.router, prefix=settings.API_PREFIX)
+app.include_router(event_attendees_router.router, prefix=settings.API_PREFIX)
+app.include_router(event_messages_router.router, prefix=settings.API_PREFIX)
+app.include_router(event_ws_router.router, prefix=settings.API_PREFIX)
+

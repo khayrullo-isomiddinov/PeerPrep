@@ -2,7 +2,7 @@
 Database migration to add performance indexes (EVENT-ONLY VERSION)
 """
 from sqlmodel import SQLModel, create_engine, text
-from app.config import settings
+from app.core.config import settings
 
 def add_performance_indexes():
     """Add indexes for frequently queried fields – events only."""
@@ -29,9 +29,9 @@ def add_performance_indexes():
             try:
                 conn.execute(text(index_sql))
                 conn.commit()
-                print(f"✓ Created index: {index_sql[:50]}...")
+                print(f"Created index: {index_sql[:50]}...")
             except Exception as e:
-                print(f"✗ Failed to create index: {e}")
+                print(f"Failed to create index: {e}")
 
 if __name__ == "__main__":
     add_performance_indexes()

@@ -67,8 +67,9 @@ export async function loginUser({ email, password }) {
   const { data } = await api.post("auth/login", { email, password })
   return data
 }
-export async function listEvents(params = {}) {
-  const { data } = await api.get("events", { params })
+export async function listEvents(params = {}, options = {}) {
+  const { signal } = options
+  const { data } = await api.get("events", { params, signal })
   return data
 }
 
@@ -207,6 +208,11 @@ export async function getUserBadge(userId) {
 
 export async function getMyBadge() {
   const { data } = await api.get("badges/me")
+  return data
+}
+
+export async function awardPastEventsXP() {
+  const { data } = await api.post("badges/me/award-past-events")
   return data
 }
 

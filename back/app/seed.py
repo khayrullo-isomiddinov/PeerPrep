@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 import random
 from sqlmodel import Session, select
 from app.core.security import hash_password
-from app.models import User, Event, EventAttendee, EventKind
-from app.config import settings
+from app.models import User, Event, EventAttendee
+from app.core.config import settings
 
 COVER_IMAGES = [
     "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=400&h=200&fit=crop&q=80",
@@ -24,9 +24,6 @@ COVER_IMAGES = [
 def seed_db(session: Session):
     """Seed only admin + a few demo events with cover images."""
 
-    # -------------------------
-    # 1. Create admin
-    # -------------------------
     admin = session.exec(
         select(User).where(User.email == settings.ADMIN_EMAIL)
     ).first()
@@ -35,7 +32,7 @@ def seed_db(session: Session):
         admin = User(
             email=settings.ADMIN_EMAIL,
             hashed_password=hash_password(settings.ADMIN_PASSWORD),
-            name="Admin User",
+            name="Khayrullo Isomiddinov",
             is_verified=True,
             xp=0,
         )
@@ -43,16 +40,10 @@ def seed_db(session: Session):
         session.commit()
         session.refresh(admin)
 
-    # -------------------------
-    # 2. Stop if events already exist
-    # -------------------------
     if session.exec(select(Event)).first():
         print("✓ Seed skipped: events already exist")
         return
 
-    # -------------------------
-    # 3. Seed 8 demo events
-    # -------------------------
     now = datetime.utcnow()
     rng = random.Random(42)
 
@@ -79,14 +70,12 @@ def seed_db(session: Session):
             capacity=20,
             duration=2,
             exam=None,
-            group_id=None,
             created_by=admin.id,
-            kind=EventKind.one_off,
             cover_image_url=cover_url,
         )
         session.add(ev)
 
     session.commit()
 
-    print("✓ Seeded admin")
-    print("✓ Created sample events with cover images")
+    print("Seeded admin")
+    print("Created sample events with cover images")

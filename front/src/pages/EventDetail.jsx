@@ -22,9 +22,9 @@ export default function EventDetail() {
   const [attendees, setAttendees] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [joined, setJoined] = useState(null) 
+  const [joined, setJoined] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [isJoining, setIsJoining] = useState(false) 
+  const [isJoining, setIsJoining] = useState(false)
   const [isOwner, setIsOwner] = useState(false)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState("")
@@ -450,6 +450,13 @@ export default function EventDetail() {
       case "user_left":
         // User left - could update presence
         break
+
+      case "error":
+        // Handle error messages from server (e.g., event ended, read-only)
+        if (message.message) {
+          alert(message.message)
+        }
+        break
     }
   }
 
@@ -538,6 +545,12 @@ export default function EventDetail() {
     e.preventDefault()
     e.stopPropagation()
     if (!newMessage.trim() || sendingMessage || !id) return
+    
+    // Prevent sending if event has ended
+    if (isPast) {
+      alert("This event has ended. Chat is now read-only. You can still view message history.")
+      return
+    }
 
     // Send via WebSocket if connected, otherwise queue or fallback to HTTP
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -662,9 +675,23 @@ export default function EventDetail() {
     }
   }
 
+  // Helper to parse UTC datetime strings correctly
+  // Backend sends UTC times, so if no timezone indicator, assume UTC
+  const parseUTCDate = (dateString) => {
+    if (!dateString) return null
+    // If already has timezone info, use as-is
+    if (dateString.includes('Z') || dateString.includes('+') || dateString.match(/-\d{2}:\d{2}$/)) {
+      return new Date(dateString)
+    }
+    // Otherwise, treat as UTC by appending 'Z'
+    return new Date(dateString + 'Z')
+  }
+
   function formatDate(dateString) {
     if (!dateString) return "Not set"
-    return new Date(dateString).toLocaleDateString("en-US", {
+    const date = parseUTCDate(dateString)
+    if (!date || isNaN(date.getTime())) return "Not set"
+    return date.toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",
       day: "numeric"
@@ -673,7 +700,9 @@ export default function EventDetail() {
 
   function formatTime(dateString) {
     if (!dateString) return "Not set"
-    return new Date(dateString).toLocaleTimeString("en-US", {
+    const date = parseUTCDate(dateString)
+    if (!date || isNaN(date.getTime())) return "Not set"
+    return date.toLocaleTimeString("en-US", {
       hour: "numeric",
       minute: "2-digit",
       hour12: true
@@ -782,10 +811,33 @@ export default function EventDetail() {
   const isFull = attendees.length >= event.capacity
   const isPast = (() => {
     if (!event) return false
-    const start = new Date(event.starts_at)
-    const end = new Date(event.ends_at ?? event.starts_at)
+    const start = parseUTCDate(event.starts_at)
+    if (!start) return false
+    const end = event.ends_at
+      ? parseUTCDate(event.ends_at)
+      : new Date(start.getTime() + event.duration * 3600 * 1000)
+
+    if (!end) return false
     const now = new Date()
     return end < now
+  })()
+  const hasStarted = (() => {
+    if (!event) return false
+    const start = parseUTCDate(event.starts_at)
+    if (!start) return false
+    const now = new Date()
+    return now >= start
+  })()
+  const isOngoing = (() => {
+    if (!event) return false
+    const start = parseUTCDate(event.starts_at)
+    if (!start) return false
+    const end = event.ends_at
+      ? parseUTCDate(event.ends_at)
+      : new Date(start.getTime() + event.duration * 3600 * 1000)
+    if (!end) return false
+    const now = new Date()
+    return now >= start && now < end
   })()
   const attendancePercentage = event.capacity > 0 ? Math.round((attendees.length / event.capacity) * 100) : 0
 
@@ -912,7 +964,7 @@ export default function EventDetail() {
 
             {/* Right: Join/Leave Button */}
             {/* Right: Join/Leave Button */}
-            {!isOwner && !isPast && (
+            {!isOwner && !isPast && !hasStarted && (
               <div className="flex-shrink-0">
 
                 {/* If not joined + not full + loading */}
@@ -927,7 +979,7 @@ export default function EventDetail() {
                   </button>
                 )}
 
-                {/* If joined + not past */}
+                {/* If joined + not past + not started */}
                 {joined === true && (
                   <button
                     onClick={handleJoinLeave}
@@ -1037,7 +1089,7 @@ export default function EventDetail() {
 
           {/* Right: Group Chat - Large Messaging Area */}
           <div className="lg:col-span-2">
-            {(joined || isOwner) && !isPast ? (
+            {(joined || isOwner) ? (
 
               /* ===========================
                         CHAT UI (YOUR FULL CODE)
@@ -1045,30 +1097,68 @@ export default function EventDetail() {
               <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden flex flex-col h-[400px] lg:h-[600px]">
 
                 {/* Chat Header */}
-                <div className="relative bg-gradient-to-br from-slate-900 via-indigo-900 to-purple-900 p-5 flex-shrink-0">
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <div className="w-12 h-12 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-xl flex items-center justify-center shadow-lg">
-                        <FontAwesomeIcon icon={faComments} className="text-white" />
-                      </div>
-                      <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-slate-900"></div>
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-xl font-bold text-white">Event Chat</h2>
-                        {wsConnected ? (
-                          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" title="Connected"></span>
-                        ) : (
-                          <span className="w-2 h-2 bg-red-400 rounded-full" title="Disconnected"></span>
+                <div className={`relative p-5 flex-shrink-0 ${
+                  isPast 
+                    ? 'bg-gradient-to-br from-gray-700 via-gray-800 to-gray-900' 
+                    : isOngoing
+                      ? 'bg-gradient-to-br from-green-600 via-emerald-700 to-teal-800'
+                      : 'bg-gradient-to-br from-slate-900 via-indigo-900 to-purple-900'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-lg ${
+                          isPast
+                            ? 'bg-gradient-to-br from-gray-500 to-gray-600'
+                            : isOngoing
+                              ? 'bg-gradient-to-br from-green-400 to-emerald-500'
+                              : 'bg-gradient-to-br from-indigo-400 to-purple-500'
+                        }`}>
+                          <FontAwesomeIcon icon={faComments} className="text-white" />
+                        </div>
+                        {!isPast && (
+                          <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 ${
+                            isOngoing
+                              ? 'bg-green-400 border-green-600 animate-pulse'
+                              : 'bg-green-400 border-slate-900'
+                          }`}></div>
                         )}
                       </div>
-                      <p className="text-indigo-200 text-xs">
-                        {messages.length > 0
-                          ? `${messages.length} message${messages.length !== 1 ? 's' : ''} • ${wsConnected ? 'Connected' : 'Reconnecting...'}`
-                          : wsConnected
-                            ? 'Start chatting'
-                            : 'Connecting...'}
-                      </p>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-xl font-bold text-white">Event Chat</h2>
+                          {!isPast && wsConnected ? (
+                            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" title="Connected"></span>
+                          ) : !isPast ? (
+                            <span className="w-2 h-2 bg-red-400 rounded-full" title="Disconnected"></span>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isOngoing && (
+                            <span className="px-2 py-0.5 bg-green-500/20 text-green-200 rounded-full text-xs font-semibold border border-green-400/30 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
+                              Event Ongoing
+                            </span>
+                          )}
+                          {isPast && (
+                            <span className="px-2 py-0.5 bg-gray-500/20 text-gray-300 rounded-full text-xs font-semibold border border-gray-400/30 flex items-center gap-1">
+                              <FontAwesomeIcon icon={faInfoCircle} className="w-3 h-3" />
+                              Read Only
+                            </span>
+                          )}
+                          <p className={`text-xs ${
+                            isPast ? 'text-gray-300' : 'text-indigo-200'
+                          }`}>
+                            {messages.length > 0
+                              ? `${messages.length} message${messages.length !== 1 ? 's' : ''}${!isPast ? ` • ${wsConnected ? 'Connected' : 'Reconnecting...'}` : ''}`
+                              : !isPast && wsConnected
+                                ? 'Start chatting'
+                                : !isPast
+                                  ? 'Connecting...'
+                                  : 'View message history'}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1206,48 +1296,59 @@ export default function EventDetail() {
                 </div>
 
                 {/* Message Input */}
-                <div className="p-4 bg-gradient-to-b from-white to-gray-50/50 border-t border-gray-200/60 flex-shrink-0">
-                  <form
-                    onSubmit={handleSendMessage}
-                    className="relative"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        handleSendMessage(e)
-                      }
-                    }}
-                  >
-                    <div className="flex items-center gap-2 bg-white rounded-xl border-2 border-gray-200/60 shadow-md hover:border-indigo-300/60 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all p-1">
-                      <input
-                        type="text"
-                        value={newMessage}
-                        onChange={(e) => {
-                          setNewMessage(e.target.value)
-                          handleTyping()
-                        }}
-                        placeholder="Write a message..."
-                        className="flex-1 px-3 py-2 bg-transparent border-0 outline-none text-gray-900 placeholder-gray-400 text-sm"
-                        maxLength={1000}
-                        disabled={sendingMessage}
-                      />
-                      <button
-                        type="submit"
-                        disabled={!newMessage.trim() || sendingMessage}
-                        className={`touch-target w-11 h-11 flex items-center justify-center rounded-lg transition-all ${newMessage.trim() && !sendingMessage
-                          ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white hover:scale-110 active:scale-95'
-                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          }`}
-                      >
-                        {sendingMessage ? (
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <FontAwesomeIcon icon={faPaperPlane} className="w-3 h-3" />
-                        )}
-                      </button>
+                {isPast ? (
+                  <div className="p-4 bg-gradient-to-b from-gray-50 to-gray-100/50 border-t border-gray-300/60 flex-shrink-0">
+                    <div className="flex items-center gap-2 bg-gray-100 rounded-xl border-2 border-gray-300/60 p-3">
+                      <div className="flex-1 flex items-center gap-2 text-gray-500 text-sm">
+                        <FontAwesomeIcon icon={faInfoCircle} className="w-4 h-4" />
+                        <span>This event has ended. Chat is now read-only. You can still view message history.</span>
+                      </div>
                     </div>
-                  </form>
-                </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-gradient-to-b from-white to-gray-50/50 border-t border-gray-200/60 flex-shrink-0">
+                    <form
+                      onSubmit={handleSendMessage}
+                      className="relative"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleSendMessage(e)
+                        }
+                      }}
+                    >
+                      <div className="flex items-center gap-2 bg-white rounded-xl border-2 border-gray-200/60 shadow-md hover:border-indigo-300/60 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all p-1">
+                        <input
+                          type="text"
+                          value={newMessage}
+                          onChange={(e) => {
+                            setNewMessage(e.target.value)
+                            handleTyping()
+                          }}
+                          placeholder="Write a message..."
+                          className="flex-1 px-3 py-2 bg-transparent border-0 outline-none text-gray-900 placeholder-gray-400 text-sm"
+                          maxLength={1000}
+                          disabled={sendingMessage}
+                        />
+                        <button
+                          type="submit"
+                          disabled={!newMessage.trim() || sendingMessage}
+                          className={`touch-target w-11 h-11 flex items-center justify-center rounded-lg transition-all ${newMessage.trim() && !sendingMessage
+                            ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white hover:scale-110 active:scale-95'
+                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            }`}
+                        >
+                          {sendingMessage ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <FontAwesomeIcon icon={faPaperPlane} className="w-3 h-3" />
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
               </div>
 
             ) : isPast ? (
@@ -1263,7 +1364,7 @@ export default function EventDetail() {
                 <p className="text-gray-500">Chat is closed for completed events.</p>
               </div>
 
-            ) : (
+            ) : !isOwner && !hasStarted && (
 
               /* ===========================
                      JOIN TO CHAT UI

@@ -1,13 +1,14 @@
 from typing import List, Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, Query, Header, WebSocket, WebSocketDisconnect
 from sqlmodel import Session, select, func
-from app.db import get_session
+from app.core.db import get_session
 from app.models import Event, User, EventAttendee, EventMessage, MessageRead
 
+from datetime import datetime, timezone, timedelta
 from app.schemas.events import EventCreate, EventRead, EventUpdate
-from app.routers.auth import _get_user_from_token, _get_optional_user_from_token
+from app.api.version_one.auth import _get_user_from_token, _get_optional_user_from_token
 
-from app.routers.badges import award_xp_for_event
+from app.api.version_one.badges import award_xp_for_event
 from app.services.ai import refine_text, generate_image
 from app.services.message_sync import MessageVersion, get_synchronizer
 
@@ -49,13 +50,45 @@ def create_event(data: EventCreate, session: Session = Depends(get_session), cur
     session.add(EventAttendee(event_id=evt.id, user_id=current_user.id))
     session.commit()
     session.refresh(evt)
-    return evt
+    
+    # Build enriched response with computed fields (same format as get_event)
+    now = datetime.now(timezone.utc)
+    
+    starts_at = evt.starts_at
+    if starts_at.tzinfo is None:
+        starts_at = starts_at.replace(tzinfo=timezone.utc)
+    
+    ends_at = evt.ends_at
+    if ends_at.tzinfo is None:
+        ends_at = ends_at.replace(tzinfo=timezone.utc)
+    
+    # Compute states
+    is_upcoming = now < starts_at
+    is_ongoing = starts_at <= now < ends_at
+    is_past = now >= ends_at
+    
+    status = (
+        "ongoing" if is_ongoing else
+        "past" if is_past else
+        "upcoming"
+    )
+    
+    # Build response manually with computed fields
+    response_data = evt.model_dump()
+    response_data.update({
+        "ends_at": ends_at,
+        "is_past": is_past,
+        "is_ongoing": is_ongoing,
+        "is_upcoming": is_upcoming,
+        "status": status,
+    })
+    
+    return response_data
 
 
 @router.get("")
 def list_events(
     session: Session = Depends(get_session),
-    kind: Optional[str] = None,
     q: Optional[str] = None,
     location: Optional[str] = None,
     exam: Optional[str] = None,
@@ -66,14 +99,11 @@ def list_events(
 ):
     query = select(Event)
     status = (status or "upcoming").lower()
-    if status not in {"upcoming", "past", "all"}:
+    if status not in {"upcoming", "past", "ongoing", "all"}:
         raise HTTPException(status_code=400, detail="Invalid status filter")
 
-    now = datetime.utcnow()
-
-    # Filters
-    if kind:
-        query = query.where(Event.kind == kind)
+    # Use timezone-aware datetime consistently
+    now = datetime.now(timezone.utc)
 
     if q:
         like = f"%{q}%"
@@ -90,13 +120,67 @@ def list_events(
         like_exam = f"%{exam}%"
         query = query.where(Event.exam.ilike(like_exam))
 
+    # For SQL comparison, we need to handle timezone-naive datetimes
+    # SQLite stores datetimes as strings, so we compare as naive UTC
+    now_naive = now.replace(tzinfo=None) if now.tzinfo else now
+    
     if status == "upcoming":
-        query = query.where(Event.starts_at >= now)
-    elif status == "past":
-        query = query.where(Event.starts_at < now)
+        query = query.where(Event.starts_at > now_naive)
 
-    query = query.order_by(Event.created_at.desc()).limit(limit).offset(offset)
+    elif status == "ongoing":
+        # Events that have started but not ended
+        # We'll filter in Python for accurate ends_at calculation
+        query = query.where(Event.starts_at <= now_naive)
+
+    elif status == "past":
+        # Events that have ended - query all events that have started
+        # We'll filter for ended events in Python
+        # For past events, we want to prioritize events that are more likely to be past
+        # So we'll order by starts_at DESC to get most recent events first
+        query = query.where(Event.starts_at < now_naive)
+
+    # Order by appropriate field based on status
+    if status == "past":
+        # For past events, order by starts_at DESC to get most recent past events first
+        query = query.order_by(Event.starts_at.desc())
+    else:
+        # For upcoming/ongoing, order by created_at DESC
+        query = query.order_by(Event.created_at.desc())
+    
+    # Optimize: For ongoing/past, we need Python filtering for accurate ends_at
+    # Reduce fetch limit to improve performance - most events are either upcoming or past
+    # For past: fetch 2x limit (some might be ongoing, but most are past)
+    # For ongoing: fetch 2x limit (some might be past, but most are either upcoming or past)
+    fetch_limit = limit * 2 if status in ("past", "ongoing") else limit
+    query = query.limit(fetch_limit).offset(offset)
     events = session.exec(query).all()
+    
+    # Filter by status in Python for more accurate ends_at calculation
+    # Only do this if we have events to filter
+    if events and (status == "ongoing" or status == "past"):
+        now_utc = datetime.now(timezone.utc)
+        if status == "ongoing":
+            # Events that have started but not ended
+            filtered_events = []
+            for e in events:
+                starts_at = e.starts_at.replace(tzinfo=timezone.utc) if e.starts_at.tzinfo is None else e.starts_at
+                ends_at = starts_at + timedelta(hours=e.duration)
+                if starts_at <= now_utc < ends_at:
+                    filtered_events.append(e)
+                    if len(filtered_events) >= limit:
+                        break
+            events = filtered_events
+        elif status == "past":
+            # Events that have ended - order by most recent first (already sorted by starts_at DESC)
+            filtered_events = []
+            for e in events:
+                starts_at = e.starts_at.replace(tzinfo=timezone.utc) if e.starts_at.tzinfo is None else e.starts_at
+                ends_at = starts_at + timedelta(hours=e.duration)
+                if ends_at <= now_utc:
+                    filtered_events.append(e)
+                    if len(filtered_events) >= limit:
+                        break
+            events = filtered_events
 
     # =====================================================
     # 🔥 AUTHENTICATED: return extra fields (is_joined & attendee_count)
@@ -105,29 +189,30 @@ def list_events(
         event_ids = [e.id for e in events]
 
         if event_ids:
-            # Get all attendees for these events
-            all_attendees = session.exec(
-                select(EventAttendee.event_id)
+            # Optimize: Get all attendee data in one query instead of multiple
+            all_attendee_records = session.exec(
+                select(EventAttendee.event_id, EventAttendee.user_id)
                 .where(EventAttendee.event_id.in_(event_ids))
             ).all()
 
-            count_map = dict(Counter(all_attendees))
-
-            # Creator auto-attend fix
+            # Build count map, joined set, and creator tracking in one pass
+            count_map = {}
+            joined_set = set()
+            creator_attendee_set = set()
+            
             creator_ids = {e.id: e.created_by for e in events}
-            creators_in_attendees = session.exec(
-                select(EventAttendee.event_id, EventAttendee.user_id)
-                .where(
-                    EventAttendee.event_id.in_(event_ids),
-                    EventAttendee.user_id.in_(set(creator_ids.values()))
-                )
-            ).all()
+            
+            for event_id, user_id in all_attendee_records:
+                # Count attendees
+                count_map[event_id] = count_map.get(event_id, 0) + 1
+                # Track if current user joined
+                if user_id == current_user.id:
+                    joined_set.add(event_id)
+                # Track if creator is in attendee table
+                if creator_ids.get(event_id) == user_id:
+                    creator_attendee_set.add((event_id, user_id))
 
-            creator_attendee_set = {
-                (ea.event_id, ea.user_id) for ea in creators_in_attendees
-            }
-
-            # Fix counts
+            # Fix counts - add creator if not in attendee table
             for event in events:
                 if event.id not in count_map:
                     count_map[event.id] = 0
@@ -136,25 +221,42 @@ def list_events(
                 if event.created_by and count_map[event.id] == 0:
                     count_map[event.id] = 1
 
-            # User joined events
-            user_joined = session.exec(
-                select(EventAttendee.event_id)
-                .where(
-                    EventAttendee.event_id.in_(event_ids),
-                    EventAttendee.user_id == current_user.id
-                )
-            ).all()
-            joined_set = set(user_joined)
-
             # Build response
+            now = datetime.now(timezone.utc)
             result = []
             for event in events:
-                event_dict = event.model_dump()
-                event_dict["attendee_count"] = count_map.get(event.id, 0)
-                event_dict["is_joined"] = (
-                    event.created_by == current_user.id or
-                    event.id in joined_set
+                # Compute event state fields
+                starts_at = event.starts_at
+                if starts_at.tzinfo is None:
+                    starts_at = starts_at.replace(tzinfo=timezone.utc)
+                
+                ends_at = event.ends_at
+                if ends_at.tzinfo is None:
+                    ends_at = ends_at.replace(tzinfo=timezone.utc)
+                
+                is_upcoming = now < starts_at
+                is_ongoing = starts_at <= now < ends_at
+                is_past = now >= ends_at
+                
+                status = (
+                    "ongoing" if is_ongoing else
+                    "past" if is_past else
+                    "upcoming"
                 )
+                
+                event_dict = event.model_dump()
+                event_dict.update({
+                    "ends_at": ends_at,
+                    "is_past": is_past,
+                    "is_ongoing": is_ongoing,
+                    "is_upcoming": is_upcoming,
+                    "status": status,
+                    "attendee_count": count_map.get(event.id, 0),
+                    "is_joined": (
+                        event.created_by == current_user.id or
+                        event.id in joined_set
+                    )
+                })
                 result.append(event_dict)
 
             return result
@@ -166,6 +268,248 @@ def list_events(
     event_ids = [e.id for e in events]
 
     if event_ids:
+        # Optimize: Get all attendee data in one query
+        all_attendee_records = session.exec(
+            select(EventAttendee.event_id, EventAttendee.user_id)
+            .where(EventAttendee.event_id.in_(event_ids))
+        ).all()
+
+        # Build count map and creator tracking in one pass
+        count_map = {}
+        creator_attendee_set = set()
+        creator_ids = {e.id: e.created_by for e in events}
+        
+        for event_id, user_id in all_attendee_records:
+            count_map[event_id] = count_map.get(event_id, 0) + 1
+            if creator_ids.get(event_id) == user_id:
+                creator_attendee_set.add((event_id, user_id))
+
+        # Fix counts - add creator if not in attendee table
+        for event in events:
+            if event.id not in count_map:
+                count_map[event.id] = 0
+            if event.created_by and (event.id, event.created_by) not in creator_attendee_set:
+                count_map[event.id] += 1
+            if event.created_by and count_map[event.id] == 0:
+                count_map[event.id] = 1
+
+        # Compute event state fields
+        now = datetime.now(timezone.utc)
+        result = []
+        for event in events:
+            # Compute event state fields
+            starts_at = event.starts_at
+            if starts_at.tzinfo is None:
+                starts_at = starts_at.replace(tzinfo=timezone.utc)
+            
+            ends_at = event.ends_at
+            if ends_at.tzinfo is None:
+                ends_at = ends_at.replace(tzinfo=timezone.utc)
+            
+            is_upcoming = now < starts_at
+            is_ongoing = starts_at <= now < ends_at
+            is_past = now >= ends_at
+            
+            status = (
+                "ongoing" if is_ongoing else
+                "past" if is_past else
+                "upcoming"
+            )
+            
+            event_dict = event.model_dump()
+            event_dict.update({
+                "ends_at": ends_at,
+                "is_past": is_past,
+                "is_ongoing": is_ongoing,
+                "is_upcoming": is_upcoming,
+                "status": status,
+                "attendee_count": count_map.get(event.id, 0)
+            })
+            result.append(event_dict)
+
+        return result
+
+    # Empty response - still compute state fields
+    now = datetime.now(timezone.utc)
+    result = []
+    for event in events:
+        starts_at = event.starts_at
+        if starts_at.tzinfo is None:
+            starts_at = starts_at.replace(tzinfo=timezone.utc)
+        
+        ends_at = event.ends_at
+        if ends_at.tzinfo is None:
+            ends_at = ends_at.replace(tzinfo=timezone.utc)
+        
+        is_upcoming = now < starts_at
+        is_ongoing = starts_at <= now < ends_at
+        is_past = now >= ends_at
+        
+        status = (
+            "ongoing" if is_ongoing else
+            "past" if is_past else
+            "upcoming"
+        )
+        
+        event_dict = event.model_dump()
+        event_dict.update({
+            "ends_at": ends_at,
+            "is_past": is_past,
+            "is_ongoing": is_ongoing,
+            "is_upcoming": is_upcoming,
+            "status": status
+        })
+        result.append(event_dict)
+    
+    return result
+
+
+@router.get("/my-events/count")
+def get_my_events_count(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(_get_user_from_token),
+    status: str = Query("upcoming")
+):
+    """Get count of events that the current user is attending or created (lightweight)"""
+    from sqlalchemy import or_
+    
+    status = (status or "upcoming").lower()
+    if status not in {"upcoming", "past", "ongoing", "all"}:
+        raise HTTPException(status_code=400, detail="Invalid status filter")
+    
+    # Get event IDs user is attending
+    attended_event_ids = session.exec(
+        select(EventAttendee.event_id).where(EventAttendee.user_id == current_user.id)
+    ).all()
+    
+    # Build query - handle empty list case
+    if not attended_event_ids:
+        # Only created events
+        query = select(Event).where(Event.created_by == current_user.id)
+    else:
+        # Events user is attending OR created
+        query = select(Event).where(
+            or_(
+                Event.id.in_(attended_event_ids),
+                Event.created_by == current_user.id
+            )
+        )
+    
+    # For SQL comparison, use naive datetime
+    now_utc = datetime.now(timezone.utc)
+    now_naive = now_utc.replace(tzinfo=None)
+    
+    # Apply basic time filtering in SQL (will refine in Python for ongoing/past)
+    if status == "upcoming":
+        query = query.where(Event.starts_at > now_naive)
+    elif status == "ongoing":
+        # Fetch events that have started (will filter by end time in Python)
+        query = query.where(Event.starts_at <= now_naive)
+    elif status == "past":
+        # Fetch events that have started (will filter by end time in Python)
+        query = query.where(Event.starts_at < now_naive)
+    
+    # Get all matching events
+    events = session.exec(query).all()
+    
+    # Filter by status in Python for accurate ends_at calculation
+    if status in ("ongoing", "past") and events:
+        filtered_events = []
+        for e in events:
+            starts_at = e.starts_at.replace(tzinfo=timezone.utc) if e.starts_at.tzinfo is None else e.starts_at
+            ends_at = starts_at + timedelta(hours=e.duration)
+            if status == "ongoing":
+                if starts_at <= now_utc < ends_at:
+                    filtered_events.append(e)
+            elif status == "past":
+                if ends_at <= now_utc:
+                    filtered_events.append(e)
+        events = filtered_events
+    
+    count = len(events) if events else 0
+    return {"count": count}
+
+@router.get("/my-events", response_model=List[EventRead])
+def get_my_events(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(_get_user_from_token),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    status: str = Query("upcoming")
+):
+    """Get events that the current user is attending or created (paginated)"""
+    from sqlalchemy import or_
+    
+    status = (status or "upcoming").lower()
+    if status not in {"upcoming", "past", "ongoing", "all"}:
+        raise HTTPException(status_code=400, detail="Invalid status filter")
+    
+    # Get event IDs user is attending
+    attended_event_ids = session.exec(
+        select(EventAttendee.event_id).where(EventAttendee.user_id == current_user.id)
+    ).all()
+    
+    # Build query - handle empty list case
+    if not attended_event_ids:
+        # Only created events
+        query = select(Event).where(Event.created_by == current_user.id)
+    else:
+        # Events user is attending OR created
+        query = select(Event).where(
+            or_(
+                Event.id.in_(attended_event_ids),
+                Event.created_by == current_user.id
+            )
+        )
+    
+    # For SQL comparison, use naive datetime
+    now_utc = datetime.now(timezone.utc)
+    now_naive = now_utc.replace(tzinfo=None)
+    
+    # Apply basic time filtering in SQL (will refine in Python for ongoing/past)
+    if status == "upcoming":
+        query = query.where(Event.starts_at > now_naive)
+    elif status == "ongoing":
+        # Fetch events that have started (will filter by end time in Python)
+        query = query.where(Event.starts_at <= now_naive)
+    elif status == "past":
+        # Fetch events that have started (will filter by end time in Python)
+        query = query.where(Event.starts_at < now_naive)
+    
+    # Order and fetch more for ongoing/past to account for Python filtering
+    if status == "past":
+        query = query.order_by(Event.starts_at.desc())
+    else:
+        query = query.order_by(Event.starts_at.asc())
+    
+    # Fetch more for ongoing/past to account for Python filtering
+    fetch_limit = limit * 2 if status in ("ongoing", "past") else limit
+    query = query.limit(fetch_limit).offset(offset)
+    events = session.exec(query).all()
+    
+    # Filter by status in Python for accurate ends_at calculation (same as list_events)
+    if status in ("ongoing", "past") and events:
+        filtered_events = []
+        for e in events:
+            starts_at = e.starts_at.replace(tzinfo=timezone.utc) if e.starts_at.tzinfo is None else e.starts_at
+            ends_at = starts_at + timedelta(hours=e.duration)
+            if status == "ongoing":
+                if starts_at <= now_utc < ends_at:
+                    filtered_events.append(e)
+                    if len(filtered_events) >= limit:
+                        break
+            elif status == "past":
+                if ends_at <= now_utc:
+                    filtered_events.append(e)
+                    if len(filtered_events) >= limit:
+                        break
+        events = filtered_events
+    
+    # Enrich with computed fields (same as list_events for authenticated users)
+    event_ids = [e.id for e in events]
+    
+    if event_ids:
+        # Get all attendees for these events
         all_attendees = session.exec(
             select(EventAttendee.event_id)
             .where(EventAttendee.event_id.in_(event_ids))
@@ -173,6 +517,7 @@ def list_events(
 
         count_map = dict(Counter(all_attendees))
 
+        # Creator auto-attend fix
         creator_ids = {e.id: e.created_by for e in events}
         creators_in_attendees = session.exec(
             select(EventAttendee.event_id, EventAttendee.user_id)
@@ -195,100 +540,91 @@ def list_events(
             if event.created_by and count_map[event.id] == 0:
                 count_map[event.id] = 1
 
+        # User joined events
+        user_joined = session.exec(
+            select(EventAttendee.event_id)
+            .where(
+                EventAttendee.event_id.in_(event_ids),
+                EventAttendee.user_id == current_user.id
+            )
+        ).all()
+        joined_set = set(user_joined)
+
+        # Build response
+        now = datetime.now(timezone.utc)
         result = []
         for event in events:
+            # Compute event state fields
+            starts_at = event.starts_at
+            if starts_at.tzinfo is None:
+                starts_at = starts_at.replace(tzinfo=timezone.utc)
+            
+            ends_at = event.ends_at
+            if ends_at.tzinfo is None:
+                ends_at = ends_at.replace(tzinfo=timezone.utc)
+            
+            is_upcoming = now < starts_at
+            is_ongoing = starts_at <= now < ends_at
+            is_past = now >= ends_at
+            
+            status = (
+                "ongoing" if is_ongoing else
+                "past" if is_past else
+                "upcoming"
+            )
+            
             event_dict = event.model_dump()
-            event_dict["attendee_count"] = count_map.get(event.id, 0)
+            event_dict.update({
+                "ends_at": ends_at,
+                "is_past": is_past,
+                "is_ongoing": is_ongoing,
+                "is_upcoming": is_upcoming,
+                "status": status,
+                "attendee_count": count_map.get(event.id, 0),
+                "is_joined": (
+                    event.created_by == current_user.id or
+                    event.id in joined_set
+                )
+            })
             result.append(event_dict)
 
         return result
-
-    # Empty response
-    return [e.model_dump() for e in events]
-
-
-@router.get("/my-events/count")
-def get_my_events_count(
-    session: Session = Depends(get_session),
-    current_user: User = Depends(_get_user_from_token),
-    status: str = Query("upcoming")
-):
-    """Get count of events that the current user is attending or created (lightweight)"""
-    from sqlalchemy import or_
     
-    status = (status or "upcoming").lower()
-    if status not in {"upcoming", "past", "all"}:
-        raise HTTPException(status_code=400, detail="Invalid status filter")
-    now = datetime.utcnow()
-    
-    # Get event IDs user is attending
-    attended_event_ids = session.exec(
-        select(EventAttendee.event_id).where(EventAttendee.user_id == current_user.id)
-    ).all()
-    
-    # Build query - handle empty list case
-    if not attended_event_ids:
-        # Only created events
-        query = select(func.count(Event.id)).where(Event.created_by == current_user.id)
-    else:
-        # Events user is attending OR created
-        query = select(func.count(Event.id)).where(
-            or_(
-                Event.id.in_(attended_event_ids),
-                Event.created_by == current_user.id
-            )
+    # Empty response - still compute state fields
+    now = datetime.now(timezone.utc)
+    result = []
+    for event in events:
+        starts_at = event.starts_at
+        if starts_at.tzinfo is None:
+            starts_at = starts_at.replace(tzinfo=timezone.utc)
+        
+        ends_at = event.ends_at
+        if ends_at.tzinfo is None:
+            ends_at = ends_at.replace(tzinfo=timezone.utc)
+        
+        is_upcoming = now < starts_at
+        is_ongoing = starts_at <= now < ends_at
+        is_past = now >= ends_at
+        
+        status = (
+            "ongoing" if is_ongoing else
+            "past" if is_past else
+            "upcoming"
         )
+        
+        event_dict = event.model_dump()
+        event_dict.update({
+            "ends_at": ends_at,
+            "is_past": is_past,
+            "is_ongoing": is_ongoing,
+            "is_upcoming": is_upcoming,
+            "status": status,
+            "attendee_count": 0,
+            "is_joined": False
+        })
+        result.append(event_dict)
     
-    if status == "upcoming":
-        query = query.where(Event.starts_at >= now)
-    elif status == "past":
-        query = query.where(Event.starts_at < now)
-    
-    count = session.exec(query).one() or 0
-    return {"count": count}
-
-@router.get("/my-events", response_model=List[EventRead])
-def get_my_events(
-    session: Session = Depends(get_session),
-    current_user: User = Depends(_get_user_from_token),
-    limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    status: str = Query("upcoming")
-):
-    """Get events that the current user is attending or created (paginated)"""
-    from sqlalchemy import or_
-    
-    status = (status or "upcoming").lower()
-    if status not in {"upcoming", "past", "all"}:
-        raise HTTPException(status_code=400, detail="Invalid status filter")
-    now = datetime.utcnow()
-    
-    # Get event IDs user is attending
-    attended_event_ids = session.exec(
-        select(EventAttendee.event_id).where(EventAttendee.user_id == current_user.id)
-    ).all()
-    
-    # Build query - handle empty list case
-    if not attended_event_ids:
-        # Only created events
-        query = select(Event).where(Event.created_by == current_user.id)
-    else:
-        # Events user is attending OR created
-        query = select(Event).where(
-            or_(
-                Event.id.in_(attended_event_ids),
-                Event.created_by == current_user.id
-            )
-        )
-    
-    if status == "upcoming":
-        query = query.where(Event.starts_at >= now)
-    elif status == "past":
-        query = query.where(Event.starts_at < now)
-    
-    query = query.order_by(Event.starts_at.asc()).limit(limit).offset(offset)
-    events = session.exec(query).all()
-    return list(events)
+    return result
 
 @router.get("/autocomplete")
 def autocomplete_events(
@@ -313,194 +649,328 @@ def autocomplete_events(
     ]
 
 @router.get("/{event_id}", response_model=EventRead)
-def get_event(event_id: int, session: Session = Depends(get_session)):
+def get_event(
+    event_id: int, 
+    session: Session = Depends(get_session),
+    current_user: Optional[User] = Depends(_get_optional_user_from_token)
+):
     evt = session.get(Event, event_id)
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
-    return evt
+
+    now = datetime.now(timezone.utc)
+
+    starts_at = evt.starts_at
+    if starts_at.tzinfo is None:
+        starts_at = starts_at.replace(tzinfo=timezone.utc)
+
+    ends_at = evt.ends_at
+    if ends_at.tzinfo is None:
+        ends_at = ends_at.replace(tzinfo=timezone.utc)
+
+    # Compute states
+    is_upcoming = now < starts_at
+    is_ongoing = starts_at <= now < ends_at
+    is_past = now >= ends_at
+
+    status = (
+        "ongoing" if is_ongoing else
+        "past" if is_past else
+        "upcoming"
+    )
+
+    # Award XP retroactively if event has ended and user is an attendee
+    if current_user and is_past:
+        # Check if user is an attendee or the event creator
+        is_attendee = session.exec(
+            select(EventAttendee).where(
+                EventAttendee.event_id == event_id,
+                EventAttendee.user_id == current_user.id
+            )
+        ).first()
+        is_creator = evt.created_by == current_user.id
+        
+        if is_attendee or is_creator:
+            # Award XP (function handles duplicate prevention internally via engagement calculation)
+            award_xp_for_event(current_user.id, event_id, session)
+
+    # Build response manually with computed fields
+    data = evt.model_dump()
+    data.update({
+        "ends_at": ends_at,
+        "is_past": is_past,
+        "is_ongoing": is_ongoing,
+        "is_upcoming": is_upcoming,
+        "status": status,
+    })
+
+    return data
+
+
 
 @router.patch("/{event_id}", response_model=EventRead)
 def update_event(event_id: int, data: EventUpdate, session: Session = Depends(get_session), current_user: User = Depends(_get_user_from_token)):
     evt = session.get(Event, event_id)
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
+
+    # Only the creator can edit
     creator_id = int(evt.created_by) if evt.created_by is not None else None
-    if creator_id is None or creator_id != current_user.id:
+    if creator_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not allowed")
+
+    # Apply updates
     updates = data.dict(exclude_unset=True)
     for k, v in updates.items():
         setattr(evt, k, v)
+
     if getattr(evt, "capacity", 1) < 1:
         raise HTTPException(status_code=422, detail="Capacity must be >= 1")
+
     session.add(evt)
     session.commit()
     session.refresh(evt)
-    return evt
+
+    # -------------------------------------------------
+    # COMPUTE event state fields
+    # -------------------------------------------------
+    now = datetime.now(timezone.utc)
+
+    starts_at = evt.starts_at
+    if starts_at.tzinfo is None:
+        starts_at = starts_at.replace(tzinfo=timezone.utc)
+
+    ends_at = evt.ends_at
+    if ends_at.tzinfo is None:
+        ends_at = ends_at.replace(tzinfo=timezone.utc)
+
+    is_upcoming = now < starts_at
+    is_ongoing = starts_at <= now < ends_at
+    is_past = now >= ends_at
+
+    status = (
+        "ongoing" if is_ongoing else
+        "past" if is_past else
+        "upcoming"
+    )
+
+    # Build enriched response
+    data = evt.model_dump()
+    data.update({
+        "ends_at": ends_at,
+        "is_past": is_past,
+        "is_upcoming": is_upcoming,
+        "is_ongoing": is_ongoing,
+        "status": status,
+    })
+
+    return data
+
 
 @router.delete("/{event_id}", status_code=204)
-def delete_event(event_id: int, session: Session = Depends(get_session), current_user: User = Depends(_get_user_from_token)):
+def delete_event(
+    event_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(_get_user_from_token)
+):
     evt = session.get(Event, event_id)
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
-    creator_id = int(evt.created_by) if evt.created_by is not None else None
-    if creator_id is None or creator_id != current_user.id:
+
+    if evt.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="Not allowed")
-    rows = session.exec(select(EventAttendee).where(EventAttendee.event_id == event_id)).all()
-    for r in rows:
-        session.delete(r)
+
+
+    # Delete event itself
     session.delete(evt)
     session.commit()
     return None
 
 @router.post("/{event_id}/join")
-def join_event(event_id: int, session: Session = Depends(get_session), current_user: User = Depends(_get_user_from_token)):
+def join_event(
+    event_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(_get_user_from_token)
+):
     evt = session.get(Event, event_id)
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
+
     now_utc = datetime.now(timezone.utc)
-    event_starts_at = evt.starts_at
-    if event_starts_at.tzinfo is None:
-        event_starts_at = event_starts_at.replace(tzinfo=timezone.utc)
-    if event_starts_at <= now_utc:
-        raise HTTPException(status_code=400, detail="Event has already ended")
-    exists = session.exec(select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == current_user.id)).first()
-    if exists:
-        # Already joined - return current count (including creator)
-        count = session.exec(select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)).one()
-        # Check if creator is in EventAttendee, if not add 1
-        creator_in_attendees = session.exec(
-            select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
-        ).first()
-        if not creator_in_attendees:
-            count += 1
-        return {"success": True, "alreadyJoined": True, "attendee_count": count}
-    count = session.exec(select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)).one()
-    # Check if creator is in EventAttendee, if not add 1
-    creator_in_attendees = session.exec(
-        select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
+    starts_at = evt.starts_at.replace(tzinfo=timezone.utc) if evt.starts_at.tzinfo is None else evt.starts_at
+    ends_at = starts_at + timedelta(hours=evt.duration)
+
+    # ❌ A user cannot join after event STARTS
+    if starts_at <= now_utc:
+        raise HTTPException(status_code=400, detail="Event has already started")
+
+    # Check if user already joined
+    already = session.exec(
+        select(EventAttendee)
+        .where(EventAttendee.event_id == event_id, EventAttendee.user_id == current_user.id)
     ).first()
-    if not creator_in_attendees:
-        count += 1
-    if evt.capacity is not None and count >= evt.capacity:
+
+    # Count attendees (NOT including creator yet)
+    attendee_count = session.exec(
+        select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)
+    ).one()
+
+    # Include creator if they aren't in attendee table
+    creator_in_attendee = session.exec(
+        select(EventAttendee)
+        .where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
+    ).first()
+    if not creator_in_attendee:
+        attendee_count += 1
+
+    if already:
+        return {"success": True, "alreadyJoined": True, "attendee_count": attendee_count}
+
+    # Capacity check (after counting creator)
+    if evt.capacity and attendee_count >= evt.capacity:
         raise HTTPException(status_code=409, detail="Event is full")
-    rec = EventAttendee(event_id=event_id, user_id=current_user.id)
-    session.add(rec)
+
+    # Add attendee
+    session.add(EventAttendee(event_id=event_id, user_id=current_user.id))
     session.commit()
-    
-    # Get updated count after join (including creator)
-    count = session.exec(select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)).one()
-    # Check if creator is in EventAttendee, if not add 1
-    creator_in_attendees = session.exec(
-        select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
-    ).first()
-    if not creator_in_attendees:
-        count += 1
-    
-    # Update user presence when joining
-    user_presence[current_user.id] = datetime.now(timezone.utc)
-    
-    if event_starts_at < now_utc:
-        award_xp_for_event(current_user.id, event_id, session)
-    
-    return {"success": True, "attendee_count": count}
+
+    # Recount after joining
+    attendee_count = session.exec(
+        select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)
+    ).one()
+    if not creator_in_attendee:
+        attendee_count += 1
+
+    # Update presence
+    user_presence[current_user.id] = now_utc
+
+    # Note: XP will be awarded retroactively when accessing past events
+    # (see get_event and get_event_messages endpoints)
+
+    return {"success": True, "attendee_count": attendee_count}
 
 @router.delete("/{event_id}/join")
-def leave_event(event_id: int, session: Session = Depends(get_session), current_user: User = Depends(_get_user_from_token)):
+def leave_event(
+    event_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(_get_user_from_token)
+):
     evt = session.get(Event, event_id)
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
-    rec = session.exec(select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == current_user.id)).first()
-    if not rec:
-        # Not joined - return current count (including creator)
-        count = session.exec(select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)).one()
-        # Check if creator is in EventAttendee, if not add 1
-        creator_in_attendees = session.exec(
-            select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
+
+    now_utc = datetime.now(timezone.utc)
+    starts_at = evt.starts_at.replace(tzinfo=timezone.utc) if evt.starts_at.tzinfo is None else evt.starts_at
+    ends_at = starts_at + timedelta(hours=evt.duration)
+
+    # ❌ Cannot leave once event has started
+    if now_utc >= starts_at:
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot leave an event that has already started"
+        )
+
+    # Check if user is joined
+    rec = session.exec(
+        select(EventAttendee)
+        .where(EventAttendee.event_id == event_id, EventAttendee.user_id == current_user.id)
+    ).first()
+
+    # Always compute attendee count helper
+    def get_attendee_count():
+        base = session.exec(
+            select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)
+        ).one()
+
+        creator_in_attendee = session.exec(
+            select(EventAttendee)
+            .where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
         ).first()
-        if not creator_in_attendees:
-            count += 1
-        return {"success": True, "notJoined": True, "attendee_count": count}
+
+        # Add creator if not already counted
+        if not creator_in_attendee:
+            base += 1
+
+        return base
+
+    # If not joined, just return counts
+    if not rec:
+        return {"success": True, "notJoined": True, "attendee_count": get_attendee_count()}
+
+    # Remove record
     session.delete(rec)
     session.commit()
-    
-    # Get updated count after leave (including creator)
-    count = session.exec(select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)).one()
-    # Check if creator is in EventAttendee, if not add 1
-    creator_in_attendees = session.exec(
-        select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
-    ).first()
-    if not creator_in_attendees:
-        count += 1
-    
-    return {"success": True, "attendee_count": count}
+
+    return {"success": True, "attendee_count": get_attendee_count()}
 
 @router.get("/{event_id}/attendees", response_model=List[int])
 def list_attendees(event_id: int, session: Session = Depends(get_session)):
-    session.get(Event, event_id) or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Event not found"))
-    rows = session.exec(select(EventAttendee.user_id).where(EventAttendee.event_id == event_id)).all()
-    return [r for r in rows]
-
-@router.get("/{event_id}/attendees/details")
-def list_attendees_with_details(event_id: int, session: Session = Depends(get_session)):
-    """Get list of attendees with user details (includes event owner)"""
     evt = session.get(Event, event_id)
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
+
+    # Get all attendee user_ids
+    user_ids = session.exec(
+        select(EventAttendee.user_id).where(EventAttendee.event_id == event_id)
+    ).all()
+
+    user_ids = [uid for uid in user_ids]
+
+    # ALWAYS include creator (consistent with attendee_count)
+    if evt.created_by not in user_ids:
+        user_ids.append(evt.created_by)
+
+    return user_ids
+
+
+@router.get("/{event_id}/attendees/details")
+def list_attendees_with_details(event_id: int, session: Session = Depends(get_session)):
+    """Get full attendee list with user details, including owner."""
     
+    evt = session.get(Event, event_id)
+    if not evt:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    # Load explicit attendees
     attendee_records = session.exec(
         select(EventAttendee)
         .where(EventAttendee.event_id == event_id)
-        .order_by(EventAttendee.joined_at)
+        .order_by(EventAttendee.joined_at.asc())
     ).all()
-    
-    # Collect user IDs from attendees
-    user_ids = [a.user_id for a in attendee_records]
-    
-    # Always include the event owner in the list (even if they haven't explicitly joined)
-    if evt.created_by and evt.created_by not in user_ids:
-        user_ids.append(evt.created_by)
-    
-    if not user_ids:
-        return []
-    
+
+    # Build dictionary: user_id -> joined_at
+    joined_times = {a.user_id: a.joined_at for a in attendee_records}
+
+    # Ensure creator exists in list
+    if evt.created_by not in joined_times:
+        # Creator is auto-attendee at event start
+        joined_times[evt.created_by] = evt.starts_at
+
+    user_ids = list(joined_times.keys())
+
+    # Load user objects
     users = session.exec(select(User).where(User.id.in_(user_ids))).all()
     user_map = {u.id: u for u in users}
-    
+
+    # Build final list
     result = []
-    
-    # First, add the event owner if they exist
-    if evt.created_by:
-        owner = user_map.get(evt.created_by)
-        if owner:
-            # Check if owner has an attendee record (explicit join)
-            owner_attendee = next((a for a in attendee_records if a.user_id == evt.created_by), None)
+    for user_id in user_ids:
+        u = user_map.get(user_id)
+        if u:
             result.append({
-                "id": owner.id,
-                "name": owner.name,
-                "email": owner.email,
-                "photo_url": owner.photo_url,
-                "is_verified": owner.is_verified,
-                "joined_at": owner_attendee.joined_at.isoformat() if owner_attendee and owner_attendee.joined_at else evt.created_at.isoformat() if evt.created_at else None
+                "id": u.id,
+                "name": u.name,
+                "email": u.email,
+                "photo_url": u.photo_url,
+                "is_verified": u.is_verified,
+                "joined_at": joined_times[user_id].isoformat()
             })
-    
-    # Then add all other attendees (excluding owner if already added)
-    for attendee_rec in attendee_records:
-        # Skip if this is the owner (already added above)
-        if attendee_rec.user_id == evt.created_by:
-            continue
-            
-        user = user_map.get(attendee_rec.user_id)
-        if user:
-            result.append({
-                "id": user.id,
-                "name": user.name,
-                "email": user.email,
-                "photo_url": user.photo_url,
-                "is_verified": user.is_verified,
-                "joined_at": attendee_rec.joined_at.isoformat() if attendee_rec.joined_at else None
-            })
-    
+
+    # Sort by joined_at
+    result.sort(key=lambda x: x["joined_at"])
+
     return result
+
 
 @router.get("/{event_id}/messages")
 def get_event_messages(
@@ -1153,6 +1623,22 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                         continue
                     
                     if message_type == "message":
+                        # Check if event has ended - if so, chat is read-only
+                        now = datetime.now(timezone.utc)
+                        starts_at = evt.starts_at.replace(tzinfo=timezone.utc) if evt.starts_at.tzinfo is None else evt.starts_at
+                        ends_at = evt.ends_at if evt.ends_at else (starts_at + timedelta(hours=evt.duration))
+                        if ends_at.tzinfo is None:
+                            ends_at = ends_at.replace(tzinfo=timezone.utc)
+                        
+                        is_past = now >= ends_at
+                        if is_past:
+                            # Event has ended - send error message
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": "This event has ended. Chat is now read-only. You can still view message history."
+                            })
+                            continue
+                        
                         # Send a new message
                         content = data.get("content", "").strip()
                         if not content or len(content) > 1000:

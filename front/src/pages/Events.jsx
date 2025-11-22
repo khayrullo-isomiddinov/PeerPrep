@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react"
+import { useEffect, useState, useMemo, useCallback, useRef } from "react"
 import { useSearchParams, useLocation } from "react-router-dom"
 import { Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
@@ -9,7 +9,9 @@ import EventList from "../features/events/EventList"
 import EditEventForm from "../features/events/EditEventForm"
 import { listEvents, getMyEvents, getMyEventsCount, updateEvent } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
+import axios from "axios"
 import { getCachedEvents, setCachedEvents } from "../utils/dataCache"
+import { getCachedPage, setCachedPage } from "../utils/pageCache"
 import { PageSkeleton } from "../components/SkeletonLoader"
 import { startPageLoad, endPageLoad } from "../utils/usePageLoader"
 
@@ -41,11 +43,86 @@ export default function Events() {
   const [examFilter, setExamFilter] = useState("all") // "all" or specific exam
   const [editingEvent, setEditingEvent] = useState(null)
 
-  const statusLabel = statusView === "past" ? "Past" : "Upcoming"
+  // --- Race condition prevention: request control ---
+  const abortControllerRef = useRef(null)
+  const requestSequenceRef = useRef(0)
+
+  // Cleanup on unmount: abort any in-flight request
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
+  }, [])
+
+  const statusLabel = statusView === "past" ? "Past" : statusView === "ongoing" ? "Ongoing" : "Upcoming"
+
+  async function fetchEventsWithGuard(cacheParams, nextStatus) {
+    // Cancel previous request, if any
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    const seq = ++requestSequenceRef.current
+    setLoading(true)
+
+    try {
+      const data = await listEvents(cacheParams, { signal: controller.signal })
+
+      // If this request was aborted, or another request has started since, ignore
+      if (controller.signal.aborted) return
+      if (seq !== requestSequenceRef.current) return
+
+      const safeData = Array.isArray(data) ? data : []
+      setEvents(safeData)
+
+      // Update cache
+      setCachedPage("events", safeData, cacheParams)
+      setCachedEvents(safeData, cacheParams)
+    } catch (err) {
+      if (err.name === "AbortError" || err.name === "CanceledError" || axios.isCancel(err)) {
+        // Silent: this is an expected case when switching tabs quickly
+        return
+      }
+      console.error("Failed to load events:", err)
+      setEvents([])
+    } finally {
+      // Only clear loading if this is still the latest request
+      if (seq === requestSequenceRef.current && !abortControllerRef.current?.signal.aborted) {
+        setLoading(false)
+      }
+    }
+  }
 
   function handleStatusChange(next) {
     if (next === statusView) return
+    
+    // 1) Set the new view immediately
     setStatusView(next)
+    
+    // 2) Build cache params
+    const q = params.get('q') || undefined
+    const location = params.get('location') || undefined
+    const exam = params.get('exam') || undefined
+    const cacheParams = { q, location, exam, status: next }
+    
+    // 3) Try to show cached data instantly (optimistic UX)
+    const cached = getCachedPage("events", cacheParams)
+    const cachedEvents = getCachedEvents(cacheParams) || cached?.data
+    
+    if (cachedEvents && cachedEvents.length > 0) {
+      setEvents(cachedEvents)
+    } else {
+      // No cache: show empty state while fetching
+      setEvents([])
+    }
+    
+    // 4) Fetch fresh data with guarded request (prevents race conditions)
+    fetchEventsWithGuard(cacheParams, next)
   }
 
   useEffect(() => {
@@ -127,6 +204,16 @@ export default function Events() {
     setLoadingMyEvents(true)
     try {
       const data = await getMyEvents({ status: statusView })
+      console.log("My Events API response:", data)
+      if (data && data.length > 0) {
+        console.log("First event sample:", {
+          id: data[0].id,
+          title: data[0].title,
+          attendee_count: data[0].attendee_count,
+          is_joined: data[0].is_joined,
+          created_by: data[0].created_by
+        })
+      }
       setMyEvents(data || [])
       // Update count when full list loads
       setMyEventsCount(data?.length || 0)
@@ -138,7 +225,6 @@ export default function Events() {
     }
   }, [isAuthenticated, statusView])
 
-  // Load my events count immediately when authenticated (lightweight, fast)
   useEffect(() => {
     if (isAuthenticated) {
       loadMyEventsCount()
@@ -193,12 +279,33 @@ export default function Events() {
       
     } else {
       startPageLoad(pageId)
-      load().finally(() => {
+      // Use guarded fetch for initial load too
+      const q = params.get('q') || undefined
+      const location = params.get('location') || undefined
+      const exam = params.get('exam') || undefined
+      const cacheParams = { q, location, exam, status: statusView }
+      fetchEventsWithGuard(cacheParams, statusView).finally(() => {
         endPageLoad(pageId)
+      })
+      
+      // Pre-cache other status views in background for instant switching
+      const otherStatuses = ["ongoing", "past"].filter(s => s !== statusView)
+      otherStatuses.forEach(status => {
+        setTimeout(async () => {
+          try {
+            const data = await listEvents({ q, location, exam, status, limit: 50 })
+            if (data && data.length > 0) {
+              setCachedPage("events", data, { q, location, exam, status })
+              setCachedEvents(data, { q, location, exam, status })
+            }
+          } catch (error) {
+            // Silently fail - this is just pre-caching
+          }
+        }, 500) // Delay to not block initial load
       })
     }
     setSearchQuery(params.get('q') || "")
-  }, [load, params, currentParams, location.state, showMyEvents, loadMyEvents])
+  }, [params, currentParams, location.state, showMyEvents, loadMyEvents, statusView])
 
 
   useEffect(() => {
@@ -225,27 +332,35 @@ export default function Events() {
 
 
 
-  const filteredEvents = useMemo(() => {
-    let filtered = events
-
-    if (statusView === "past") {
-      const now = new Date()
-      return events.filter(event => new Date(event.starts_at) < now)
+  // Helper to parse UTC datetime strings correctly
+  // Backend sends UTC times, so if no timezone indicator, assume UTC
+  const parseUTCDate = (dateString) => {
+    if (!dateString) return null
+    // If already has timezone info, use as-is
+    if (dateString.includes('Z') || dateString.includes('+') || dateString.match(/-\d{2}:\d{2}$/)) {
+      return new Date(dateString)
     }
+    // Otherwise, treat as UTC by appending 'Z'
+    return new Date(dateString + 'Z')
+  }
 
-    if (statusView === "upcoming") {
-      const now = new Date()
+  const filteredEvents = useMemo(() => {
+    // Backend already filters by status, so we can trust the events array
+    // Only apply client-side filters (search, time filter, exam filter)
+    let filtered = events
+    const now = new Date()
 
-      if (timeFilter === "upcoming") {
-        filtered = filtered.filter(event => new Date(event.starts_at) > now)
-      } else if (timeFilter === "today") {
+    // Only apply time filter for upcoming events
+    if (statusView === "upcoming" && timeFilter !== "all") {
+      if (timeFilter === "today") {
         const todayStart = new Date(now)
         todayStart.setHours(0, 0, 0, 0)
         const todayEnd = new Date(now)
         todayEnd.setHours(23, 59, 59, 999)
 
         filtered = filtered.filter(event => {
-          const eventDate = new Date(event.starts_at)
+          const eventDate = parseUTCDate(event.starts_at)
+          if (!eventDate) return false
           return eventDate >= todayStart && eventDate <= todayEnd
         })
       } else if (timeFilter === "week") {
@@ -253,7 +368,8 @@ export default function Events() {
         weekEnd.setDate(weekEnd.getDate() + 7)
 
         filtered = filtered.filter(event => {
-          const eventDate = new Date(event.starts_at)
+          const eventDate = parseUTCDate(event.starts_at)
+          if (!eventDate) return false
           return eventDate > now && eventDate <= weekEnd
         })
       }
@@ -282,8 +398,12 @@ export default function Events() {
 
   const trendingEvents = useMemo(() => {
     if (statusView !== "upcoming") return []
+    const now = new Date()
     return events
-      .filter(event => new Date(event.starts_at) > new Date())
+      .filter(event => {
+        const start = parseUTCDate(event.starts_at)
+        return start && start > now
+      })
       .sort((a, b) => (b.attendees || 0) - (a.attendees || 0))
       .slice(0, 3)
   }, [events, statusView])
@@ -383,6 +503,13 @@ export default function Events() {
                   Upcoming
                 </button>
                 <button
+                  onClick={() => handleStatusChange("ongoing")}
+                  className={`px-4 py-1.5 text-xs font-semibold ${statusView === "ongoing" ? "bg-indigo-600 text-white" : "text-gray-600"}`}
+                  style={{ borderRadius: 9999 }}
+                >
+                  Ongoing
+                </button>
+                <button
                   onClick={() => handleStatusChange("past")}
                   className={`px-4 py-1.5 text-xs font-semibold ${statusView === "past" ? "bg-indigo-600 text-white" : "text-gray-600"}`}
                   style={{ borderRadius: 9999 }}
@@ -409,7 +536,7 @@ export default function Events() {
                       <div className="flex items-center gap-2">
                         <FontAwesomeIcon icon={faCalendarAlt} className="w-4 h-4 text-gray-600" />
                         <span className="font-medium text-gray-900 text-sm">
-                          {statusView === "past" ? "My Past Events" : "My Events"}
+                          {statusView === "past" ? "My Past Events" : statusView === "ongoing" ? "My Ongoing Events" : "My Events"}
                         </span>
                         {loadingMyEventsCount ? (
                           <span className="px-1.5 py-0.5 bg-gray-200 text-gray-400 text-xs font-semibold animate-pulse">
@@ -465,7 +592,7 @@ export default function Events() {
                     style={{ borderRadius: '0' }}
                   />
                 </div>
-                {statusView === "upcoming" ? (
+                {statusView === "upcoming" || statusView === "ongoing" ? (
                   <>
                     <button
                       onClick={() => setTimeFilter("all")}

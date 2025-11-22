@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from "react"
 import { useNavigate, useParams, Link } from "react-router-dom"
 import { useAuth } from "../features/auth/AuthContext"
-import { updateProfile, deleteAccount, getUserProfile, getUserBadge } from "../utils/api"
+import { updateProfile, deleteAccount, getUserProfile, getUserBadge, awardPastEventsXP } from "../utils/api"
 import UserBadge from "../components/UserBadge"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faTrophy, faMedal, faAward, faUsers, faCalendar, faCheckCircle, faStar, faGraduationCap, faBookOpen } from "@fortawesome/free-solid-svg-icons"
@@ -115,6 +115,18 @@ export default function Profile() {
       
       try {
         setLoadingStats(true)
+        
+        // If viewing own profile, award XP for all past events first
+        if (isViewingOwnProfile) {
+          try {
+            await awardPastEventsXP()
+            // Reload stats after awarding XP
+          } catch (error) {
+            // Silently fail - XP awarding is best effort
+            console.debug("Failed to award past events XP:", error)
+          }
+        }
+        
         const badgeData = await getUserBadge(targetUserId)
         setUserStats(badgeData)
       } catch (error) {
@@ -124,7 +136,7 @@ export default function Profile() {
       }
     }
     loadUserStats()
-  }, [targetUserId])
+  }, [targetUserId, isViewingOwnProfile])
 
 
   useEffect(() => {
@@ -369,10 +381,10 @@ export default function Profile() {
                     </svg>
                     {formatMemberSince(form.createdAt) ? `Member since ${formatMemberSince(form.createdAt)}` : "Member"}
                   </div>
-                  {displayUser?.xp !== undefined && (
+                  {userStats && userStats.total_xp !== undefined && (
                     <div className="flex items-center gap-2 px-3 py-1 bg-purple-100 text-purple-700 rounded-full font-semibold">
                       <span>⭐</span>
-                      <span>{displayUser.xp || 0} XP</span>
+                      <span>{userStats.total_xp || 0} XP</span>
                     </div>
                   )}
                 </div>
@@ -421,7 +433,19 @@ export default function Profile() {
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-4 lg:space-y-6">
             {/* Stats Cards */}
-            {userStats && (
+            {loadingStats && !userStats ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 border border-gray-200 shadow-sm">
+                    <div className="animate-pulse space-y-2">
+                      <div className="h-8 w-8 bg-gray-200 rounded-lg"></div>
+                      <div className="h-8 bg-gray-200 rounded w-3/4"></div>
+                      <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : userStats ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200 shadow-sm hover:shadow-md transition-all">
                   <div className="flex items-center gap-2 mb-2">
@@ -433,16 +457,7 @@ export default function Profile() {
                   <div className="text-2xl font-bold text-gray-900">{userStats.total_xp || 0}</div>
                   <div className="text-xs text-gray-500 mt-1">Dynamic calculation</div>
                 </div>
-                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-4 border border-blue-200 shadow-sm hover:shadow-md transition-all">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">
-                      <FontAwesomeIcon icon={faCheckCircle} className="text-white text-sm" />
-                    </div>
-                    <span className="text-xs font-medium text-gray-600">Submissions</span>
-                  </div>
-                  <div className="text-2xl font-bold text-gray-900">{userStats.total_accepted_submissions || 0}</div>
-                  <div className="text-xs text-gray-500 mt-1">Approved</div>
-                </div>
+                
                 <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200 shadow-sm hover:shadow-md transition-all">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg flex items-center justify-center">
@@ -464,10 +479,20 @@ export default function Profile() {
                   <div className="text-xs text-gray-500 mt-1">Current badge</div>
                 </div>
               </div>
-            )}
+            ) : null}
 
             {/* Engagement Score Card */}
-            {userStats && userStats.engagement_score !== undefined && (
+            {loadingStats && !userStats ? (
+              <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-xl p-6 border border-indigo-200 shadow-sm">
+                <div className="animate-pulse space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="h-12 w-12 bg-gray-200 rounded-xl"></div>
+                    <div className="h-8 w-20 bg-gray-200 rounded"></div>
+                  </div>
+                  <div className="h-3 bg-gray-200 rounded-full"></div>
+                </div>
+              </div>
+            ) : userStats && userStats.engagement_score !== undefined ? (
               <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-xl p-6 border border-indigo-200 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
@@ -496,7 +521,7 @@ export default function Profile() {
                   Calculated from: recency, frequency, diversity, and consistency of your activity
                 </div>
               </div>
-            )}
+            ) : null}
 
             {/* Badge Shelf */}
             <div className="bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 rounded-2xl shadow-lg border-2 border-amber-200 p-6 lg:p-8">
@@ -518,15 +543,15 @@ export default function Profile() {
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pb-4">
                   {[
                     { name: "Beginner", min_xp: 0, requirements: {xp: 0}, icon: "🌱", color: "green", bgFrom: "from-green-100", bgTo: "to-green-200", border: "border-green-400", ring: "ring-green-300", text: "text-green-700", textLight: "text-green-600", bgLightFrom: "from-green-50", bgLightTo: "to-green-100", borderLight: "border-green-300" },
-                    { name: "Learner", min_xp: 200, requirements: {xp: 200, submissions: 2, engagement: 0.3}, icon: "📚", color: "blue", bgFrom: "from-blue-100", bgTo: "to-blue-200", border: "border-blue-400", ring: "ring-blue-300", text: "text-blue-700", textLight: "text-blue-600", bgLightFrom: "from-blue-50", bgLightTo: "to-blue-100", borderLight: "border-blue-300" },
-                    { name: "Achiever", min_xp: 500, requirements: {xp: 500, submissions: 5, events: 3, engagement: 0.5, streak_days: 3}, icon: "⭐", color: "purple", bgFrom: "from-purple-100", bgTo: "to-purple-200", border: "border-purple-400", ring: "ring-purple-300", text: "text-purple-700", textLight: "text-purple-600", bgLightFrom: "from-purple-50", bgLightTo: "to-purple-100", borderLight: "border-purple-300" },
-                    { name: "Expert", min_xp: 1500, requirements: {xp: 1500, submissions: 15, events: 8, engagement: 0.7, streak_days: 7, groups: 3}, icon: "🏆", color: "orange", bgFrom: "from-orange-100", bgTo: "to-orange-200", border: "border-orange-400", ring: "ring-orange-300", text: "text-orange-700", textLight: "text-orange-600", bgLightFrom: "from-orange-50", bgLightTo: "to-orange-100", borderLight: "border-orange-300" },
-                    { name: "Master", min_xp: 4000, requirements: {xp: 4000, submissions: 40, events: 20, engagement: 0.9, streak_days: 14, groups: 5, avg_score: 80}, icon: "👑", color: "gold", bgFrom: "from-yellow-100", bgTo: "to-yellow-200", border: "border-yellow-400", ring: "ring-yellow-300", text: "text-yellow-700", textLight: "text-yellow-600", bgLightFrom: "from-yellow-50", bgLightTo: "to-yellow-100", borderLight: "border-yellow-300" },
+                    { name: "Learner", min_xp: 200, requirements: {xp: 200, events: 2, weekly_streak: 1, engagement: 0.2}, icon: "📚", color: "blue", bgFrom: "from-blue-100", bgTo: "to-blue-200", border: "border-blue-400", ring: "ring-blue-300", text: "text-blue-700", textLight: "text-blue-600", bgLightFrom: "from-blue-50", bgLightTo: "to-blue-100", borderLight: "border-blue-300" },
+                    { name: "Achiever", min_xp: 500, requirements: {xp: 500, events: 5, weekly_streak: 3, engagement: 0.4}, icon: "⭐", color: "purple", bgFrom: "from-purple-100", bgTo: "to-purple-200", border: "border-purple-400", ring: "ring-purple-300", text: "text-purple-700", textLight: "text-purple-600", bgLightFrom: "from-purple-50", bgLightTo: "to-purple-100", borderLight: "border-purple-300" },
+                    { name: "Expert", min_xp: 1500, requirements: {xp: 1500, events: 15, weekly_streak: 8, engagement: 0.6}, icon: "🏆", color: "orange", bgFrom: "from-orange-100", bgTo: "to-orange-200", border: "border-orange-400", ring: "ring-orange-300", text: "text-orange-700", textLight: "text-orange-600", bgLightFrom: "from-orange-50", bgLightTo: "to-orange-100", borderLight: "border-orange-300" },
+                    { name: "Master", min_xp: 4000, requirements: {xp: 4000, events: 40, weekly_streak: 16, engagement: 0.8}, icon: "👑", color: "gold", bgFrom: "from-yellow-100", bgTo: "to-yellow-200", border: "border-yellow-400", ring: "ring-yellow-300", text: "text-yellow-700", textLight: "text-yellow-600", bgLightFrom: "from-yellow-50", bgLightTo: "to-yellow-100", borderLight: "border-yellow-300" },
                   ].map((badge, index) => {
                     const currentXP = userStats?.total_xp || 0
-                    const currentSubmissions = userStats?.total_accepted_submissions || 0
                     const currentEvents = userStats?.events_attended || 0
                     const currentEngagement = userStats?.engagement_score || 0
+                    const currentWeeklyStreak = userStats?.weekly_streak || 0
                     
                     // Badge hierarchy for determining unlock status
                     const badgeHierarchy = ["Beginner", "Learner", "Achiever", "Expert", "Master"]
@@ -539,17 +564,40 @@ export default function Profile() {
                     
                     // Also check requirements as fallback (for cases where backend might not have badge info)
                     const meetsXP = currentXP >= badge.requirements.xp
-                    const meetsSubmissions = !badge.requirements.submissions || currentSubmissions >= badge.requirements.submissions
                     const meetsEvents = !badge.requirements.events || currentEvents >= badge.requirements.events
+                    const meetsWeeklyStreak = !badge.requirements.weekly_streak || currentWeeklyStreak >= badge.requirements.weekly_streak
                     const meetsEngagement = !badge.requirements.engagement || currentEngagement >= badge.requirements.engagement
-                    const meetsRequirements = meetsXP && meetsSubmissions && meetsEvents && meetsEngagement
+                    const meetsRequirements = meetsXP && meetsEvents && meetsWeeklyStreak && meetsEngagement
                     
                     // Unlocked if backend says so OR if requirements are met
                     const isUnlocked = isUnlockedByBackend || meetsRequirements
                     const isCurrent = userStats?.badge?.name === badge.name
                     
-                    // Calculate progress percentage
-                    const progress = Math.min(100, (currentXP / badge.min_xp) * 100) || 0
+                    // Calculate progress percentage to next badge
+                    const progressBadgeIndex = badgeHierarchy.indexOf(badge.name)
+                    const nextBadgeIndex = progressBadgeIndex + 1
+                    
+                    let progress = 0
+                    if (nextBadgeIndex < badgeHierarchy.length) {
+                      // Calculate progress to next badge
+                      const nextBadge = badgeHierarchy[nextBadgeIndex]
+                      const nextBadgeData = [
+                        { name: "Beginner", min_xp: 0 },
+                        { name: "Learner", min_xp: 200 },
+                        { name: "Achiever", min_xp: 500 },
+                        { name: "Expert", min_xp: 1500 },
+                        { name: "Master", min_xp: 4000 },
+                      ].find(b => b.name === nextBadge)
+                      
+                      if (nextBadgeData) {
+                        const range = nextBadgeData.min_xp - badge.min_xp
+                        const progressInRange = currentXP - badge.min_xp
+                        progress = range > 0 ? Math.min(100, Math.max(0, (progressInRange / range) * 100)) : 0
+                      }
+                    } else {
+                      // Master badge - show 100% if unlocked, otherwise progress to Master
+                      progress = isUnlocked ? 100 : Math.min(100, (currentXP / badge.min_xp) * 100) || 0
+                    }
                     
                     return (
                       <div
@@ -592,11 +640,12 @@ export default function Profile() {
                               {!meetsXP && (
                                 <div className="text-gray-500">Need {badge.requirements.xp - currentXP} more XP</div>
                               )}
-                              {!meetsSubmissions && badge.requirements.submissions && (
-                                <div className="text-gray-500">Need {badge.requirements.submissions - currentSubmissions} more submissions</div>
-                              )}
+                              
                               {!meetsEvents && badge.requirements.events && (
                                 <div className="text-gray-500">Need {badge.requirements.events - currentEvents} more events</div>
+                              )}
+                              {!meetsWeeklyStreak && badge.requirements.weekly_streak && (
+                                <div className="text-gray-500">Need {badge.requirements.weekly_streak - currentWeeklyStreak} more week streak</div>
                               )}
                               {!meetsEngagement && badge.requirements.engagement && (
                                 <div className="text-gray-500">Need {(badge.requirements.engagement * 100).toFixed(0)}% engagement</div>
@@ -706,7 +755,16 @@ export default function Profile() {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Current Badge Card */}
-            {userStats?.badge && (
+            {loadingStats && !userStats ? (
+              <div className="bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-lg border border-gray-200 p-6 sticky top-24">
+                <div className="animate-pulse space-y-4">
+                  <div className="h-20 w-20 bg-gray-200 rounded-2xl mx-auto"></div>
+                  <div className="h-6 bg-gray-200 rounded w-3/4 mx-auto"></div>
+                  <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto"></div>
+                  <div className="h-2.5 bg-gray-200 rounded-full"></div>
+                </div>
+              </div>
+            ) : userStats?.badge ? (
               <div className="bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-lg border border-gray-200 p-6 sticky top-24">
                 <div className="text-center mb-4">
                   <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-purple-100 to-pink-100 rounded-2xl mb-3 shadow-md">
@@ -722,27 +780,82 @@ export default function Profile() {
                     <span className="text-lg font-bold text-gray-900">{userStats.total_xp || 0}</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2.5">
-                    <div 
-                      className={`h-2.5 rounded-full transition-all ${
-                        userStats.badge.color === "green" ? "bg-gradient-to-r from-green-500 to-green-600" :
-                        userStats.badge.color === "blue" ? "bg-gradient-to-r from-blue-500 to-blue-600" :
-                        userStats.badge.color === "purple" ? "bg-gradient-to-r from-purple-500 to-purple-600" :
-                        userStats.badge.color === "orange" ? "bg-gradient-to-r from-orange-500 to-orange-600" :
-                        "bg-gradient-to-r from-yellow-500 to-yellow-600"
-                      }`}
-                      style={{ 
-                        width: `${Math.min((userStats.total_xp / (userStats.badge.min_xp + 200)) * 100, 100)}%` 
-                      }}
-                    />
+                    {(() => {
+                      // Calculate progress to next badge
+                      const badgeHierarchy = ["Beginner", "Learner", "Achiever", "Expert", "Master"]
+                      const currentBadgeName = userStats.badge.name
+                      const currentBadgeIndex = badgeHierarchy.indexOf(currentBadgeName)
+                      const nextBadgeIndex = currentBadgeIndex + 1
+                      
+                      let progressWidth = 0
+                      let nextLevelXP = null
+                      
+                      if (nextBadgeIndex < badgeHierarchy.length) {
+                        const nextBadgeName = badgeHierarchy[nextBadgeIndex]
+                        const nextBadgeMinXP = {
+                          "Beginner": 0,
+                          "Learner": 200,
+                          "Achiever": 500,
+                          "Expert": 1500,
+                          "Master": 4000,
+                        }[nextBadgeName] || 0
+                        
+                        const currentMinXP = userStats.badge.min_xp || 0
+                        const range = nextBadgeMinXP - currentMinXP
+                        const progressInRange = userStats.total_xp - currentMinXP
+                        
+                        if (range > 0) {
+                          progressWidth = Math.min(100, Math.max(0, (progressInRange / range) * 100))
+                        } else {
+                          progressWidth = 100
+                        }
+                        nextLevelXP = nextBadgeMinXP
+                      } else {
+                        // Master badge - show 100%
+                        progressWidth = 100
+                      }
+                      
+                      return (
+                        <div 
+                          className={`h-2.5 rounded-full transition-all ${
+                            userStats.badge.color === "green" ? "bg-gradient-to-r from-green-500 to-green-600" :
+                            userStats.badge.color === "blue" ? "bg-gradient-to-r from-blue-500 to-blue-600" :
+                            userStats.badge.color === "purple" ? "bg-gradient-to-r from-purple-500 to-purple-600" :
+                            userStats.badge.color === "orange" ? "bg-gradient-to-r from-orange-500 to-orange-600" :
+                            "bg-gradient-to-r from-yellow-500 to-yellow-600"
+                          }`}
+                          style={{ width: `${progressWidth}%` }}
+                        />
+                      )
+                    })()}
                   </div>
                   <p className="text-xs text-gray-500 text-center">
-                    {userStats.total_xp >= (userStats.badge.min_xp + 200) 
-                      ? "Max level reached!" 
-                      : `${(userStats.badge.min_xp + 200) - userStats.total_xp} XP to next level`}
+                    {(() => {
+                      const badgeHierarchy = ["Beginner", "Learner", "Achiever", "Expert", "Master"]
+                      const currentBadgeName = userStats.badge.name
+                      const currentBadgeIndex = badgeHierarchy.indexOf(currentBadgeName)
+                      const nextBadgeIndex = currentBadgeIndex + 1
+                      
+                      if (nextBadgeIndex >= badgeHierarchy.length) {
+                        return "Max level reached!"
+                      }
+                      
+                      const nextBadgeName = badgeHierarchy[nextBadgeIndex]
+                      const nextBadgeMinXP = {
+                        "Beginner": 0,
+                        "Learner": 200,
+                        "Achiever": 500,
+                        "Expert": 1500,
+                        "Master": 4000,
+                      }[nextBadgeName] || 0
+                      
+                      const xpNeeded = nextBadgeMinXP - userStats.total_xp
+                      return xpNeeded > 0 ? `${xpNeeded} XP to next level` : "Max level reached!"
+                    })()}
                   </p>
                 </div>
               </div>
-            )}
+            ) : null}
 
             {/* Quick Stats */}
             {userStats && (
@@ -752,13 +865,7 @@ export default function Profile() {
                   Activity Summary
                 </h3>
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <FontAwesomeIcon icon={faCheckCircle} className="text-blue-500" />
-                      <span className="text-sm font-medium text-gray-700">Accepted Submissions</span>
-                    </div>
-                    <span className="text-lg font-bold text-gray-900">{userStats.total_accepted_submissions || 0}</span>
-                  </div>
+                  
                   <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                     <div className="flex items-center gap-3">
                       <FontAwesomeIcon icon={faCalendar} className="text-green-500" />
@@ -766,6 +873,16 @@ export default function Profile() {
                     </div>
                     <span className="text-lg font-bold text-gray-900">{userStats.events_attended || 0}</span>
                   </div>
+                  
+                  {userStats.weekly_streak !== undefined && (
+                    <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <FontAwesomeIcon icon={faStar} className="text-orange-500" />
+                        <span className="text-sm font-medium text-gray-700">Weekly Streak</span>
+                      </div>
+                      <span className="text-lg font-bold text-gray-900">{userStats.weekly_streak || 0} weeks</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -791,7 +908,7 @@ export default function Profile() {
                   <h3 className="text-lg font-semibold text-red-900 mb-2">Delete Account</h3>
                   <p className="text-red-700 mb-4">
                     Once you delete your account, there is no going back. This will permanently remove your account, 
-                    all your data, and your participation in groups and events.
+                    all your data and your participation in events.
                   </p>
                 </div>
                 

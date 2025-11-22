@@ -150,13 +150,26 @@ export default function Home() {
     loadEvents()
   }, [])
 
+  // Helper to parse UTC datetime strings correctly
+  // Backend sends UTC times, so if no timezone indicator, assume UTC
+  const parseUTCDate = (dateString) => {
+    if (!dateString) return null
+    // If already has timezone info, use as-is
+    if (dateString.includes('Z') || dateString.includes('+') || dateString.match(/-\d{2}:\d{2}$/)) {
+      return new Date(dateString)
+    }
+    // Otherwise, treat as UTC by appending 'Z'
+    return new Date(dateString + 'Z')
+  }
+
   // Derived sections
   const localEvents = useMemo(() => {
     const now = new Date()
     if (!userCity || userCity === "NYC") {
       return allEvents
         .filter(e => {
-          const eventDate = new Date(e.starts_at)
+          const eventDate = parseUTCDate(e.starts_at)
+          if (!eventDate) return false
           return (
             eventDate > now &&
             (e.location?.toLowerCase().includes("new york") ||
@@ -164,21 +177,32 @@ export default function Home() {
               e.location?.toLowerCase().includes("ny"))
           )
         })
-        .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))
+        .sort((a, b) => {
+          const dateA = parseUTCDate(a.starts_at)
+          const dateB = parseUTCDate(b.starts_at)
+          if (!dateA || !dateB) return 0
+          return dateA - dateB
+        })
         .slice(0, 3)
     }
 
     const cityLower = userCity.toLowerCase()
     return allEvents
       .filter(e => {
-        const eventDate = new Date(e.starts_at)
+        const eventDate = parseUTCDate(e.starts_at)
+        if (!eventDate) return false
         return (
           eventDate > now &&
           (e.location?.toLowerCase().includes(cityLower) ||
             e.location?.toLowerCase().includes(cityLower.split(" ")[0]))
         )
       })
-      .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))
+      .sort((a, b) => {
+        const dateA = parseUTCDate(a.starts_at)
+        const dateB = parseUTCDate(b.starts_at)
+        if (!dateA || !dateB) return 0
+        return dateA - dateB
+      })
       .slice(0, 3)
   }, [allEvents, userCity])
 
@@ -189,10 +213,16 @@ export default function Home() {
 
     return allEvents
       .filter(e => {
-        const eventDate = new Date(e.starts_at)
+        const eventDate = parseUTCDate(e.starts_at)
+        if (!eventDate) return false
         return eventDate > now && eventDate <= tomorrow
       })
-      .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))
+      .sort((a, b) => {
+        const dateA = parseUTCDate(a.starts_at)
+        const dateB = parseUTCDate(b.starts_at)
+        if (!dateA || !dateB) return 0
+        return dateA - dateB
+      })
       .slice(0, 2)
   }, [allEvents])
 
@@ -202,15 +232,22 @@ export default function Home() {
 
     return allEvents
       .filter(e => {
-        const eventDate = new Date(e.starts_at)
+        const eventDate = parseUTCDate(e.starts_at)
+        if (!eventDate) return false
         return eventDate > now && !shown.has(e.id)
       })
-      .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))
+      .sort((a, b) => {
+        const dateA = parseUTCDate(a.starts_at)
+        const dateB = parseUTCDate(b.starts_at)
+        if (!dateA || !dateB) return 0
+        return dateA - dateB
+      })
       .slice(0, 3)
   }, [allEvents, localEvents, upcoming24h])
 
   function formatEventDate(dateString) {
-    const date = new Date(dateString)
+    const date = parseUTCDate(dateString)
+    if (!date || isNaN(date.getTime())) return "Invalid date"
     const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
     const months = ["January","February","March","April","May","June","July","August","September","October","November","December"]
     return `${days[date.getDay()]}, ${months[date.getMonth()]} ${date.getDate()} | ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`

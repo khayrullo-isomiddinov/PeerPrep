@@ -13,7 +13,7 @@ from typing import Optional, Dict
 from sqlmodel import Session, select, func
 
 from app.models import User, Event, EventAttendee
-from app.config import settings
+from app.core.config import settings
 
 
 # ----------------------------------------------------
@@ -45,7 +45,7 @@ def calculate_weekly_streak(user_id: int, session: Session, max_weeks_back: int 
 
     # Build set of year-week keys
     week_keys = set()
-    for (starts_at,) in rows:
+    for starts_at in rows:
         dt = _to_utc(starts_at)
         iso_year, iso_week, _ = dt.isocalendar()
         week_keys.add((iso_year, iso_week))
@@ -88,13 +88,15 @@ class EngagementPredictor:
         now = datetime.now(timezone.utc)
 
         # --- Recency (last 14 days) ---
+        # Only count events that have ALREADY STARTED (not future events)
         recent_start = now - timedelta(days=14)
         recent_count = session.exec(
             select(func.count(EventAttendee.id))
             .join(Event, Event.id == EventAttendee.event_id)
             .where(
                 EventAttendee.user_id == user_id,
-                Event.starts_at.between(recent_start, now),
+                Event.starts_at <= now,  # Only events that have started
+                Event.starts_at >= recent_start,  # In the last 14 days
             )
         ).one() or 0
         recency_score = min(1.0, recent_count / 4.0)
@@ -106,9 +108,14 @@ class EngagementPredictor:
             age_days = max(1, (now - created_at).days)
             age_weeks = age_days / 7
 
+            # Only count events that have ALREADY STARTED (not future events)
             total_events = session.exec(
                 select(func.count(EventAttendee.id))
-                .where(EventAttendee.user_id == user_id)
+                .join(Event, Event.id == EventAttendee.event_id)
+                .where(
+                    EventAttendee.user_id == user_id,
+                    Event.starts_at <= now,  # Only events that have started
+                )
             ).one() or 0
 
             events_per_week = total_events / max(1.0, age_weeks)
@@ -147,15 +154,51 @@ class XPCalculator:
 
 
 def award_event_xp(user_id: int, event_id: int, session: Session) -> int:
-    """Give XP only if event has already started."""
+    """
+    Award XP for attending an event.
+    Only awards if:
+    - Event has ENDED (not just started)
+    - User is an attendee or creator
+    - XP hasn't been awarded yet (duplicate prevention)
+    """
     event = session.get(Event, event_id)
     if not event:
         return 0
 
     now = datetime.now(timezone.utc)
-    if _to_utc(event.starts_at) > now:
-        return 0  # future event = cannot award XP
+    starts_at = _to_utc(event.starts_at)
+    ends_at = starts_at + timedelta(hours=event.duration)
+    
+    # Cannot award XP for events that haven't ended yet
+    if ends_at > now:
+        return 0
 
+    # Check if user is an attendee or creator
+    is_attendee = session.exec(
+        select(EventAttendee).where(
+            EventAttendee.event_id == event_id,
+            EventAttendee.user_id == user_id
+        )
+    ).first()
+    
+    is_creator = event.created_by == user_id
+    
+    if not is_attendee and not is_creator:
+        return 0  # User didn't attend this event
+
+    # Check if XP was already awarded (duplicate prevention)
+    if is_attendee and is_attendee.xp_awarded:
+        return 0  # Already awarded
+    
+    # For creators, check if they're in attendee table and if XP was awarded
+    if is_creator and not is_attendee:
+        # Creator is auto-attendee, but not in EventAttendee table
+        # We'll award XP and mark it in a new EventAttendee record
+        pass
+    elif is_creator and is_attendee and is_attendee.xp_awarded:
+        return 0  # Already awarded
+
+    # Calculate and award XP
     xp = XPCalculator.event_xp(user_id, event_id, session)
 
     user = session.get(User, user_id)
@@ -164,9 +207,96 @@ def award_event_xp(user_id: int, event_id: int, session: Session) -> int:
 
     user.xp = (user.xp or 0) + xp
     session.add(user)
+    
+    # Mark XP as awarded
+    if is_attendee:
+        is_attendee.xp_awarded = True
+        session.add(is_attendee)
+    else:
+        # Creator not in attendee table - create record to track XP
+        attendee = EventAttendee(
+            event_id=event_id,
+            user_id=user_id,
+            xp_awarded=True
+        )
+        session.add(attendee)
+    
     session.commit()
 
     return xp
+
+
+def award_xp_for_all_past_events(user_id: int, session: Session) -> Dict[str, int]:
+    """
+    Award XP for all past events that the user attended but hasn't received XP for yet.
+    Returns a summary of how many events were processed and total XP awarded.
+    """
+    now = datetime.now(timezone.utc)
+    
+    # Get all events where user is an attendee and XP hasn't been awarded
+    # We'll filter by ends_at in Python for accuracy
+    attendee_events = session.exec(
+        select(Event, EventAttendee)
+        .join(EventAttendee, Event.id == EventAttendee.event_id)
+        .where(
+            EventAttendee.user_id == user_id,
+            Event.starts_at <= now,  # Basic filter, will refine in Python
+            EventAttendee.xp_awarded == False
+        )
+    ).all()
+    
+    # Filter to only events that have ENDED
+    past_attendee_events = []
+    for event, attendee in attendee_events:
+        starts_at = _to_utc(event.starts_at)
+        ends_at = starts_at + timedelta(hours=event.duration)
+        if ends_at <= now:
+            past_attendee_events.append((event, attendee))
+    
+    # Get all events where user is creator but not in EventAttendee table
+    # (for old events created before we started tracking creators)
+    creator_events = session.exec(
+        select(Event)
+        .where(
+            Event.created_by == user_id,
+            Event.starts_at <= now  # Basic filter, will refine in Python
+        )
+    ).all()
+    
+    # Filter to only events that have ENDED
+    past_creator_events = []
+    for event in creator_events:
+        starts_at = _to_utc(event.starts_at)
+        ends_at = starts_at + timedelta(hours=event.duration)
+        if ends_at <= now:
+            past_creator_events.append(event)
+    
+    # Filter out creator events that are already in EventAttendee
+    creator_event_ids = {e.id for e in past_creator_events}
+    attendee_event_ids = {e.id for e, _ in past_attendee_events}
+    creator_only_events = [e for e in past_creator_events if e.id not in attendee_event_ids]
+    
+    total_xp_awarded = 0
+    events_processed = 0
+    
+    # Award XP for attendee events
+    for event, attendee in past_attendee_events:
+        xp = award_event_xp(user_id, event.id, session)
+        if xp > 0:
+            total_xp_awarded += xp
+            events_processed += 1
+    
+    # Award XP for creator-only events (will create EventAttendee record)
+    for event in creator_only_events:
+        xp = award_event_xp(user_id, event.id, session)
+        if xp > 0:
+            total_xp_awarded += xp
+            events_processed += 1
+    
+    return {
+        "events_processed": events_processed,
+        "total_xp_awarded": total_xp_awarded
+    }
 
 
 # ----------------------------------------------------
@@ -238,11 +368,41 @@ class BadgeSystem:
     def _stats(user_id: int, session: Session) -> Dict:
         now = datetime.now(timezone.utc)
 
-        events_attended = session.exec(
-            select(func.count(EventAttendee.id))
-            .join(Event, Event.id == EventAttendee.event_id)
-            .where(EventAttendee.user_id == user_id, Event.starts_at <= now)
-        ).one() or 0
+        # Count only events that have ENDED (past events), not ongoing events
+        # This matches the "My Past Events" filter logic
+        # Include both events user is attending AND events user created (creators are auto-attendees)
+        
+        # Get events from EventAttendee table
+        attendee_events = session.exec(
+            select(Event)
+            .join(EventAttendee, Event.id == EventAttendee.event_id)
+            .where(EventAttendee.user_id == user_id)
+        ).all()
+        
+        # Get events user created (creators are auto-attendees)
+        created_events = session.exec(
+            select(Event)
+            .where(Event.created_by == user_id)
+        ).all()
+        
+        # Combine and deduplicate
+        all_event_ids = set()
+        for event in attendee_events:
+            all_event_ids.add(event.id)
+        for event in created_events:
+            all_event_ids.add(event.id)
+        
+        # Filter in Python to check ends_at accurately
+        past_events_count = 0
+        for event_id in all_event_ids:
+            event = session.get(Event, event_id)
+            if event:
+                starts_at = _to_utc(event.starts_at)
+                ends_at = starts_at + timedelta(hours=event.duration)
+                if ends_at <= now:
+                    past_events_count += 1
+        
+        events_attended = past_events_count
 
         weekly_streak = calculate_weekly_streak(user_id, session)
         engagement = EngagementPredictor.calculate_engagement_score(user_id, session)

@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Response
 from fastapi.responses import RedirectResponse
 from sqlmodel import Session, select, text
 from sqlalchemy import text as sql_text
-from app.db import get_session
+from app.core.db import get_session
 from app.models import User
 from app.core.security import hash_password, verify_password, create_access_token, decode_token
-from app.config import settings
+from app.core.config import settings
 from app.schemas.auth import RegisterIn, LoginIn, ProfileUpdate
 import secrets
 from app.services.email import send_email
@@ -29,7 +29,7 @@ async def register(data: RegisterIn, session: Session = Depends(get_session)):
     
     # Use raw SQL to handle is_active column that may still exist in DB
     # Check if is_active column exists using the connection
-    from app.db import engine
+    from app.core.db import engine
     with engine.connect() as conn:
         result = conn.execute(sql_text("PRAGMA table_info(user)"))
         columns = [row[1] for row in result.fetchall()]

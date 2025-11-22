@@ -12,24 +12,124 @@ import { deleteEvent, getAttendees, joinEvent, leaveEvent, getEvent } from "../.
 import { useAuth } from "../auth/AuthContext"
 import { usePrefetch } from "../../utils/usePrefetch"
 
+
+
 function EventCard({ event, onChanged, onDelete, onEdit }) {
+  // Add a timestamp state that updates periodically to trigger status recalculation
+  const [currentTime, setCurrentTime] = useState(() => new Date())
+  
+  useEffect(() => {
+    // Update current time every minute to refresh status badges
+    const interval = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 60000) // Update every minute
+    
+    return () => clearInterval(interval)
+  }, [])
+  
+  // Calculate status dynamically based on current time (not just API flags)
+  // This ensures the badge updates in real-time as events start/end
+  const eventStatus = useMemo(() => {
+    if (!event.starts_at) {
+      // Fallback to API flags if no start time
+      return {
+        isUpcoming: event.is_upcoming ?? false,
+        isOngoing: event.is_ongoing ?? false,
+        isPast: event.is_past ?? false
+      }
+    }
+    
+    try {
+      const start = parseUTCDate(event.starts_at)
+      if (!start || isNaN(start.getTime())) {
+        return {
+          isUpcoming: event.is_upcoming ?? false,
+          isOngoing: event.is_ongoing ?? false,
+          isPast: event.is_past ?? false
+        }
+      }
+      const now = currentTime // Use state instead of new Date() for reactivity
+      
+      if (isNaN(start.getTime()) || isNaN(now.getTime())) {
+        // Invalid dates - fallback to API flags
+        return {
+          isUpcoming: event.is_upcoming ?? false,
+          isOngoing: event.is_ongoing ?? false,
+          isPast: event.is_past ?? false
+        }
+      }
+      
+      // Calculate end time
+      let end
+      if (event.ends_at) {
+        end = parseUTCDate(event.ends_at)
+        if (!end || isNaN(end.getTime())) {
+          // Fallback to calculating from start + duration
+          const duration = event.duration || 1
+          end = new Date(start.getTime() + duration * 60 * 60 * 1000)
+        }
+      } else {
+        const duration = event.duration || 1 // default 1 hour
+        end = new Date(start.getTime() + duration * 60 * 60 * 1000)
+      }
+      
+      // Determine status based on current time
+      if (now < start) {
+        return { isUpcoming: true, isOngoing: false, isPast: false }
+      } else if (now >= end) {
+        return { isUpcoming: false, isOngoing: false, isPast: true }
+      } else {
+        return { isUpcoming: false, isOngoing: true, isPast: false }
+      }
+    } catch (e) {
+      // Fallback to API flags on error
+      return {
+        isUpcoming: event.is_upcoming ?? false,
+        isOngoing: event.is_ongoing ?? false,
+        isPast: event.is_past ?? false
+      }
+    }
+  }, [event.starts_at, event.ends_at, event.duration, event.is_upcoming, event.is_ongoing, event.is_past, currentTime])
+  
+  const isUpcoming = eventStatus.isUpcoming
+  const isOngoing  = eventStatus.isOngoing
+  const isPast     = eventStatus.isPast
+  // Calculate hasStarted: event has started if current time >= event start time
+  // Always calculate from starts_at to be reliable (don't trust API flags alone)
+  const hasStarted = useMemo(() => {
+    if (!event.starts_at) {
+      // If no start time, can't determine - but check API flags as fallback
+      return isOngoing || isPast;
+    }
+    
+    try {
+      const start = parseUTCDate(event.starts_at)
+      if (!start || isNaN(start.getTime())) {
+        return isOngoing || isPast
+      }
+      const now = currentTime; // Use same time state for consistency
+      
+      // Check if dates are valid
+      if (isNaN(start.getTime()) || isNaN(now.getTime())) {
+        // Invalid dates - fallback to API flags
+        return isOngoing || isPast;
+      }
+      
+      // Event has started if now >= start time (this is the source of truth)
+      const started = now.getTime() >= start.getTime();
+      return started;
+    } catch (e) {
+      // If date parsing fails, fallback to API flags
+      return isOngoing || isPast;
+    }
+  }, [event.starts_at, isOngoing, isPast, currentTime]);
   const { user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
   const { prefetch } = usePrefetch()
   const currentId = useMemo(() => user ? Number(user.id ?? user?.user?.id) : null, [user])
   const creatorId = useMemo(() => event.created_by != null ? Number(event.created_by) : null, [event.created_by])
   const mine = useMemo(() => currentId != null && creatorId === currentId, [currentId, creatorId])
-  const isPast = useMemo(() => {
-    try {
-      const start = new Date(event.starts_at)
-      const end = new Date(event.ends_at ?? event.starts_at)
-      const now = new Date()
-      return end < now
-    } catch {
-      return false
-    }
-  }, [event.starts_at, event.ends_at])
-
+  
 
   // Use enriched data from API - simple and straightforward
   const count = event.attendee_count ?? 0
@@ -194,10 +294,26 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
     return "text-gray-600"
   }
 
+  // Helper to parse UTC datetime strings correctly
+  // Backend sends UTC times, so if no timezone indicator, assume UTC
+  const parseUTCDate = (dateString) => {
+    if (!dateString) return null
+    // If already has timezone info, use as-is
+    if (dateString.includes('Z') || dateString.includes('+') || dateString.match(/-\d{2}:\d{2}$/)) {
+      return new Date(dateString)
+    }
+    // Otherwise, treat as UTC by appending 'Z'
+    return new Date(dateString + 'Z')
+  }
+
   const formatDate = (startsAt, endsAt) => {
-    const start = new Date(startsAt)
-    const end = new Date(endsAt ?? startsAt)
+    const start = parseUTCDate(startsAt)
+    const end = parseUTCDate(endsAt ?? startsAt)
     const now = new Date()
+    
+    if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return ''
+    }
 
     // If event already ended → treat as past
     if (end < now) return start.toLocaleDateString()
@@ -217,9 +333,10 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
     return start.toLocaleDateString()
   }
 
-
   const formatTime = (dateString) => {
-    return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const date = parseUTCDate(dateString)
+    if (!date || isNaN(date.getTime())) return ''
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
 
   const handleCardClick = (e) => {
@@ -260,17 +377,33 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
                 </span>
               </div>
             )}
-            {full && !mine && (
-              <div className="absolute top-1 left-1">
-                <span className="px-1.5 py-0.5 bg-red-500/90 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
-                  Full
+            {/* Status Badge - show on top right */}
+            {isOngoing && (
+              <div className="absolute top-1 right-1">
+                <span className="px-1.5 py-0.5 bg-green-500/90 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
+                  Ongoing
                 </span>
               </div>
             )}
             {isPast && (
               <div className="absolute top-1 right-1">
-                <span className="px-1.5 py-0.5 bg-gray-900/80 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
-                  Completed
+                <span className="px-1.5 py-0.5 bg-gray-600/90 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
+                  Past
+                </span>
+              </div>
+            )}
+            {isUpcoming && !isOngoing && !isPast && (
+              <div className="absolute top-1 right-1">
+                <span className="px-1.5 py-0.5 bg-indigo-500/90 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
+                  Upcoming
+                </span>
+              </div>
+            )}
+            {/* Full badge - show on top left if not owner */}
+            {full && !mine && (
+              <div className="absolute top-1 left-1">
+                <span className="px-1.5 py-0.5 bg-red-500/90 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
+                  Full
                 </span>
               </div>
             )}
@@ -314,7 +447,8 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
               </div>
 
               <div className="flex items-center gap-1.5">
-                {!mine && !isPast && isAuthenticated && joined && (
+                {/* Only show leave button if event hasn't started */}
+                {!mine && !hasStarted && isAuthenticated && joined && (
                   <button
                     onClick={(e) => {
                       e.preventDefault()
@@ -326,7 +460,9 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
                     Leave
                   </button>
                 )}
-                {!mine && !isPast && isAuthenticated && !joined && !full && (
+                {/* Only show join button if event hasn't started */}
+                {!mine && !hasStarted && isAuthenticated && !joined && !full && (
+
                   <button
                     onClick={(e) => {
                       e.preventDefault()
@@ -338,7 +474,8 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
                     Join
                   </button>
                 )}
-                {!mine && !isPast && !isAuthenticated && !full && (
+                {!mine && !hasStarted && !isAuthenticated && !full && (
+
                   <button
                     onClick={(e) => {
                       e.preventDefault()

@@ -270,9 +270,21 @@ export default function CreateEventForm({ onCreated }) {
         ? JSON.stringify(formData.studyMaterials)
         : null
 
+      // Convert local datetime to UTC ISO string
+      // formData.startsAt is in format "YYYY-MM-DDTHH:mm" (local time)
+      // We need to convert it to UTC ISO string
+      let startsAtUTC
+      if (formData.startsAt) {
+        // Parse as local time and convert to UTC
+        const localDate = new Date(formData.startsAt)
+        startsAtUTC = localDate.toISOString()
+      } else {
+        startsAtUTC = null
+      }
+
       const payload = {
         title: formData.title.trim(),
-        starts_at: formData.startsAt,
+        starts_at: startsAtUTC,
         location: formData.location.trim(),
         capacity: Number(formData.capacity),
         duration: Number(formData.duration),
@@ -282,15 +294,44 @@ export default function CreateEventForm({ onCreated }) {
         study_materials: studyMaterialsJson,
         exam: formData.exam.trim() || null
       }
+      
       const evt = await createEvent(payload)
-      onCreated?.(evt)
-      navigate("/events", {
-        state: { newEvent: evt }
-      })
+      
+      // Reset loading state before navigation
+      setLoading(false)
+      
+      // Call callback if provided
+      if (onCreated) {
+        try {
+          onCreated(evt)
+        } catch (callbackError) {
+          console.error('Error in onCreated callback:', callbackError)
+          // Don't fail the whole operation if callback fails
+        }
+      }
+      
+      // Navigate to events page
+      try {
+        navigate("/events", {
+          state: { newEvent: evt }
+        })
+      } catch (navError) {
+        console.error('Navigation error:', navError)
+        // If navigation fails, still show success and let user navigate manually
+        setError("Event created successfully! Please refresh the page to see it.")
+        // Clear error after 3 seconds
+        setTimeout(() => setError(""), 3000)
+      }
     } catch (e) {
       setLoading(false)
       console.error('Event creation failed:', e)
-      setError(e?.response?.data?.detail || "Failed to create event")
+      const errorMessage = e?.response?.data?.detail || e?.message || "Failed to create event"
+      setError(errorMessage)
+      
+      // If it's a network error but event might have been created, provide helpful message
+      if (!e?.response && e?.message?.includes('Network')) {
+        setError("Network error. Please check if the event was created and refresh the page.")
+      }
     }
   }
 

@@ -1,6 +1,6 @@
 """AI service for OpenAI integration"""
 from openai import OpenAI
-from app.config import settings
+from app.core.config import settings
 from typing import Optional
 
 _client = None

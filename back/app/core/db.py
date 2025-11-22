@@ -1,14 +1,13 @@
 from sqlmodel import SQLModel, create_engine, Session
-from app.config import settings
+from app.core.config import settings
 
 connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
-# Connection pool settings - SQLite doesn't support pool_size, but we can use NullPool for better connection management
 if settings.DATABASE_URL.startswith("sqlite"):
     from sqlalchemy.pool import NullPool
     engine = create_engine(
         settings.DATABASE_URL, 
         connect_args=connect_args, 
-        poolclass=NullPool,  # Use NullPool for SQLite to avoid connection pool issues
+        poolclass=NullPool,  
         pool_pre_ping=True
     )
 else:
