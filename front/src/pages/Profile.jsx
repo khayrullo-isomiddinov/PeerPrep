@@ -891,7 +891,7 @@ export default function Profile() {
         </div>
         
 
-        {isViewingOwnProfile && user?.email !== "harryshady131@gmail.com" && (
+        {isViewingOwnProfile && user?.email !== "harry@gmail.com" && (
           <div className="mt-8">
             <div className="bg-red-50/80 backdrop-blur-sm rounded-2xl shadow-lg border border-red-200/60 p-8 hover:shadow-xl transition-all duration-300">
               <div className="flex items-center gap-3 mb-6">

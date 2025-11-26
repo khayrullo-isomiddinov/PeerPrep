@@ -4,11 +4,11 @@ Seeds only:
 - Admin user
 - Sample events WITH cover images
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import random
 from sqlmodel import Session, select
 from app.core.security import hash_password
-from app.models import User, Event, EventAttendee
+from app.models import User, Event
 from app.core.config import settings
 
 COVER_IMAGES = [
@@ -22,7 +22,7 @@ COVER_IMAGES = [
 
 
 def seed_db(session: Session):
-    """Seed only admin + a few demo events with cover images."""
+    """Seed admin + demo events."""
 
     admin = session.exec(
         select(User).where(User.email == settings.ADMIN_EMAIL)
@@ -44,7 +44,9 @@ def seed_db(session: Session):
         print("✓ Seed skipped: events already exist")
         return
 
-    now = datetime.utcnow()
+    # Use pure UTC — avoids ALL timezone issues
+    now = datetime.now(timezone.utc)
+
     rng = random.Random(42)
 
     sample_events = [
@@ -60,13 +62,15 @@ def seed_db(session: Session):
 
     for i, (title, desc, loc) in enumerate(sample_events):
         cover_url = COVER_IMAGES[i % len(COVER_IMAGES)]
+
+        # Events appear 1–7 days after NOW, starting 17:00 UTC
         start = now + timedelta(days=rng.randint(1, 7), hours=17)
 
         ev = Event(
             title=title,
             description=desc,
             location=loc,
-            starts_at=start,
+            starts_at=start,         # already UTC
             capacity=20,
             duration=2,
             exam=None,

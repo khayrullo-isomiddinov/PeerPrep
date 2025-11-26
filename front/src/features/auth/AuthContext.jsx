@@ -9,7 +9,8 @@ export function AuthProvider({ children }) {
   })
   const [user, setUser] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
-  const isAuthenticated = !!token && !!user && !isLoading
+  const isAuthenticated = !!token && !!user
+
 
   useEffect(() => {
     const validateToken = async () => {

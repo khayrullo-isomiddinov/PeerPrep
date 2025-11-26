@@ -1,7 +1,7 @@
 from typing import Optional
 from datetime import datetime, timedelta
 from sqlmodel import SQLModel, Field
-
+from pydantic import field_validator
 
 class EventBase(SQLModel):
     title: str
@@ -11,6 +11,21 @@ class EventBase(SQLModel):
     duration: int = 2
     description: Optional[str] = None
     exam: Optional[str] = None
+    
+    @field_validator("starts_at", mode="before")
+    def force_utc(cls, v):
+        if isinstance(v, str):
+            # add Z if missing
+            if not v.endswith("Z") and "+" not in v:
+                return v + "Z"
+            return v
+
+        # Python datetime (from SQLite)
+        if isinstance(v, datetime) and v.tzinfo is None:
+            return v.replace(tzinfo=datetime.timezone.utc)
+
+        return v
+
 
 
 class Event(EventBase, table=True):

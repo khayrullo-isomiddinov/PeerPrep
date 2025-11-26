@@ -34,6 +34,16 @@ api.interceptors.request.use(
       delete api.defaults.headers.common["Authorization"]
     }
     
+    // Disable HTTP caching for GET requests in development to ensure Network tab visibility
+    if (import.meta.env.DEV && config.method === 'get') {
+      config.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+      config.headers['Pragma'] = 'no-cache'
+      config.headers['Expires'] = '0'
+      // Add timestamp to prevent browser cache
+      const separator = config.url.includes('?') ? '&' : '?'
+      config.url = `${config.url}${separator}_t=${Date.now()}`
+    }
+    
     return config
   },
   error => {

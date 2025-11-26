@@ -16,7 +16,7 @@ import { DetailPageSkeleton } from "../components/SkeletonLoader"
 export default function EventDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const { prefetch } = usePrefetch()
   const [event, setEvent] = useState(null)
   const [attendees, setAttendees] = useState([])
@@ -48,12 +48,13 @@ export default function EventDetail() {
   const receivedMessageIdsRef = useRef(new Set())
   const markedReadIdsRef = useRef(new Set())
 
-  // Redirect to login if not authenticated
+  // Redirect to login if not authenticated (only after auth has finished loading)
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!authLoading && isAuthenticated === false) {
       navigate("/login")
     }
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, authLoading, navigate])
+
 
   const loadMessages = useCallback(async (shouldScroll = false) => {
     if (!id) return
@@ -71,10 +72,18 @@ export default function EventDetail() {
     }
   }, [id])
 
+  
+
   const loadEvent = useCallback(async (force = false, skipMessages = false) => {
+    // Wait for auth to finish loading before making requests
+    if (authLoading) {
+      return
+    }
+
     if (!isAuthenticated || !id) {
       return
     }
+
     const pageId = `event:${id}`
     try {
       // Check cache first (unless forcing refresh)
@@ -86,6 +95,12 @@ export default function EventDetail() {
         setEvent(cached.data)
         const userIsOwner = user && cached.data.created_by === user.id
         setIsOwner(userIsOwner)
+        
+        // Use is_joined from event data as initial value (if available)
+        if (user && isAuthenticated && cached.data.is_joined !== undefined) {
+          setJoined(cached.data.is_joined || userIsOwner)
+        }
+        
         setLoading(false)
         endPageLoad(pageId)
 
@@ -107,6 +122,11 @@ export default function EventDetail() {
           cached.isExpired ? getEvent(id).then(data => {
             setEvent(data)
             setCachedPage(`event:${id}`, data)
+            // Update joined state from fresh event data
+            if (user && isAuthenticated && data.is_joined !== undefined) {
+              const userIsOwner = data.created_by === user.id
+              setJoined(data.is_joined || userIsOwner)
+            }
           }) : Promise.resolve()
         ]).then(([shouldLoadMessages]) => {
           if (shouldLoadMessages && !skipMessages) {
@@ -132,11 +152,16 @@ export default function EventDetail() {
       const userIsOwner = user && data.created_by === user.id
       setIsOwner(userIsOwner)
 
+      // Use is_joined from event data as initial value (if available)
+      if (user && isAuthenticated && data.is_joined !== undefined) {
+        setJoined(data.is_joined || userIsOwner)
+      }
+
       // Always refresh attendees to get updated member counts
       const attendeesData = await getEventAttendeesWithDetails(id)
       setAttendees(attendeesData)
 
-      // Set joined state immediately from attendees data
+      // Set joined state from attendees data (this is the source of truth)
       // User is considered "joined" if they're in the attendees list OR they're the owner
       let userJoined = false
       if (user && isAuthenticated) {
@@ -168,7 +193,7 @@ export default function EventDetail() {
         endPageLoad(`event:${id}`)
       }
     }
-  }, [id, user, isAuthenticated, loadMessages])
+  }, [id, user, isAuthenticated, authLoading, loadMessages])
 
   useEffect(() => {
     loadEvent()
@@ -545,7 +570,7 @@ export default function EventDetail() {
     e.preventDefault()
     e.stopPropagation()
     if (!newMessage.trim() || sendingMessage || !id) return
-    
+
     // Prevent sending if event has ended
     if (isPast) {
       alert("This event has ended. Chat is now read-only. You can still view message history.")
@@ -777,6 +802,11 @@ export default function EventDetail() {
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+  }
+
+  // Show loading skeleton while auth is loading
+  if (authLoading) {
+    return <DetailPageSkeleton />
   }
 
   // Don't render anything if not authenticated (will redirect)
@@ -1097,31 +1127,28 @@ export default function EventDetail() {
               <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden flex flex-col h-[400px] lg:h-[600px]">
 
                 {/* Chat Header */}
-                <div className={`relative p-5 flex-shrink-0 ${
-                  isPast 
-                    ? 'bg-gradient-to-br from-gray-700 via-gray-800 to-gray-900' 
-                    : isOngoing
-                      ? 'bg-gradient-to-br from-green-600 via-emerald-700 to-teal-800'
-                      : 'bg-gradient-to-br from-slate-900 via-indigo-900 to-purple-900'
-                }`}>
+                <div className={`relative p-5 flex-shrink-0 ${isPast
+                  ? 'bg-gradient-to-br from-gray-700 via-gray-800 to-gray-900'
+                  : isOngoing
+                    ? 'bg-gradient-to-br from-green-600 via-emerald-700 to-teal-800'
+                    : 'bg-gradient-to-br from-slate-900 via-indigo-900 to-purple-900'
+                  }`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="relative">
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-lg ${
-                          isPast
-                            ? 'bg-gradient-to-br from-gray-500 to-gray-600'
-                            : isOngoing
-                              ? 'bg-gradient-to-br from-green-400 to-emerald-500'
-                              : 'bg-gradient-to-br from-indigo-400 to-purple-500'
-                        }`}>
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-lg ${isPast
+                          ? 'bg-gradient-to-br from-gray-500 to-gray-600'
+                          : isOngoing
+                            ? 'bg-gradient-to-br from-green-400 to-emerald-500'
+                            : 'bg-gradient-to-br from-indigo-400 to-purple-500'
+                          }`}>
                           <FontAwesomeIcon icon={faComments} className="text-white" />
                         </div>
                         {!isPast && (
-                          <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 ${
-                            isOngoing
-                              ? 'bg-green-400 border-green-600 animate-pulse'
-                              : 'bg-green-400 border-slate-900'
-                          }`}></div>
+                          <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 ${isOngoing
+                            ? 'bg-green-400 border-green-600 animate-pulse'
+                            : 'bg-green-400 border-slate-900'
+                            }`}></div>
                         )}
                       </div>
                       <div>
@@ -1146,9 +1173,8 @@ export default function EventDetail() {
                               Read Only
                             </span>
                           )}
-                          <p className={`text-xs ${
-                            isPast ? 'text-gray-300' : 'text-indigo-200'
-                          }`}>
+                          <p className={`text-xs ${isPast ? 'text-gray-300' : 'text-indigo-200'
+                            }`}>
                             {messages.length > 0
                               ? `${messages.length} message${messages.length !== 1 ? 's' : ''}${!isPast ? ` • ${wsConnected ? 'Connected' : 'Reconnecting...'}` : ''}`
                               : !isPast && wsConnected

@@ -11,3 +11,4 @@ email-validator
 argon2-cffi
 openai>=1.0.0
 websockets>=12.0
+tzdata

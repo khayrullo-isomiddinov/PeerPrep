@@ -68,7 +68,8 @@ export default function Events() {
     abortControllerRef.current = controller
 
     const seq = ++requestSequenceRef.current
-    setLoading(true)
+    // Never show loading state - always fetch in background for smooth UX
+    // The UI already shows cached data or empty state immediately
 
     try {
       const data = await listEvents(cacheParams, { signal: controller.signal })
@@ -78,6 +79,9 @@ export default function Events() {
       if (seq !== requestSequenceRef.current) return
 
       const safeData = Array.isArray(data) ? data : []
+      
+      // Always update with fresh data (don't compare - let React handle optimization)
+      // The comparison was causing issues where updates were prevented when they should happen
       setEvents(safeData)
 
       // Update cache
@@ -89,39 +93,41 @@ export default function Events() {
         return
       }
       console.error("Failed to load events:", err)
-      setEvents([])
-    } finally {
-      // Only clear loading if this is still the latest request
-      if (seq === requestSequenceRef.current && !abortControllerRef.current?.signal.aborted) {
-        setLoading(false)
-      }
+      // Don't clear events on error - keep what we have for smooth UX
     }
   }
 
   function handleStatusChange(next) {
     if (next === statusView) return
     
-    // 1) Set the new view immediately
-    setStatusView(next)
+    // Mark that we're handling status change to prevent duplicate loads
+    statusChangeHandledRef.current = true
     
-    // 2) Build cache params
+    // 1) Build cache params FIRST (before any state changes)
     const q = params.get('q') || undefined
     const location = params.get('location') || undefined
     const exam = params.get('exam') || undefined
     const cacheParams = { q, location, exam, status: next }
     
-    // 3) Try to show cached data instantly (optimistic UX)
+    // 2) Get cached data BEFORE changing status (prevents useEffect interference)
     const cached = getCachedPage("events", cacheParams)
-    const cachedEvents = getCachedEvents(cacheParams) || cached?.data
+    const cachedEvents = getCachedEvents(cacheParams) ?? cached?.data
     
-    if (cachedEvents && cachedEvents.length > 0) {
+    // 3) Show cached data IMMEDIATELY and synchronously (before status change)
+    // This ensures UI updates before useEffect can interfere
+    if (cachedEvents !== null && cachedEvents !== undefined) {
       setEvents(cachedEvents)
+      setLoading(false)
     } else {
-      // No cache: show empty state while fetching
-      setEvents([])
+      // No cache: keep current events visible (don't clear) until new data arrives
+      // This prevents the "shocked" blank state
+      setLoading(false)
     }
     
-    // 4) Fetch fresh data with guarded request (prevents race conditions)
+    // 4) NOW change the status view (after events are already set)
+    setStatusView(next)
+    
+    // 5) Fetch fresh data in background (smooth, non-blocking)
     fetchEventsWithGuard(cacheParams, next)
   }
 
@@ -143,13 +149,27 @@ export default function Events() {
 
       if (cached && cached.data && !showLoading) {
         // Background refresh - use cached data
-        setEvents(cached.data)
+        // Only update if actually different
+        setEvents(prevEvents => {
+          if (prevEvents.length === cached.data.length &&
+              prevEvents.every((e, i) => e.id === cached.data[i]?.id)) {
+            return prevEvents // Same data, no update
+          }
+          return cached.data
+        })
         // Refresh in background if expired
         if (cached.isExpired) {
           setTimeout(async () => {
             try {
               const data = await listEvents(cacheParams)
-              setEvents(data)
+              setEvents(prevEvents => {
+                // Only update if different
+                if (prevEvents.length === data.length &&
+                    prevEvents.every((e, i) => e.id === data[i]?.id)) {
+                  return prevEvents // Same data, no update
+                }
+                return data
+              })
               setCachedPage("events", data, cacheParams)
               setCachedEvents(data, cacheParams)
             } catch (error) {
@@ -167,7 +187,14 @@ export default function Events() {
     }
     try {
       const data = await listEvents(cacheParams)
-      setEvents(data)
+      setEvents(prevEvents => {
+        // Only update if different to prevent flicker
+        if (prevEvents.length === data.length &&
+            prevEvents.every((e, i) => e.id === data[i]?.id)) {
+          return prevEvents // Same data, no update
+        }
+        return data
+      })
       setCachedPage("events", data, cacheParams)
       setCachedEvents(data, cacheParams)
     } catch (error) {
@@ -237,7 +264,16 @@ export default function Events() {
     }
   }, [isAuthenticated, showMyEvents, loadMyEvents])
 
+  // Track if we've already handled a status change to prevent duplicate loads
+  const statusChangeHandledRef = useRef(false)
+
   useEffect(() => {
+    // Skip if status change was already handled (prevents interference)
+    if (statusChangeHandledRef.current) {
+      statusChangeHandledRef.current = false
+      return
+    }
+
     const pageId = 'events'
     const cached = getCachedEvents(currentParams)
 
@@ -269,28 +305,42 @@ export default function Events() {
       }
       window.history.replaceState({}, document.title)
       endPageLoad(pageId)
-    } else if (cached && cached.length > 0) {
-      setEvents(cached)
+    } else if (cached !== null) {
+      // Show cached data immediately (even if empty) for smooth UX
+      // Only update if different to prevent unnecessary re-renders
+      setEvents(prev => {
+        if (prev.length === cached.length && 
+            prev.every((e, i) => e.id === cached[i]?.id)) {
+          return prev // Same data, no update needed
+        }
+        return cached
+      })
       setLoading(false)
       endPageLoad(pageId)
+      // Background refresh for non-past events (quiet, non-blocking)
       if (statusView !== "past") {
         setTimeout(() => load(false), 100)
       }
       
     } else {
-      startPageLoad(pageId)
-      // Use guarded fetch for initial load too
+      // No cache: keep current events visible (don't clear) until new data arrives
+      // This prevents the "shocked" blank state
+      setLoading(false)
+      endPageLoad(pageId)
+      
+      // Fetch in background
       const q = params.get('q') || undefined
       const location = params.get('location') || undefined
       const exam = params.get('exam') || undefined
       const cacheParams = { q, location, exam, status: statusView }
-      fetchEventsWithGuard(cacheParams, statusView).finally(() => {
-        endPageLoad(pageId)
-      })
+      fetchEventsWithGuard(cacheParams, statusView)
       
       // Pre-cache other status views in background for instant switching
+      // Pre-cache past events earlier since they're slower to load
       const otherStatuses = ["ongoing", "past"].filter(s => s !== statusView)
-      otherStatuses.forEach(status => {
+      otherStatuses.forEach((status, index) => {
+        // Pre-cache past events sooner (200ms) since they take longer
+        const delay = status === "past" ? 200 : 500
         setTimeout(async () => {
           try {
             const data = await listEvents({ q, location, exam, status, limit: 50 })
@@ -301,7 +351,7 @@ export default function Events() {
           } catch (error) {
             // Silently fail - this is just pre-caching
           }
-        }, 500) // Delay to not block initial load
+        }, delay)
       })
     }
     setSearchQuery(params.get('q') || "")
@@ -681,6 +731,7 @@ export default function Events() {
             </div>
 
             {loading && events.length === 0 ? (
+              // Only show skeleton on initial page load, not when switching tabs
               <PageSkeleton />
             ) : filteredEvents.length > 0 ? (
               <EventList events={filteredEvents} onChanged={onChanged} onDelete={handleDelete} onEdit={setEditingEvent} />

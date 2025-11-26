@@ -294,8 +294,6 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
     return "text-gray-600"
   }
 
-  // Helper to parse UTC datetime strings correctly
-  // Backend sends UTC times, so if no timezone indicator, assume UTC
   const parseUTCDate = (dateString) => {
     if (!dateString) return null
     // If already has timezone info, use as-is

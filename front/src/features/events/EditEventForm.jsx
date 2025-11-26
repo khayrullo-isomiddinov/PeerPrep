@@ -24,21 +24,50 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
   const fileInputRef = useRef(null)
 
   useEffect(() => {
-    if (!event) return
-    const startsAt = new Date(event.starts_at)
-    const localDateTime = new Date(startsAt.getTime() - startsAt.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16)
-    
+  if (!event) return
+
+  // Parse UTC date correctly (backend sends UTC)
+  const parseUTCDate = (dateString) => {
+    if (!dateString) return null
+    // If already has timezone info, use as-is
+    if (dateString.includes('Z') || dateString.includes('+') || dateString.match(/-\d{2}:\d{2}$/)) {
+      return new Date(dateString)
+    }
+    // Otherwise, treat as UTC by appending 'Z'
+    return new Date(dateString + 'Z')
+  }
+
+  const date = parseUTCDate(event.starts_at)
+  if (!date || isNaN(date.getTime())) {
     setForm({
       title: event.title || "",
-      starts_at: localDateTime,
+      starts_at: "",
       location: event.location || "",
       capacity: event.capacity || 10,
       description: event.description || "",
       exam: event.exam || "",
     })
-  }, [event])
+    return
+  }
+
+  // Format in local time for datetime-local input (not UTC!)
+  // datetime-local expects YYYY-MM-DDTHH:mm in local timezone
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const localDateTime = `${year}-${month}-${day}T${hours}:${minutes}`
+
+  setForm({
+    title: event.title || "",
+    starts_at: localDateTime,
+    location: event.location || "",
+    capacity: event.capacity || 10,
+    description: event.description || "",
+    exam: event.exam || "",
+  })
+}, [event])
 
   function handleChange(e) {
     const { name, value, type } = e.target
@@ -105,9 +134,14 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
     if (!validateForm()) return
     setLoading(true)
     try {
+      // form.starts_at is in format "YYYY-MM-DDTHH:mm" (local time, no timezone)
+      // new Date() interprets it as local time, then toISOString() converts to UTC
+      const local = new Date(form.starts_at)
+      const utcIso = local.toISOString()
+
       const payload = {
         title: form.title.trim(),
-        starts_at: form.starts_at,
+        starts_at: utcIso,  // UTC ISO string for backend
         location: form.location.trim(),
         capacity: form.capacity,
         description: form.description.trim() || null,
@@ -148,8 +182,8 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
                 <span className="px-3 py-1 bg-pink-100 text-pink-700 text-sm font-medium rounded-full">Edit</span>
                 <h2 className="text-2xl font-bold text-gray-900">Update Event</h2>
               </div>
-              <button 
-                onClick={onCancel} 
+              <button
+                onClick={onCancel}
                 className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
               >
                 Close
@@ -180,9 +214,8 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
                       name="title"
                       value={form.title}
                       onChange={handleChange}
-                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                        errors.title ? 'border-red-300' : 'border-gray-300'
-                      }`}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${errors.title ? 'border-red-300' : 'border-gray-300'
+                        }`}
                       placeholder="e.g., Study Session for Midterm"
                       maxLength={200}
                     />
@@ -201,9 +234,8 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
                       value={form.starts_at}
                       onChange={handleChange}
                       min={new Date().toISOString().slice(0, 16)}
-                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                        errors.starts_at ? 'border-red-300' : 'border-gray-300'
-                      }`}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${errors.starts_at ? 'border-red-300' : 'border-gray-300'
+                        }`}
                     />
                     {errors.starts_at && <div className="text-red-600 text-sm">{errors.starts_at}</div>}
                   </div>
@@ -214,9 +246,8 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
                       name="location"
                       value={form.location}
                       onChange={handleChange}
-                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                        errors.location ? 'border-red-300' : 'border-gray-300'
-                      }`}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${errors.location ? 'border-red-300' : 'border-gray-300'
+                        }`}
                       placeholder="e.g., Library Room 201"
                     />
                     {errors.location && <div className="text-red-600 text-sm">{errors.location}</div>}
@@ -231,9 +262,8 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
                       onChange={handleChange}
                       min="1"
                       max="1000"
-                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                        errors.capacity ? 'border-red-300' : 'border-gray-300'
-                      }`}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${errors.capacity ? 'border-red-300' : 'border-gray-300'
+                        }`}
                     />
                     {errors.capacity && <div className="text-red-600 text-sm">{errors.capacity}</div>}
                   </div>
@@ -244,9 +274,8 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
                       name="description"
                       value={form.description}
                       onChange={handleChange}
-                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                        errors.description ? 'border-red-300' : 'border-gray-300'
-                      }`}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${errors.description ? 'border-red-300' : 'border-gray-300'
+                        }`}
                       placeholder="What will happen at this event?"
                       rows={4}
                       maxLength={1000}
@@ -264,9 +293,8 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
                       name="exam"
                       value={form.exam}
                       onChange={handleChange}
-                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${
-                        errors.exam ? 'border-red-300' : 'border-gray-300'
-                      }`}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-gray-900 bg-white ${errors.exam ? 'border-red-300' : 'border-gray-300'
+                        }`}
                       placeholder="e.g., Final Exam, Midterm, Bar Exam"
                       maxLength={100}
                     />
@@ -290,11 +318,10 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
                   <button
                     type="button"
                     onClick={() => setCoverMode("upload")}
-                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                      coverMode === "upload"
-                        ? "bg-pink-500 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${coverMode === "upload"
+                      ? "bg-pink-500 text-white"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
                     disabled={loading}
                   >
                     <FontAwesomeIcon icon={faUpload} className="w-4 h-4 mr-2" />
@@ -303,11 +330,10 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
                   <button
                     type="button"
                     onClick={() => setCoverMode("generate")}
-                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                      coverMode === "generate"
-                        ? "bg-pink-500 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${coverMode === "generate"
+                      ? "bg-pink-500 text-white"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
                     disabled={loading}
                   >
                     <FontAwesomeIcon icon={faWandMagicSparkles} className="w-4 h-4 mr-2" />
@@ -427,16 +453,16 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
                     <span className="text-gray-500">Review and save</span>
                   </div>
                   <div className="inline-flex gap-3">
-                    <button 
-                      type="button" 
-                      onClick={onCancel} 
+                    <button
+                      type="button"
+                      onClick={onCancel}
                       className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
                     >
                       Cancel
                     </button>
-                    <button 
-                      type="submit" 
-                      disabled={loading} 
+                    <button
+                      type="submit"
+                      disabled={loading}
                       className="px-6 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                       {loading ? "Updating…" : (

@@ -16,6 +16,10 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 
 from collections import defaultdict, Counter
+from zoneinfo import ZoneInfo
+
+
+
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -43,7 +47,9 @@ def set_main_event_loop(loop):
 def create_event(data: EventCreate, session: Session = Depends(get_session), current_user: User = Depends(_get_user_from_token)):
     if data.capacity is not None and data.capacity < 1:
         raise HTTPException(status_code=422, detail="Capacity must be >= 1")
-    evt = Event(**data.dict(), created_by=current_user.id)
+    payload = data.dict()
+
+    evt = Event(**payload, created_by=current_user.id)
     session.add(evt)
     session.commit()
     session.refresh(evt)
@@ -703,6 +709,44 @@ def get_event(
         "is_upcoming": is_upcoming,
         "status": status,
     })
+
+    # Add is_joined and attendee_count for authenticated users
+    if current_user:
+        # Check if user is an attendee
+        is_attendee = session.exec(
+            select(EventAttendee).where(
+                EventAttendee.event_id == event_id,
+                EventAttendee.user_id == current_user.id
+            )
+        ).first()
+        
+        # Check if user is the creator
+        is_creator = evt.created_by == current_user.id
+        
+        # Get attendee count
+        attendee_count = session.exec(
+            select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)
+        ).one()
+        
+        # Creator is always counted as an attendee, but might not be in EventAttendee table
+        if is_creator and not is_attendee:
+            attendee_count += 1
+        
+        data.update({
+            "is_joined": is_creator or bool(is_attendee),
+            "attendee_count": attendee_count,
+        })
+    else:
+        # For unauthenticated users, set defaults
+        attendee_count = session.exec(
+            select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)
+        ).one()
+        # Add 1 if creator exists (creator is always counted)
+        if evt.created_by:
+            attendee_count += 1
+        data.update({
+            "attendee_count": attendee_count,
+        })
 
     return data
 
