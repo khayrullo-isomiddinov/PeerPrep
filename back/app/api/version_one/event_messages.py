@@ -22,7 +22,7 @@ def get_event_messages(
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
     
-    # Award XP retroactively if event has ended and user is an attendee
+    
     if current_user:
         now = datetime.now(timezone.utc)
         starts_at = evt.starts_at.replace(tzinfo=timezone.utc) if evt.starts_at.tzinfo is None else evt.starts_at
@@ -33,7 +33,7 @@ def get_event_messages(
         is_past = now >= ends_at
         
         if is_past:
-            # Check if user is an attendee or the event creator
+            
             is_attendee = session.exec(
                 select(EventAttendee).where(
                     EventAttendee.event_id == event_id,
@@ -43,10 +43,10 @@ def get_event_messages(
             is_creator = evt.created_by == current_user.id
             
             if is_attendee or is_creator:
-                # Award XP (function handles duplicate prevention internally via engagement calculation)
+                
                 award_xp_for_event(current_user.id, event_id, session)
     
-    # Optimized: Load messages with limit, order by desc (newest first) for pagination
+    
     messages = session.exec(
         select(EventMessage)
         .where(EventMessage.event_id == event_id)
@@ -55,7 +55,7 @@ def get_event_messages(
         .offset(offset)
     ).all()
     
-    # Reverse to get chronological order (oldest first for display)
+    
     messages = list(reversed(messages))
     
     if not messages:
@@ -65,7 +65,7 @@ def get_event_messages(
     users = session.exec(select(User).where(User.id.in_(user_ids))).all()
     user_map = {u.id: u for u in users}
     
-    # Get read receipts for all messages
+    
     message_ids = [msg.id for msg in messages]
     read_records = session.exec(
         select(MessageRead).where(
@@ -73,7 +73,7 @@ def get_event_messages(
             MessageRead.message_type == "event"
         )
     ).all()
-    read_map = {}  # {message_id: [user_ids who read it]}
+    read_map = {}  
     for read in read_records:
         if read.message_id not in read_map:
             read_map[read.message_id] = []
@@ -83,15 +83,15 @@ def get_event_messages(
     for msg in messages:
         user = user_map.get(msg.user_id)
         if user:
-            # Ensure timezone-aware datetime with Z suffix for UTC
+            
             created_at_str = msg.created_at.isoformat()
             if msg.created_at.tzinfo is None:
-                # If naive datetime, assume UTC
+                
                 created_at_str = msg.created_at.replace(tzinfo=timezone.utc).isoformat()
             if not created_at_str.endswith('Z') and msg.created_at.tzinfo == timezone.utc:
                 created_at_str = created_at_str.replace('+00:00', 'Z')
             
-            # Get read count and check if current user has read it
+            
             read_by = read_map.get(msg.id, [])
             read_count = len(read_by)
             is_read_by_current_user = current_user and current_user.id in read_by if current_user else False
@@ -126,7 +126,7 @@ def post_event_message(
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
     
-    # Check if event has ended - if so, chat is read-only
+    
     now = datetime.now(timezone.utc)
     starts_at = evt.starts_at.replace(tzinfo=timezone.utc) if evt.starts_at.tzinfo is None else evt.starts_at
     ends_at = evt.ends_at if evt.ends_at else (starts_at + timedelta(hours=evt.duration))
@@ -140,7 +140,7 @@ def post_event_message(
             detail="This event has ended. Chat is now read-only. You can still view message history."
         )
     
-    # Check if user is an attendee or the event owner
+    
     is_attendee = session.exec(
         select(EventAttendee).where(
             EventAttendee.event_id == event_id,
@@ -162,10 +162,10 @@ def post_event_message(
     session.commit()
     session.refresh(message)
     
-    # Ensure timezone-aware datetime with Z suffix for UTC
+    
     created_at_str = message.created_at.isoformat()
     if message.created_at.tzinfo is None:
-        # If naive datetime, assume UTC
+        
         created_at_str = message.created_at.replace(tzinfo=timezone.utc).isoformat()
     if not created_at_str.endswith('Z') and message.created_at.tzinfo == timezone.utc:
         created_at_str = created_at_str.replace('+00:00', 'Z')
@@ -202,13 +202,13 @@ def delete_event_message(
     if message.event_id != event_id:
         raise HTTPException(status_code=400, detail="Message does not belong to this event")
     
-    # Only the message author can delete their own message
+    
     if message.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only delete your own messages")
     
-    # Soft delete - mark as deleted instead of removing
+    
     message.is_deleted = True
-    message.content = ""  # Clear content for privacy
+    message.content = ""  
     session.add(message)
     session.commit()
     session.refresh(message)
@@ -231,7 +231,7 @@ def mark_event_message_read(
     if not message or message.event_id != event_id:
         raise HTTPException(status_code=404, detail="Message not found")
     
-    # Check if already read
+    
     existing_read = session.exec(
         select(MessageRead).where(
             MessageRead.message_id == message_id,

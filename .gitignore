@@ -20,4 +20,4 @@ peerprep.db-*
 instance/
 *.db
 node_modules/
-useful.md
+UTIL.md

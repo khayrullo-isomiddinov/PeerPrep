@@ -9,19 +9,10 @@ from collections import defaultdict
 
 router = APIRouter(prefix="/events/{event_id}/ws", tags=["events"])
 
-# In-memory storage for typing indicators (event_id -> {user_id: last_typing_timestamp})
-# In production, use Redis or similar for distributed systems
 typing_status: Dict[int, Dict[int, datetime]] = defaultdict(dict)
-
-# In-memory storage for user presence (user_id -> last_activity_timestamp)
-# Users are considered "online" if they've been active in the last 5 minutes
 user_presence: Dict[int, datetime] = {}
-PRESENCE_TIMEOUT_SECONDS = 300  # 5 minutes
-
-# WebSocket connections for event chat (event_id -> {user_id: WebSocket})
+PRESENCE_TIMEOUT_SECONDS = 300  
 event_connections: Dict[int, Dict[int, WebSocket]] = {}
-
-# Store reference to the main event loop for broadcasting from sync endpoints
 _main_event_loop = None
 
 def set_main_event_loop(loop):
@@ -32,7 +23,7 @@ def set_main_event_loop(loop):
 @router.websocket("")
 async def event_chat_websocket(websocket: WebSocket, event_id: int):
     """WebSocket endpoint for real-time event chat"""
-    # Store reference to the main event loop on first connection
+    
     global _main_event_loop
     if _main_event_loop is None:
         import asyncio
@@ -42,7 +33,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             _main_event_loop = asyncio.get_event_loop()
     await websocket.accept()
     
-    # Get user from token
+    
     user_id = None
     user_name = None
     user_email = None
@@ -54,7 +45,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             payload = decode_token(token)
             user_id = int(payload.get("sub"))
             
-            # Get user details
+            
             session_gen = get_session()
             try:
                 session = next(session_gen)
@@ -65,13 +56,13 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                         user_email = user.email
                         user_photo_url = user.photo_url
                 finally:
-                    # Close the session by exhausting the generator
+                    
                     try:
                         next(session_gen)
                     except StopIteration:
                         pass
             except Exception:
-                # If generator fails, try to close it
+                
                 try:
                     session_gen.close()
                 except:
@@ -85,7 +76,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
         await websocket.close(code=1008, reason="Authentication required")
         return
     
-    # Verify event exists and user has access
+    
     session_gen = get_session()
     try:
         session = next(session_gen)
@@ -94,7 +85,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             await websocket.close(code=1008, reason="Event not found")
             return
         
-        # Check if user is an attendee or owner
+        
         is_attendee = session.exec(
             select(EventAttendee).where(
                 EventAttendee.event_id == event_id,
@@ -107,35 +98,35 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             await websocket.close(code=1008, reason="Access denied")
             return
         
-        # Initialize connection storage
+        
         if event_id not in event_connections:
             event_connections[event_id] = {}
         
-        # Add connection
+        
         event_connections[event_id][user_id] = websocket
         
-        # Update presence
+        
         user_presence[user_id] = datetime.now(timezone.utc)
         
-        # Get message synchronizer for this event
+        
         synchronizer = get_synchronizer(str(event_id), "event")
         
-        # Load messages from database and sync with synchronizer
+        
         messages = session.exec(
             select(EventMessage).where(EventMessage.event_id == event_id)
             .order_by(EventMessage.created_at.desc())
             .limit(50)
         ).all()
         
-        # Initialize message versions in synchronizer (for existing messages)
-        # Process in chronological order to build vector clocks correctly
+        
+        
         sorted_messages = sorted(messages, key=lambda m: m.created_at)
         for msg in sorted_messages:
             created_at = msg.created_at
             if created_at.tzinfo is None:
                 created_at = created_at.replace(tzinfo=timezone.utc)
             
-            # Initialize message version in synchronizer
+            
             synchronizer.initialize_message_version(
                 message_id=msg.id,
                 user_id=msg.user_id,
@@ -143,10 +134,10 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                 created_at=created_at
             )
         
-        # Get causally ordered messages from synchronizer
+        
         ordered_versions = synchronizer.get_ordered_messages(limit=50)
         
-        # Convert to message list format
+        
         messages_list = []
         for msg_version in ordered_versions:
             msg = session.get(EventMessage, msg_version.message_id)
@@ -160,7 +151,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             if not created_at_str.endswith('Z') and msg.created_at.tzinfo == timezone.utc:
                 created_at_str = created_at_str.replace('+00:00', 'Z')
             
-            # Check if message is read by current user
+            
             is_read = False
             if user_id:
                 read_record = session.exec(
@@ -176,7 +167,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                 "content": msg.content if not msg.is_deleted else "",
                 "is_deleted": msg.is_deleted,
                 "created_at": created_at_str,
-                "vector_clock": msg_version.vector_clock,  # Include vector clock
+                "vector_clock": msg_version.vector_clock,  
                 "version": msg_version.version,
                 "is_read_by_me": is_read,
                 "user": {
@@ -193,7 +184,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             "messages": messages_list
         })
         
-        # Broadcast user joined
+        
         await broadcast_to_event(event_id, user_id, {
             "type": "user_joined",
             "user_id": user_id,
@@ -201,10 +192,10 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             "user_photo_url": user_photo_url
         })
         
-        # Handle messages
+        
         try:
             while True:
-                # Check if WebSocket is still connected
+                
                 if websocket.client_state.name != "CONNECTED":
                     break
                 
@@ -212,9 +203,9 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                     data = await websocket.receive_json()
                     message_type = data.get("type")
                     
-                    # Handle incoming message sync (from other clients)
+                    
                     if message_type == "sync_message":
-                        # Client is sending a message with vector clock for sync
+                        
                         incoming_msg = data.get("message")
                         if incoming_msg:
                             synchronizer = get_synchronizer(str(event_id), "event")
@@ -227,7 +218,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                             )
                             is_new, merged = synchronizer.merge_message(msg_version)
                             if is_new:
-                                # Broadcast the merged message
+                                
                                 await broadcast_to_event(event_id, user_id, {
                                     "type": "new_message",
                                     "message": incoming_msg
@@ -235,15 +226,15 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                         continue
                     
                     if message_type == "message":
-                        # Send a new message
+                        
                         content = data.get("content", "").strip()
                         if not content or len(content) > 1000:
                             continue
                         
-                        # Get synchronizer for this event
+                        
                         synchronizer = get_synchronizer(str(event_id), "event")
                         
-                        # Create message in database
+                        
                         message = EventMessage(
                             event_id=event_id,
                             user_id=user_id,
@@ -253,7 +244,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                         session.commit()
                         session.refresh(message)
                         
-                        # Create message version with vector clock
+                        
                         created_at = message.created_at
                         if created_at.tzinfo is None:
                             created_at = created_at.replace(tzinfo=timezone.utc)
@@ -265,20 +256,20 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                             created_at=created_at
                         )
                         
-                        # Update presence
+                        
                         user_presence[user_id] = datetime.now(timezone.utc)
                         
-                        # Format created_at
+                        
                         created_at_str = message.created_at.isoformat()
                         if message.created_at.tzinfo is None:
                             created_at_str = message.created_at.replace(tzinfo=timezone.utc).isoformat()
                         if not created_at_str.endswith('Z') and message.created_at.tzinfo == timezone.utc:
                             created_at_str = created_at_str.replace('+00:00', 'Z')
                         
-                        # Get user for message
+                        
                         msg_user = session.get(User, user_id)
                         
-                        # Broadcast message to all connected users with vector clock
+                        
                         await broadcast_to_event(event_id, None, {
                             "type": "new_message",
                             "message": {
@@ -286,7 +277,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                                 "content": message.content,
                                 "is_deleted": False,
                                 "created_at": created_at_str,
-                                "vector_clock": msg_version.vector_clock,  # Include vector clock
+                                "vector_clock": msg_version.vector_clock,  
                                 "version": msg_version.version,
                                 "is_read_by_me": False,
                                 "user": {
@@ -300,11 +291,11 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                         })
                     
                     elif message_type == "typing":
-                        # Update typing status
+                        
                         typing_status[event_id][user_id] = datetime.now(timezone.utc)
                         user_presence[user_id] = datetime.now(timezone.utc)
                         
-                        # Broadcast typing indicator
+                        
                         await broadcast_to_event(event_id, user_id, {
                             "type": "typing",
                             "user_id": user_id,
@@ -312,10 +303,10 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                         })
                     
                     elif message_type == "presence_ping":
-                        # Update presence
+                        
                         user_presence[user_id] = datetime.now(timezone.utc)
                         
-                        # Send current presence
+                        
                         now = datetime.now(timezone.utc)
                         online_users = []
                         if event_id in event_connections:
@@ -330,11 +321,11 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                         })
                     
                     elif message_type == "mark_read":
-                        # Mark message as read
+                        
                         message_id = data.get("message_id")
                         if message_id:
                             try:
-                                # Check if already read to avoid duplicates
+                                
                                 existing_read = session.exec(
                                     select(MessageRead).where(
                                         MessageRead.message_id == message_id,
@@ -346,38 +337,38 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                                 if not existing_read:
                                     read_record = MessageRead(
                                         message_id=message_id,
-                                        message_type="event",  # Required field!
+                                        message_type="event",  
                                         user_id=user_id
                                     )
                                     session.add(read_record)
                                     session.commit()
                                     
-                                    # Broadcast read receipt
+                                    
                                     await broadcast_to_event(event_id, user_id, {
                                         "type": "message_read",
                                         "message_id": message_id,
                                         "user_id": user_id
                                     })
                             except Exception as e:
-                                # Rollback on error to prevent session issues
+                                
                                 session.rollback()
                                 print(f"Error marking message as read: {e}")
-                                # Don't break the connection, just log the error
+                                
                 except WebSocketDisconnect:
-                    # Normal disconnect, break out of loop
+                    
                     print("WebSocket disconnected normally")
                     break
                 except RuntimeError as e:
-                    # Handle "Cannot call receive once disconnected" error
+                    
                     if "disconnect" in str(e).lower():
                         print("WebSocket disconnected (RuntimeError)")
                         break
-                    # Re-raise other RuntimeErrors
+                    
                     raise
                 except Exception as e:
-                    # Log error but continue if connection is still open
+                    
                     print(f"Error processing WebSocket message: {e}")
-                    # Check if still connected before continuing
+                    
                     if websocket.client_state.name != "CONNECTED":
                         break
                     continue
@@ -386,28 +377,28 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             print("WebSocket disconnected normally")
             pass
         except RuntimeError as e:
-            # Handle "Cannot call receive once disconnected" error
+            
             if "disconnect" in str(e).lower():
                 print("WebSocket disconnected (RuntimeError in outer catch)")
             else:
                 print(f"WebSocket RuntimeError: {e}")
         except Exception as e:
-            # Log unexpected errors
+            
             print(f"WebSocket error in main loop: {e}")
             import traceback
             traceback.print_exc()
         finally:
-            # Remove connection
+            
             if event_id in event_connections and user_id in event_connections[event_id]:
                 del event_connections[event_id][user_id]
             
-            # Broadcast user left
+            
             await broadcast_to_event(event_id, user_id, {
                 "type": "user_left",
                 "user_id": user_id
             })
     finally:
-        # Properly close the session
+        
         try:
             if 'session_gen' in locals():
                 try:
@@ -435,7 +426,7 @@ async def broadcast_to_event(event_id: int, exclude_user_id: Optional[int], mess
             except:
                 disconnected.append(user_id)
     
-    # Clean up disconnected users
+    
     for user_id in disconnected:
         if event_id in event_connections and user_id in event_connections[event_id]:
             del event_connections[event_id][user_id]

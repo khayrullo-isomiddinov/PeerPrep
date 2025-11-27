@@ -25,7 +25,6 @@ export function AuthProvider({ children }) {
         setUser(response.data)
         setIsLoading(false)
       } catch (error) {
-        // Only clear token if it's actually invalid (401 or 403)
         if (error?.response?.status === 401 || error?.response?.status === 403) {
           localStorage.removeItem("access_token")
           setToken(null)

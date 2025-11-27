@@ -1,7 +1,8 @@
 import { Link, useNavigate } from "react-router-dom"
 import { useEffect, useRef, useState, useMemo } from "react"
-import { searchLocations, autocompleteEvents, listEvents } from "../utils/api"
+import { searchLocations, autocompleteEvents } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
+import { useEvents } from "../hooks/useEvents"
 
 export default function Home() {
   const navigate = useNavigate()
@@ -13,9 +14,6 @@ export default function Home() {
   const [eventOptions, setEventOptions] = useState([])
   const [showLocMenu, setShowLocMenu] = useState(false)
   const [showQueryMenu, setShowQueryMenu] = useState(false)
-
-  const [allEvents, setAllEvents] = useState([])
-  const [loadingEvents, setLoadingEvents] = useState(true)
 
   const [userCity, setUserCity] = useState("NYC")
   const [detectingCity, setDetectingCity] = useState(true)
@@ -109,41 +107,8 @@ export default function Home() {
     detectCity()
   }, [])
 
-  useEffect(() => {
-    async function loadEvents() {
-      try {
-        const { getCachedPage, setCachedPage } = await import("../utils/pageCache")
-        const cached = getCachedPage("home:events")
-
-        if (cached?.data) {
-          setAllEvents(cached.data)
-          setLoadingEvents(false)
-
-          if (cached.isExpired) {
-            setTimeout(async () => {
-              try {
-                const events = await listEvents({ limit: 100 })
-                setAllEvents(events || [])
-                setCachedPage("home:events", events || [])
-              } catch {}
-            }, 100)
-          }
-          return
-        }
-
-        setLoadingEvents(true)
-        const events = await listEvents({ limit: 100 })
-        setAllEvents(events || [])
-        setCachedPage("home:events", events || [])
-      } catch {
-        setAllEvents([])
-      } finally {
-        setLoadingEvents(false)
-      }
-    }
-
-    loadEvents()
-  }, [])
+  // Use React Query for events - cached automatically
+  const { data: allEvents = [], isLoading: loadingEvents } = useEvents({ limit: 100 })
 
   const parseUTCDate = (dateString) => {
     if (!dateString) return null
@@ -344,12 +309,12 @@ export default function Home() {
           {loadingEvents || detectingCity ? (
             <div className="home-card-grid">
               {[...Array(3)].map((_, i) => (
-                <article key={i} className="event-card premium-loading">
-                  <div className="h-48 bg-gray-200 animate-pulse rounded-t-lg" />
-                  <div className="event-meta p-4">
-                    <div className="h-6 bg-gray-200 rounded animate-pulse mb-2" />
-                    <div className="h-4 bg-gray-200 rounded animate-pulse mb-2" />
-                    <div className="h-4 bg-gray-200 rounded animate-pulse" />
+                <article key={i} className="event-card">
+                  <div className="h-48 bg-gray-200 rounded-t-lg" />
+                    <div className="event-meta p-4">
+                    <div className="h-6 bg-gray-200 rounded mb-2" />
+                    <div className="h-4 bg-gray-200 rounded mb-2" />
+                    <div className="h-4 bg-gray-200 rounded" />
                   </div>
                 </article>
               ))}
@@ -357,7 +322,7 @@ export default function Home() {
           ) : localEvents.length > 0 ? (
             <div className="home-card-grid">
               {localEvents.map((event) => (
-                <Link key={event.id} to={`/events/${event.id}`} className="event-card premium-hover">
+                <Link key={event.id} to={`/events/${event.id}`} className="event-card">
                   <img src={getEventImage(event)} alt={event.title} loading="lazy" decoding="async" style={{ willChange: "transform" }} />
                   <div className="event-meta">
                     <h3>{event.title}</h3>
@@ -386,12 +351,12 @@ export default function Home() {
           {loadingEvents ? (
             <div className="upcoming-grid">
               {[...Array(2)].map((_, i) => (
-                <article key={i} className="upcoming-card premium-loading">
-                  <div className="h-48 bg-gray-200 animate-pulse rounded-t-lg" />
-                  <div className="event-meta p-4">
-                    <div className="h-6 bg-gray-200 rounded animate-pulse mb-2" />
-                    <div className="h-4 bg-gray-200 rounded animate-pulse mb-2" />
-                    <div className="h-4 bg-gray-200 rounded animate-pulse" />
+                <article key={i} className="upcoming-card">
+                  <div className="h-48 bg-gray-200 rounded-t-lg" />
+                    <div className="event-meta p-4">
+                    <div className="h-6 bg-gray-200 rounded mb-2" />
+                    <div className="h-4 bg-gray-200 rounded mb-2" />
+                    <div className="h-4 bg-gray-200 rounded" />
                   </div>
                 </article>
               ))}
@@ -399,7 +364,7 @@ export default function Home() {
           ) : upcoming24h.length > 0 ? (
             <div className="upcoming-grid">
               {upcoming24h.map((event) => (
-                <Link key={event.id} to={`/events/${event.id}`} className="upcoming-card premium-hover">
+                <Link key={event.id} to={`/events/${event.id}`} className="upcoming-card">
                   <img src={getEventImage(event)} alt={event.title} loading="lazy" decoding="async" style={{ willChange: "transform" }} />
                   <div className="event-meta">
                     <h3>{event.title}</h3>
@@ -425,12 +390,12 @@ export default function Home() {
           {loadingEvents ? (
             <div className="home-card-grid">
               {[...Array(3)].map((_, i) => (
-                <article key={i} className="event-card premium-loading">
-                  <div className="h-48 bg-gray-200 animate-pulse rounded-t-lg" />
-                  <div className="event-meta p-4">
-                    <div className="h-6 bg-gray-200 rounded animate-pulse mb-2" />
-                    <div className="h-4 bg-gray-200 rounded animate-pulse mb-2" />
-                    <div className="h-4 bg-gray-200 rounded animate-pulse" />
+                <article key={i} className="event-card">
+                  <div className="h-48 bg-gray-200 rounded-t-lg" />
+                    <div className="event-meta p-4">
+                    <div className="h-6 bg-gray-200 rounded mb-2" />
+                    <div className="h-4 bg-gray-200 rounded mb-2" />
+                    <div className="h-4 bg-gray-200 rounded" />
                   </div>
                 </article>
               ))}
@@ -438,7 +403,7 @@ export default function Home() {
           ) : moreEvents.length > 0 ? (
             <div className="home-card-grid">
               {moreEvents.map((event) => (
-                <Link key={event.id} to={`/events/${event.id}`} className="event-card premium-hover">
+                <Link key={event.id} to={`/events/${event.id}`} className="event-card">
                   <img src={getEventImage(event)} alt={event.title} loading="lazy" decoding="async" style={{ willChange: "transform" }} />
                   <div className="event-meta">
                     <h3>{event.title}</h3>

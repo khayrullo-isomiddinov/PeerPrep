@@ -63,19 +63,12 @@ export default function CreateEventForm({ onCreated }) {
     const selected = new Date(formData.startsAt)
     const now = new Date()
 
-    // minimum allowed = now + 5 minutes
     const minAllowed = new Date(now.getTime() + 5 * 60000)
 
-    // If already valid → do nothing (prevents infinite loop)
     if (selected >= minAllowed) return
-
-    // Otherwise auto-correct once
     const iso = minAllowed.toISOString().slice(0, 16)
     updateFormData({ startsAt: iso })
   }, [formData.startsAt])
-
-
-
 
 
   function isInPast(dateString) {
@@ -244,9 +237,6 @@ export default function CreateEventForm({ onCreated }) {
     }
 
     if (!formData.location.trim()) errs.location = "Location is required"
-
-    // Cover image is optional
-
     setFieldErrors(errs)
     if (Object.keys(errs).length > 0) return
 
@@ -265,17 +255,12 @@ export default function CreateEventForm({ onCreated }) {
         }
       }
 
-      // Convert study materials to JSON
       const studyMaterialsJson = formData.studyMaterials.length > 0
         ? JSON.stringify(formData.studyMaterials)
         : null
 
-      // Convert local datetime to UTC ISO string
-      // formData.startsAt is in format "YYYY-MM-DDTHH:mm" (local time)
-      // We need to convert it to UTC ISO string
       let startsAtUTC
       if (formData.startsAt) {
-        // Parse as local time and convert to UTC
         const localDate = new Date(formData.startsAt)
         startsAtUTC = localDate.toISOString()
       } else {
@@ -297,29 +282,23 @@ export default function CreateEventForm({ onCreated }) {
       
       const evt = await createEvent(payload)
       
-      // Reset loading state before navigation
       setLoading(false)
       
-      // Call callback if provided
       if (onCreated) {
         try {
           onCreated(evt)
         } catch (callbackError) {
           console.error('Error in onCreated callback:', callbackError)
-          // Don't fail the whole operation if callback fails
         }
       }
       
-      // Navigate to events page
       try {
         navigate("/events", {
           state: { newEvent: evt }
         })
       } catch (navError) {
         console.error('Navigation error:', navError)
-        // If navigation fails, still show success and let user navigate manually
         setError("Event created successfully! Please refresh the page to see it.")
-        // Clear error after 3 seconds
         setTimeout(() => setError(""), 3000)
       }
     } catch (e) {
@@ -327,8 +306,6 @@ export default function CreateEventForm({ onCreated }) {
       console.error('Event creation failed:', e)
       const errorMessage = e?.response?.data?.detail || e?.message || "Failed to create event"
       setError(errorMessage)
-      
-      // If it's a network error but event might have been created, provide helpful message
       if (!e?.response && e?.message?.includes('Network')) {
         setError("Network error. Please check if the event was created and refresh the page.")
       }
@@ -600,7 +577,6 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
           onClick={() => {
             setMode("upload")
             setGenerateError("")
-            // Trigger file input if no image is selected
             if (!formData.coverImage && fileInputRef.current) {
               setTimeout(() => {
                 fileInputRef.current?.click()
@@ -936,7 +912,6 @@ function StudyMaterialsSection({ formData, updateFormData }) {
     const newMaterials = []
 
     for (const file of files) {
-      // Check file size (max 10MB per file)
       if (file.size > 10 * 1024 * 1024) {
         alert(`${file.name} is too large. Maximum file size is 10MB.`)
         continue
@@ -1072,13 +1047,11 @@ function StudyMaterialsSection({ formData, updateFormData }) {
 function LocationTimeStep({ formData, updateFormData, fieldErrors, isToday }) {
   return (
     <div className="space-y-10">
-      {/* Header */}
       <div className="flex items-center space-x-3">
         <FontAwesomeIcon icon={faMapMarkerAlt} className="w-5 h-5 text-pink-500" />
         <h2 className="text-xl font-bold text-gray-900">Location & Time</h2>
       </div>
 
-      {/* ---- Location Section ---- */}
       <div className="space-y-6">
         <h3 className="text-sm font-semibold text-gray-800 tracking-wide">
           LOCATION

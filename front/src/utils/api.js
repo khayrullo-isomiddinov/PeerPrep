@@ -17,32 +17,22 @@ export function setAuthHeader(token) {
 const existing = localStorage.getItem("access_token")
 if (existing) setAuthHeader(existing)
 
-// Optimized: Only log in development
+// Only log in development
 const isDev = import.meta.env.DEV
 
 api.interceptors.request.use(
   config => {
-    // Always ensure token is fresh from localStorage (in case it was updated)
     const token = localStorage.getItem("access_token")
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
-      // Also update the default header to keep it in sync
       api.defaults.headers.common["Authorization"] = `Bearer ${token}`
     } else {
-      // Remove header if no token
       delete config.headers.Authorization
       delete api.defaults.headers.common["Authorization"]
     }
     
-    // Disable HTTP caching for GET requests in development to ensure Network tab visibility
-    if (import.meta.env.DEV && config.method === 'get') {
-      config.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-      config.headers['Pragma'] = 'no-cache'
-      config.headers['Expires'] = '0'
-      // Add timestamp to prevent browser cache
-      const separator = config.url.includes('?') ? '&' : '?'
-      config.url = `${config.url}${separator}_t=${Date.now()}`
-    }
+    // Removed cache-busting in dev mode to allow proper HTTP caching
+    // If you need to bypass cache during development, use browser dev tools
     
     return config
   },
@@ -55,15 +45,9 @@ api.interceptors.response.use(
   r => r,
   err => {
     if (err?.response?.status === 401) {
-      // Only clear token if it's actually invalid (not just missing)
-      // Don't clear on first 401 - might be a temporary issue
       const token = localStorage.getItem("access_token")
       if (token) {
-        // Try to validate token - if it fails, then clear it
-        // But don't clear immediately on first 401
       }
-      // Don't automatically clear - let the AuthContext handle it
-      // setAuthHeader(null) // Removed - let AuthContext handle token validation
     }
     return Promise.reject(err)
   }
@@ -143,7 +127,6 @@ export async function joinEvent(id) {
       alreadyJoined: response.data?.alreadyJoined
     }
   } catch (error) {
-    // Handle 409 (already joined) as a special case - not really an error
     if (error?.response?.status === 409) {
       return { success: true, alreadyJoined: true }
     }
@@ -159,7 +142,6 @@ export async function leaveEvent(id) {
       notJoined: response.data?.notJoined
     }
   } catch (error) {
-    // Handle 404 (not joined) as a special case - not really an error
     if (error?.response?.status === 404) {
       return { success: true, notJoined: true }
     }

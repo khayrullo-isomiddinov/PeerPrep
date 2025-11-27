@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, useRef } from "react"
 import { useNavigate, useParams, Link } from "react-router-dom"
 import { useAuth } from "../features/auth/AuthContext"
-import { updateProfile, deleteAccount, getUserProfile, getUserBadge, awardPastEventsXP } from "../utils/api"
+import { deleteAccount } from "../utils/api"
+import { useUserProfile, useUserBadge, useUpdateProfile, useAwardPastEventsXP } from "../hooks/useProfile"
 import UserBadge from "../components/UserBadge"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faTrophy, faMedal, faAward, faUsers, faCalendar, faCheckCircle, faStar, faGraduationCap, faBookOpen } from "@fortawesome/free-solid-svg-icons"
@@ -12,18 +13,34 @@ export default function Profile() {
   const navigate = useNavigate()
   const fileRef = useRef(null)
   const [profileUser, setProfileUser] = useState(null)
-  const [loadingProfile, setLoadingProfile] = useState(false)
   const [editing, setEditing] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [userStats, setUserStats] = useState(null)
-  const [loadingStats, setLoadingStats] = useState(false)
-  
-  const isViewingOwnProfile = !userId || (user && parseInt(userId) === user.id)
-  const displayUser = isViewingOwnProfile ? user : profileUser
+
+  // Compute values needed for React Query hooks
   const targetUserId = userId ? parseInt(userId) : (user?.id)
+  const targetUserIdNum = targetUserId
+  const isViewingOwnProfile = !userId || (user && parseInt(userId) === user.id)
+
+  // Use React Query for profile data
+  const { data: profileUserData, isLoading: loadingProfile } = useUserProfile(
+    targetUserIdNum,
+    { enabled: !!targetUserIdNum && (!user || parseInt(userId || '0') !== user.id) }
+  )
   
+  // Use React Query for badge/stats
+  const { data: userStatsData, isLoading: loadingStats } = useUserBadge(
+    targetUserId,
+    { enabled: !!targetUserId }
+  )
+  
+  const awardXPMutation = useAwardPastEventsXP()
+  
+  // Compute display user after profile data is loaded
+  const displayUser = isViewingOwnProfile ? user : profileUser
+
   const initialForm = useMemo(() => ({
     name: displayUser?.name || "",
     email: displayUser?.email || "",
@@ -32,103 +49,24 @@ export default function Profile() {
     createdAt: displayUser?.created_at || null,
   }), [displayUser])
   const [form, setForm] = useState(initialForm)
-
+  
   useEffect(() => {
-    async function loadUserProfile() {
-      if (userId && user && parseInt(userId) !== user.id) {
-        try {
-          const { getCachedPage, setCachedPage } = await import("../utils/pageCache")
-          const cached = getCachedPage(`profile:${userId}`)
-          
-          if (cached && cached.data) {
-            setProfileUser(cached.data)
-            setLoadingProfile(false)
-            if (cached.isExpired) {
-              setTimeout(async () => {
-                try {
-                  const profileData = await getUserProfile(parseInt(userId))
-                  setProfileUser(profileData)
-                  setCachedPage(`profile:${userId}`, profileData)
-                } catch (error) {
-                  console.error("Background refresh failed:", error)
-                }
-              }, 100)
-            }
-            return
-          }
-          
-          setLoadingProfile(true)
-          const profileData = await getUserProfile(parseInt(userId))
-          setProfileUser(profileData)
-          setCachedPage(`profile:${userId}`, profileData)
-        } catch (error) {
-          console.error("Failed to load user profile:", error)
-          navigate("/profile", { replace: true })
-        } finally {
-          setLoadingProfile(false)
-        }
-      } else if (userId && !user) {
-        try {
-          const { getCachedPage, setCachedPage } = await import("../utils/pageCache")
-          const cached = getCachedPage(`profile:${userId}`)
-          
-          if (cached && cached.data) {
-            setProfileUser(cached.data)
-            setLoadingProfile(false)
-            if (cached.isExpired) {
-              setTimeout(async () => {
-                try {
-                  const profileData = await getUserProfile(parseInt(userId))
-                  setProfileUser(profileData)
-                  setCachedPage(`profile:${userId}`, profileData)
-                } catch (error) {
-                  console.error("Background refresh failed:", error)
-                }
-              }, 100)
-            }
-            return
-          }
-          
-          setLoadingProfile(true)
-          const profileData = await getUserProfile(parseInt(userId))
-          setProfileUser(profileData)
-          setCachedPage(`profile:${userId}`, profileData)
-        } catch (error) {
-          console.error("Failed to load user profile:", error)
-          navigate("/", { replace: true })
-        } finally {
-          setLoadingProfile(false)
-        }
-      }
+    if (profileUserData) {
+      setProfileUser(profileUserData)
     }
-    loadUserProfile()
-  }, [userId, user, navigate])
-
+  }, [profileUserData])
+  
   useEffect(() => {
-    async function loadUserStats() {
-      if (!targetUserId) return
-      
-      try {
-        setLoadingStats(true)
-        
-        if (isViewingOwnProfile) {
-          try {
-            await awardPastEventsXP()
-          } catch (error) {
-            console.debug("Failed to award past events XP:", error)
-          }
-        }
-        
-        const badgeData = await getUserBadge(targetUserId)
-        setUserStats(badgeData)
-      } catch (error) {
-        console.error("Failed to load user stats:", error)
-      } finally {
-        setLoadingStats(false)
-      }
+    if (userStatsData) {
+      setUserStats(userStatsData)
     }
-    loadUserStats()
-  }, [targetUserId, isViewingOwnProfile])
+  }, [userStatsData])
+  // Award past events XP when viewing own profile
+  useEffect(() => {
+    if (isViewingOwnProfile && targetUserId) {
+      awardXPMutation.mutate()
+    }
+  }, [isViewingOwnProfile, targetUserId, awardXPMutation])
 
 
   useEffect(() => {
@@ -154,6 +92,8 @@ export default function Profile() {
     setForm(prev => ({ ...prev, [name]: value }))
   }
 
+  const updateProfileMutation = useUpdateProfile()
+  
   async function handleSave() {
     try {
       const profileData = {
@@ -161,27 +101,27 @@ export default function Profile() {
         bio: form.bio,
         photo_url: form.photoUrl
       }
-      
-      const updatedProfile = await updateProfile(profileData)
-      
+
+      const updatedProfile = await updateProfileMutation.mutateAsync(profileData)
+
       const updatedUser = { ...user, ...updatedProfile }
       setUser(updatedUser)
-      
+
       setForm(prev => ({
         ...prev,
         name: updatedProfile.name || prev.name,
         bio: updatedProfile.bio || prev.bio,
         photoUrl: updatedProfile.photo_url || prev.photoUrl
       }))
-      
-    setEditing(false)
+
+      setEditing(false)
     } catch (error) {
       console.error("Failed to save profile:", error)
     }
   }
 
   function onPickPhoto() {
-    try { fileRef.current?.click() } catch {}
+    try { fileRef.current?.click() } catch { }
   }
 
   async function onPhotoSelected(e) {
@@ -189,52 +129,52 @@ export default function Profile() {
     if (!file) {
       return
     }
-    
+
     const fileName = file.name.toLowerCase()
-    const isHeic = fileName.endsWith('.heic') || fileName.endsWith('.heif') || 
-                   file.type === 'image/heic' || file.type === 'image/heif'
-    
+    const isHeic = fileName.endsWith('.heic') || fileName.endsWith('.heif') ||
+      file.type === 'image/heic' || file.type === 'image/heif'
+
     if (isHeic) {
       alert("HEIC/HEIF format is not supported. Please convert your image to JPG or PNG first. You can do this on your iPhone by going to Settings > Camera > Formats and selecting 'Most Compatible'.")
       return
     }
-    
+
     if (!file.type.startsWith('image/')) {
       alert("Please select an image file (JPG, PNG, GIF, or WebP)")
       return
     }
-    
+
     if (file.size > 5 * 1024 * 1024) {
       alert("Image size must be less than 5MB. Please compress or resize your image.")
       return
     }
-    
+
     setUploading(true)
-    
+
     const reader = new FileReader()
     reader.onerror = () => {
       console.error("Error reading file")
       setUploading(false)
       alert("Failed to read image file")
     }
-    
+
     reader.onload = async () => {
       const photoUrl = String(reader.result || "")
-      
+
       setForm(prev => ({ ...prev, photoUrl }))
-      
+
       try {
         const profileData = {
           name: form.name,
           bio: form.bio,
           photo_url: photoUrl
         }
-        
+
         const updatedProfile = await updateProfile(profileData)
-        
+
         const updatedUser = { ...user, ...updatedProfile }
         setUser(updatedUser)
-        
+
         setForm(prev => ({
           ...prev,
           photoUrl: updatedProfile.photo_url || photoUrl
@@ -246,7 +186,7 @@ export default function Profile() {
         const updatedUser = { ...user, photo_url: photoUrl }
         setUser(updatedUser)
       }
-      
+
       setUploading(false)
       if (fileRef.current) {
         fileRef.current.value = ''
@@ -264,13 +204,13 @@ export default function Profile() {
     if (!window.confirm("Are you sure you want to delete your account? This action cannot be undone.")) {
       return
     }
-    
+
     const confirmText = prompt("Type 'DELETE' to confirm account deletion:")
     if (confirmText !== "DELETE") {
       alert("Account deletion cancelled.")
       return
     }
-    
+
     setDeleting(true)
     try {
       await deleteAccount()
@@ -294,7 +234,7 @@ export default function Profile() {
       </div>
     )
   }
-  
+
   if (!isAuthenticated && !userId) return null
 
   function formatMemberSince(createdAt) {
@@ -310,7 +250,7 @@ export default function Profile() {
   return (
     <div className="min-h-screen tap-safe premium-scrollbar bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 route-transition">
       <div className="nav-spacer" />
-      
+
       <section className="relative bg-gradient-to-r from-white via-pink-50/30 to-purple-50/30 border-b border-gray-200/60 backdrop-blur-sm">
         <div className="absolute inset-0 bg-gradient-to-r from-pink-500/5 via-purple-500/5 to-indigo-500/5"></div>
         <div className="container-page py-6 sm:py-8 lg:py-12 relative z-10">
@@ -320,7 +260,7 @@ export default function Profile() {
                 <div className="relative h-24 w-24 sm:h-32 sm:w-32 rounded-full overflow-hidden border-4 border-white shadow-2xl ring-4 ring-pink-100">
                   <img
                     key={form.photoUrl || 'default'}
-                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    className="h-full w-full object-cover"
                     src={getProfileImage()}
                     alt="Profile"
                     onError={(e) => {
@@ -333,12 +273,12 @@ export default function Profile() {
                     </div>
                   )}
                 </div>
-                
+
                 {isViewingOwnProfile && (
                   <>
                     <button
                       onClick={onPickPhoto}
-                      className="absolute -bottom-2 -right-2 h-12 w-12 bg-gradient-to-r from-pink-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-110 ring-2 ring-white"
+                      className="absolute -bottom-2 -right-2 h-12 w-12 bg-gradient-to-r from-pink-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl ring-2 ring-white"
                       title="Change photo"
                     >
                       <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -346,13 +286,13 @@ export default function Profile() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
                     </button>
-                    
-                    <input 
-                      ref={fileRef} 
-                      type="file" 
-                      accept="image/*" 
-                      className="hidden" 
-                      onChange={onPhotoSelected} 
+
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={onPhotoSelected}
                     />
                   </>
                 )}
@@ -399,7 +339,7 @@ export default function Profile() {
                   <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                     <button
                       onClick={handleSave}
-                      className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-base sm:text-lg"
+                      className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold rounded-xl hover:from-green-600 hover:to-emerald-700 shadow-lg hover:shadow-xl text-base sm:text-lg"
                     >
                       <svg className="w-5 h-5 sm:w-6 sm:h-6 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -408,7 +348,7 @@ export default function Profile() {
                     </button>
                     <button
                       onClick={() => setEditing(false)}
-                      className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-semibold rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-base sm:text-lg"
+                      className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-semibold rounded-xl hover:from-gray-600 hover:to-gray-700 shadow-lg hover:shadow-xl text-base sm:text-lg"
                     >
                       Cancel
                     </button>
@@ -422,14 +362,12 @@ export default function Profile() {
 
       <main className="container-page py-6 sm:py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-          {/* Main Content */}
           <div className="lg:col-span-2 space-y-4 lg:space-y-6">
-            {/* Stats Cards */}
             {loadingStats && !userStats ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[...Array(3)].map((_, i) => (
                   <div key={i} className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 border border-gray-200 shadow-sm">
-                    <div className="animate-pulse space-y-2">
+                    <div className="space-y-2">
                       <div className="h-8 w-8 bg-gray-200 rounded-lg"></div>
                       <div className="h-8 bg-gray-200 rounded w-3/4"></div>
                       <div className="h-4 bg-gray-200 rounded w-1/2"></div>
@@ -439,7 +377,7 @@ export default function Profile() {
               </div>
             ) : userStats ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200 shadow-sm hover:shadow-md transition-all">
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200 shadow-sm hover:shadow-md">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
                       <FontAwesomeIcon icon={faStar} className="text-white text-sm" />
@@ -449,8 +387,8 @@ export default function Profile() {
                   <div className="text-2xl font-bold text-gray-900">{userStats.total_xp || 0}</div>
                   <div className="text-xs text-gray-500 mt-1">Dynamic calculation</div>
                 </div>
-                
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200 shadow-sm hover:shadow-md transition-all">
+
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200 shadow-sm hover:shadow-md">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg flex items-center justify-center">
                       <FontAwesomeIcon icon={faCalendar} className="text-white text-sm" />
@@ -460,7 +398,7 @@ export default function Profile() {
                   <div className="text-2xl font-bold text-gray-900">{userStats.events_attended || 0}</div>
                   <div className="text-xs text-gray-500 mt-1">Attended</div>
                 </div>
-                <div className="bg-gradient-to-br from-orange-50 to-yellow-50 rounded-xl p-4 border border-orange-200 shadow-sm hover:shadow-md transition-all">
+                <div className="bg-gradient-to-br from-orange-50 to-yellow-50 rounded-xl p-4 border border-orange-200 shadow-sm hover:shadow-md">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-yellow-500 rounded-lg flex items-center justify-center">
                       <FontAwesomeIcon icon={faTrophy} className="text-white text-sm" />
@@ -473,7 +411,6 @@ export default function Profile() {
               </div>
             ) : null}
 
-            {/* Engagement Score Card */}
             {loadingStats && !userStats ? (
               <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-xl p-6 border border-indigo-200 shadow-sm">
                 <div className="animate-pulse space-y-4">
@@ -505,7 +442,7 @@ export default function Profile() {
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
                   <div
-                    className="bg-gradient-to-r from-indigo-500 to-purple-600 h-3 rounded-full transition-all duration-500"
+                    className="bg-gradient-to-r from-indigo-500 to-purple-600 h-3 rounded-full"
                     style={{ width: `${userStats.engagement_score * 100}%` }}
                   />
                 </div>
@@ -515,7 +452,6 @@ export default function Profile() {
               </div>
             ) : null}
 
-            {/* Badge Shelf */}
             <div className="bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 rounded-2xl shadow-lg border-2 border-amber-200 p-6 lg:p-8">
               <div className="flex items-center gap-3 mb-6">
                 <div className="h-12 w-12 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center shadow-lg">
@@ -526,44 +462,43 @@ export default function Profile() {
                   <p className="text-sm text-gray-600">Achievements earned through dedication</p>
                 </div>
               </div>
-              
+
               <div className="relative">
-                {/* Shelf visual effect */}
                 <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-300 via-yellow-300 to-orange-300 rounded-full shadow-lg"></div>
                 <div className="absolute bottom-1 left-0 right-0 h-0.5 bg-amber-200/50 rounded-full"></div>
-                
+
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pb-4">
                   {[
-                    { name: "Beginner", min_xp: 0, requirements: {xp: 0}, icon: "🌱", color: "green", bgFrom: "from-green-100", bgTo: "to-green-200", border: "border-green-400", ring: "ring-green-300", text: "text-green-700", textLight: "text-green-600", bgLightFrom: "from-green-50", bgLightTo: "to-green-100", borderLight: "border-green-300" },
-                    { name: "Learner", min_xp: 200, requirements: {xp: 200, events: 2, weekly_streak: 1, engagement: 0.2}, icon: "📚", color: "blue", bgFrom: "from-blue-100", bgTo: "to-blue-200", border: "border-blue-400", ring: "ring-blue-300", text: "text-blue-700", textLight: "text-blue-600", bgLightFrom: "from-blue-50", bgLightTo: "to-blue-100", borderLight: "border-blue-300" },
-                    { name: "Achiever", min_xp: 500, requirements: {xp: 500, events: 5, weekly_streak: 3, engagement: 0.4}, icon: "⭐", color: "purple", bgFrom: "from-purple-100", bgTo: "to-purple-200", border: "border-purple-400", ring: "ring-purple-300", text: "text-purple-700", textLight: "text-purple-600", bgLightFrom: "from-purple-50", bgLightTo: "to-purple-100", borderLight: "border-purple-300" },
-                    { name: "Expert", min_xp: 1500, requirements: {xp: 1500, events: 15, weekly_streak: 8, engagement: 0.6}, icon: "🏆", color: "orange", bgFrom: "from-orange-100", bgTo: "to-orange-200", border: "border-orange-400", ring: "ring-orange-300", text: "text-orange-700", textLight: "text-orange-600", bgLightFrom: "from-orange-50", bgLightTo: "to-orange-100", borderLight: "border-orange-300" },
-                    { name: "Master", min_xp: 4000, requirements: {xp: 4000, events: 40, weekly_streak: 16, engagement: 0.8}, icon: "👑", color: "gold", bgFrom: "from-yellow-100", bgTo: "to-yellow-200", border: "border-yellow-400", ring: "ring-yellow-300", text: "text-yellow-700", textLight: "text-yellow-600", bgLightFrom: "from-yellow-50", bgLightTo: "to-yellow-100", borderLight: "border-yellow-300" },
+                    { name: "Beginner", min_xp: 0, requirements: { xp: 0 }, icon: "🌱", color: "green", bgFrom: "from-green-100", bgTo: "to-green-200", border: "border-green-400", ring: "ring-green-300", text: "text-green-700", textLight: "text-green-600", bgLightFrom: "from-green-50", bgLightTo: "to-green-100", borderLight: "border-green-300" },
+                    { name: "Learner", min_xp: 200, requirements: { xp: 200, events: 2, weekly_streak: 1, engagement: 0.2 }, icon: "📚", color: "blue", bgFrom: "from-blue-100", bgTo: "to-blue-200", border: "border-blue-400", ring: "ring-blue-300", text: "text-blue-700", textLight: "text-blue-600", bgLightFrom: "from-blue-50", bgLightTo: "to-blue-100", borderLight: "border-blue-300" },
+                    { name: "Achiever", min_xp: 500, requirements: { xp: 500, events: 5, weekly_streak: 3, engagement: 0.4 }, icon: "⭐", color: "purple", bgFrom: "from-purple-100", bgTo: "to-purple-200", border: "border-purple-400", ring: "ring-purple-300", text: "text-purple-700", textLight: "text-purple-600", bgLightFrom: "from-purple-50", bgLightTo: "to-purple-100", borderLight: "border-purple-300" },
+                    { name: "Expert", min_xp: 1500, requirements: { xp: 1500, events: 15, weekly_streak: 8, engagement: 0.6 }, icon: "🏆", color: "orange", bgFrom: "from-orange-100", bgTo: "to-orange-200", border: "border-orange-400", ring: "ring-orange-300", text: "text-orange-700", textLight: "text-orange-600", bgLightFrom: "from-orange-50", bgLightTo: "to-orange-100", borderLight: "border-orange-300" },
+                    { name: "Master", min_xp: 4000, requirements: { xp: 4000, events: 40, weekly_streak: 16, engagement: 0.8 }, icon: "👑", color: "gold", bgFrom: "from-yellow-100", bgTo: "to-yellow-200", border: "border-yellow-400", ring: "ring-yellow-300", text: "text-yellow-700", textLight: "text-yellow-600", bgLightFrom: "from-yellow-50", bgLightTo: "to-yellow-100", borderLight: "border-yellow-300" },
                   ].map((badge, index) => {
                     const currentXP = userStats?.total_xp || 0
                     const currentEvents = userStats?.events_attended || 0
                     const currentEngagement = userStats?.engagement_score || 0
                     const currentWeeklyStreak = userStats?.weekly_streak || 0
-                    
+
                     const badgeHierarchy = ["Beginner", "Learner", "Achiever", "Expert", "Master"]
                     const currentBadgeName = userStats?.badge?.name || "Beginner"
                     const currentBadgeIndex = badgeHierarchy.indexOf(currentBadgeName)
                     const badgeIndex = badgeHierarchy.indexOf(badge.name)
-                    
+
                     const isUnlockedByBackend = currentBadgeIndex >= badgeIndex
-                    
+
                     const meetsXP = currentXP >= badge.requirements.xp
                     const meetsEvents = !badge.requirements.events || currentEvents >= badge.requirements.events
                     const meetsWeeklyStreak = !badge.requirements.weekly_streak || currentWeeklyStreak >= badge.requirements.weekly_streak
                     const meetsEngagement = !badge.requirements.engagement || currentEngagement >= badge.requirements.engagement
                     const meetsRequirements = meetsXP && meetsEvents && meetsWeeklyStreak && meetsEngagement
-                    
+
                     const isUnlocked = isUnlockedByBackend || meetsRequirements
                     const isCurrent = userStats?.badge?.name === badge.name
-                    
+
                     const progressBadgeIndex = badgeHierarchy.indexOf(badge.name)
                     const nextBadgeIndex = progressBadgeIndex + 1
-                    
+
                     let progress = 0
                     if (nextBadgeIndex < badgeHierarchy.length) {
                       const nextBadge = badgeHierarchy[nextBadgeIndex]
@@ -574,7 +509,7 @@ export default function Profile() {
                         { name: "Expert", min_xp: 1500 },
                         { name: "Master", min_xp: 4000 },
                       ].find(b => b.name === nextBadge)
-                      
+
                       if (nextBadgeData) {
                         const range = nextBadgeData.min_xp - badge.min_xp
                         const progressInRange = currentXP - badge.min_xp
@@ -583,20 +518,19 @@ export default function Profile() {
                     } else {
                       progress = isUnlocked ? 100 : Math.min(100, (currentXP / badge.min_xp) * 100) || 0
                     }
-                    
+
                     return (
                       <div
                         key={index}
-                        className={`relative flex flex-col items-center p-4 rounded-xl border-2 transition-all transform hover:scale-105 ${
-                          isUnlocked
+                        className={`relative flex flex-col items-center p-4 rounded-xl border-2 ${isUnlocked
                             ? isCurrent
                               ? `bg-gradient-to-br ${badge.bgFrom} ${badge.bgTo} ${badge.border} shadow-lg ring-2 ${badge.ring}`
                               : `bg-gradient-to-br ${badge.bgLightFrom} ${badge.bgLightTo} ${badge.borderLight} shadow-md`
                             : "bg-gray-100 border-gray-300 opacity-50 grayscale"
-                        }`}
+                          }`}
                       >
                         {isCurrent && (
-                          <div className="absolute -top-2 -right-2 w-6 h-6 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center shadow-lg animate-pulse">
+                          <div className="absolute -top-2 -right-2 w-6 h-6 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center shadow-lg">
                             <FontAwesomeIcon icon={faStar} className="text-white text-xs" />
                           </div>
                         )}
@@ -613,19 +547,18 @@ export default function Profile() {
                           <>
                             <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
                               <div
-                                className={`h-1.5 rounded-full transition-all ${badge.bgFrom} ${badge.bgTo}`}
+                                className={`h-1.5 rounded-full ${badge.bgFrom} ${badge.bgTo}`}
                                 style={{ width: `${progress}%` }}
                               />
                             </div>
                             <div className="text-xs text-gray-500 mt-1 text-center">
                               {progress.toFixed(0)}% complete
                             </div>
-                            {/* Show missing requirements on hover */}
-                            <div className="mt-2 space-y-1 text-xs opacity-0 hover:opacity-100 transition-opacity">
+                            <div className="mt-2 space-y-1 text-xs opacity-0 hover:opacity-100">
                               {!meetsXP && (
                                 <div className="text-gray-500">Need {badge.requirements.xp - currentXP} more XP</div>
                               )}
-                              
+
                               {!meetsEvents && badge.requirements.events && (
                                 <div className="text-gray-500">Need {badge.requirements.events - currentEvents} more events</div>
                               )}
@@ -651,7 +584,7 @@ export default function Profile() {
                 </div>
               </div>
             </div>
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/60 p-4 sm:p-6 lg:p-8 hover:shadow-xl transition-all duration-300">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/60 p-4 sm:p-6 lg:p-8 hover:shadow-xl">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 bg-gradient-to-r from-pink-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
@@ -665,21 +598,21 @@ export default function Profile() {
                   <div className="flex gap-2">
                     <button
                       onClick={handleSave}
-                      className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-medium rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all duration-200 text-sm shadow-md"
+                      className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-medium rounded-lg hover:from-green-600 hover:to-emerald-700 text-sm shadow-md"
                     >
                       Save
                     </button>
                     <button
                       onClick={() => setEditing(false)}
-                      className="px-4 py-2 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-medium rounded-lg hover:from-gray-600 hover:to-gray-700 transition-all duration-200 text-sm shadow-md"
+                      className="px-4 py-2 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-medium rounded-lg hover:from-gray-600 hover:to-gray-700 text-sm shadow-md"
                     >
                       Cancel
                     </button>
                   </div>
                 )}
               </div>
-              
-          {!editing ? (
+
+              {!editing ? (
                 <div className="space-y-6">
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 mb-2">Bio</h3>
@@ -697,13 +630,13 @@ export default function Profile() {
                       <p className="text-gray-700">{form.email}</p>
                     </div>
                   </div>
-            </div>
-          ) : (
+                </div>
+              ) : (
                 <div className="space-y-6">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">Bio</label>
                     <textarea
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all duration-200 resize-none"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent resize-none"
                       name="bio"
                       value={form.bio}
                       onChange={handleChange}
@@ -714,32 +647,29 @@ export default function Profile() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">Full Name</label>
-                <input
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all duration-200"
-                  name="name"
-                  value={form.name}
-                  onChange={handleChange}
+                      <input
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                        name="name"
+                        value={form.name}
+                        onChange={handleChange}
                         placeholder="Enter your full name"
-                />
-              </div>
+                      />
+                    </div>
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
-                <input
+                      <input
                         className="w-full px-4 py-3 border border-gray-200 bg-gray-50 rounded-xl text-gray-600 cursor-not-allowed"
-                  name="email"
-                  value={form.email}
-                  disabled
-                />
-              </div>
-              </div>
-            </div>
-          )}
+                        name="email"
+                        value={form.email}
+                        disabled
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-
-          {/* Sidebar */}
           <div className="space-y-6">
-            {/* Current Badge Card */}
             {loadingStats && !userStats ? (
               <div className="bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-lg border border-gray-200 p-6 sticky top-24">
                 <div className="animate-pulse space-y-4">
@@ -758,7 +688,7 @@ export default function Profile() {
                   <h3 className="text-xl font-bold text-gray-900 mb-1">{userStats.badge.name}</h3>
                   <p className="text-sm text-gray-600">Current Level</p>
                 </div>
-                
+
                 <div className="space-y-3 pt-4 border-t border-gray-200">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-600">Total XP</span>
@@ -770,10 +700,10 @@ export default function Profile() {
                       const currentBadgeName = userStats.badge.name
                       const currentBadgeIndex = badgeHierarchy.indexOf(currentBadgeName)
                       const nextBadgeIndex = currentBadgeIndex + 1
-                      
+
                       let progressWidth = 0
                       let nextLevelXP = null
-                      
+
                       if (nextBadgeIndex < badgeHierarchy.length) {
                         const nextBadgeName = badgeHierarchy[nextBadgeIndex]
                         const nextBadgeMinXP = {
@@ -783,11 +713,11 @@ export default function Profile() {
                           "Expert": 1500,
                           "Master": 4000,
                         }[nextBadgeName] || 0
-                        
+
                         const currentMinXP = userStats.badge.min_xp || 0
                         const range = nextBadgeMinXP - currentMinXP
                         const progressInRange = userStats.total_xp - currentMinXP
-                        
+
                         if (range > 0) {
                           progressWidth = Math.min(100, Math.max(0, (progressInRange / range) * 100))
                         } else {
@@ -797,16 +727,15 @@ export default function Profile() {
                       } else {
                         progressWidth = 100
                       }
-                      
+
                       return (
-                        <div 
-                          className={`h-2.5 rounded-full transition-all ${
-                            userStats.badge.color === "green" ? "bg-gradient-to-r from-green-500 to-green-600" :
-                            userStats.badge.color === "blue" ? "bg-gradient-to-r from-blue-500 to-blue-600" :
-                            userStats.badge.color === "purple" ? "bg-gradient-to-r from-purple-500 to-purple-600" :
-                            userStats.badge.color === "orange" ? "bg-gradient-to-r from-orange-500 to-orange-600" :
-                            "bg-gradient-to-r from-yellow-500 to-yellow-600"
-                          }`}
+                        <div
+                          className={`h-2.5 rounded-full ${userStats.badge.color === "green" ? "bg-gradient-to-r from-green-500 to-green-600" :
+                              userStats.badge.color === "blue" ? "bg-gradient-to-r from-blue-500 to-blue-600" :
+                                userStats.badge.color === "purple" ? "bg-gradient-to-r from-purple-500 to-purple-600" :
+                                  userStats.badge.color === "orange" ? "bg-gradient-to-r from-orange-500 to-orange-600" :
+                                    "bg-gradient-to-r from-yellow-500 to-yellow-600"
+                            }`}
                           style={{ width: `${progressWidth}%` }}
                         />
                       )
@@ -818,11 +747,11 @@ export default function Profile() {
                       const currentBadgeName = userStats.badge.name
                       const currentBadgeIndex = badgeHierarchy.indexOf(currentBadgeName)
                       const nextBadgeIndex = currentBadgeIndex + 1
-                      
+
                       if (nextBadgeIndex >= badgeHierarchy.length) {
                         return "Max level reached!"
                       }
-                      
+
                       const nextBadgeName = badgeHierarchy[nextBadgeIndex]
                       const nextBadgeMinXP = {
                         "Beginner": 0,
@@ -831,7 +760,7 @@ export default function Profile() {
                         "Expert": 1500,
                         "Master": 4000,
                       }[nextBadgeName] || 0
-                      
+
                       const xpNeeded = nextBadgeMinXP - userStats.total_xp
                       return xpNeeded > 0 ? `${xpNeeded} XP to next level` : "Max level reached!"
                     })()}
@@ -840,7 +769,6 @@ export default function Profile() {
               </div>
             ) : null}
 
-            {/* Quick Stats */}
             {userStats && (
               <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -848,7 +776,7 @@ export default function Profile() {
                   Activity Summary
                 </h3>
                 <div className="space-y-4">
-                  
+
                   <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                     <div className="flex items-center gap-3">
                       <FontAwesomeIcon icon={faCalendar} className="text-green-500" />
@@ -856,7 +784,7 @@ export default function Profile() {
                     </div>
                     <span className="text-lg font-bold text-gray-900">{userStats.events_attended || 0}</span>
                   </div>
-                  
+
                   {userStats.weekly_streak !== undefined && (
                     <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
                       <div className="flex items-center gap-3">
@@ -869,14 +797,13 @@ export default function Profile() {
                 </div>
               </div>
             )}
-
           </div>
         </div>
-        
+
 
         {isViewingOwnProfile && user?.email !== "harry@gmail.com" && (
           <div className="mt-8">
-            <div className="bg-red-50/80 backdrop-blur-sm rounded-2xl shadow-lg border border-red-200/60 p-8 hover:shadow-xl transition-all duration-300">
+            <div className="bg-red-50/80 backdrop-blur-sm rounded-2xl shadow-lg border border-red-200/60 p-8 hover:shadow-xl">
               <div className="flex items-center gap-3 mb-6">
                 <div className="h-10 w-10 bg-gradient-to-r from-red-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -885,20 +812,20 @@ export default function Profile() {
                 </div>
                 <h2 className="text-2xl font-bold text-red-900">Danger Zone</h2>
               </div>
-              
+
               <div className="space-y-4">
                 <div>
                   <h3 className="text-lg font-semibold text-red-900 mb-2">Delete Account</h3>
                   <p className="text-red-700 mb-4">
-                    Once you delete your account, there is no going back. This will permanently remove your account, 
+                    Once you delete your account, there is no going back. This will permanently remove your account,
                     all your data and your participation in events.
                   </p>
                 </div>
-                
+
                 <button
                   onClick={handleDeleteAccount}
                   disabled={deleting}
-                  className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold rounded-xl hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                  className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold rounded-xl hover:from-red-600 hover:to-red-700 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {deleting ? (
                     <>

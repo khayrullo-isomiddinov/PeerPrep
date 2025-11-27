@@ -35,7 +35,7 @@ def join_event(
         select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)
     ).one()
 
-    # Include creator if they aren't in attendee table
+    
     creator_in_attendee = session.exec(
         select(EventAttendee)
         .where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
@@ -46,22 +46,18 @@ def join_event(
     if already:
         return {"success": True, "alreadyJoined": True, "attendee_count": attendee_count}
 
-    # Capacity check (after counting creator)
     if evt.capacity and attendee_count >= evt.capacity:
         raise HTTPException(status_code=409, detail="Event is full")
 
-    # Add attendee
     session.add(EventAttendee(event_id=event_id, user_id=current_user.id))
     session.commit()
 
-    # Recount after joining
     attendee_count = session.exec(
         select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)
     ).one()
     if not creator_in_attendee:
         attendee_count += 1
 
-    # Award XP ONLY if event is already finished
     if now_utc >= ends_at:
         award_xp_for_event(current_user.id, event_id, session)
 
@@ -86,13 +82,11 @@ def leave_event(
             detail="You cannot leave an event that has already started"
         )
 
-    # Check if user is joined
     rec = session.exec(
         select(EventAttendee)
         .where(EventAttendee.event_id == event_id, EventAttendee.user_id == current_user.id)
     ).first()
 
-    # Always compute attendee count helper
     def get_attendee_count():
         base = session.exec(
             select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)
@@ -103,17 +97,14 @@ def leave_event(
             .where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
         ).first()
 
-        # Add creator if not already counted
         if not creator_in_attendee:
             base += 1
 
         return base
 
-    # If not joined, just return counts
     if not rec:
         return {"success": True, "notJoined": True, "attendee_count": get_attendee_count()}
 
-    # Remove record
     session.delete(rec)
     session.commit()
 
@@ -125,14 +116,14 @@ def list_attendees(event_id: int, session: Session = Depends(get_session)):
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    # Get all attendee user_ids
+    
     user_ids = session.exec(
         select(EventAttendee.user_id).where(EventAttendee.event_id == event_id)
     ).all()
 
     user_ids = [uid for uid in user_ids]
 
-    # ALWAYS include creator (consistent with attendee_count)
+    
     if evt.created_by not in user_ids:
         user_ids.append(evt.created_by)
 
@@ -147,28 +138,28 @@ def list_attendees_with_details(event_id: int, session: Session = Depends(get_se
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    # Load explicit attendees
+    
     attendee_records = session.exec(
         select(EventAttendee)
         .where(EventAttendee.event_id == event_id)
         .order_by(EventAttendee.joined_at.asc())
     ).all()
 
-    # Build dictionary: user_id -> joined_at
+    
     joined_times = {a.user_id: a.joined_at for a in attendee_records}
 
-    # Ensure creator exists in list
+    
     if evt.created_by not in joined_times:
-        # Creator is auto-attendee at event start
+        
         joined_times[evt.created_by] = evt.starts_at
 
     user_ids = list(joined_times.keys())
 
-    # Load user objects
+    
     users = session.exec(select(User).where(User.id.in_(user_ids))).all()
     user_map = {u.id: u for u in users}
 
-    # Build final list
+    
     result = []
     for user_id in user_ids:
         u = user_map.get(user_id)
@@ -182,7 +173,7 @@ def list_attendees_with_details(event_id: int, session: Session = Depends(get_se
                 "joined_at": joined_times[user_id].isoformat()
             })
 
-    # Sort by joined_at
+    
     result.sort(key=lambda x: x["joined_at"])
 
     return result

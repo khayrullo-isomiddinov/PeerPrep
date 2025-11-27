@@ -25,15 +25,11 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
 
   useEffect(() => {
   if (!event) return
-
-  // Parse UTC date correctly (backend sends UTC)
   const parseUTCDate = (dateString) => {
     if (!dateString) return null
-    // If already has timezone info, use as-is
     if (dateString.includes('Z') || dateString.includes('+') || dateString.match(/-\d{2}:\d{2}$/)) {
       return new Date(dateString)
     }
-    // Otherwise, treat as UTC by appending 'Z'
     return new Date(dateString + 'Z')
   }
 
@@ -49,9 +45,6 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
     })
     return
   }
-
-  // Format in local time for datetime-local input (not UTC!)
-  // datetime-local expects YYYY-MM-DDTHH:mm in local timezone
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
@@ -134,21 +127,17 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
     if (!validateForm()) return
     setLoading(true)
     try {
-      // form.starts_at is in format "YYYY-MM-DDTHH:mm" (local time, no timezone)
-      // new Date() interprets it as local time, then toISOString() converts to UTC
       const local = new Date(form.starts_at)
       const utcIso = local.toISOString()
 
       const payload = {
         title: form.title.trim(),
-        starts_at: utcIso,  // UTC ISO string for backend
+        starts_at: utcIso, 
         location: form.location.trim(),
         capacity: form.capacity,
         description: form.description.trim() || null,
         exam: form.exam.trim() || null,
       }
-
-      // If a new cover image was selected, convert it to base64
       if (coverImageFile) {
         const reader = new FileReader()
         await new Promise((resolve, reject) => {
@@ -313,7 +302,6 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
                   <h3 className="text-xl font-bold text-gray-900">Cover Image</h3>
                 </div>
 
-                {/* Mode Toggle */}
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -341,7 +329,6 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
                   </button>
                 </div>
 
-                {/* Current Cover Image Preview */}
                 {!coverImagePreview && event.cover_image_url && (
                   <div className="relative">
                     <img
@@ -353,7 +340,6 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
                   </div>
                 )}
 
-                {/* Upload Mode */}
                 {coverMode === "upload" && (
                   <div className="space-y-3">
                     <input
@@ -398,7 +384,6 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
                   </div>
                 )}
 
-                {/* Generate Mode */}
                 {coverMode === "generate" && (
                   <div className="space-y-3">
                     <div className="flex gap-2">

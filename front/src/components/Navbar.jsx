@@ -25,7 +25,6 @@ export default function Navbar() {
       if (createMenuRef.current && !createMenuRef.current.contains(event.target)) {
         setCreateMenuOpen(false)
       }
-      // Close mobile menu when clicking outside
       const mobileMenu = document.querySelector('.lg\\:hidden.fixed')
       if (mobileMenuOpen && mobileMenu && !mobileMenu.contains(event.target) && !event.target.closest('button[aria-label="Menu"]')) {
         setMobileMenuOpen(false)
@@ -110,7 +109,7 @@ export default function Navbar() {
               )}
             </div>
 
-            {/* Mobile menu button */}
+            {}
             {isAuthenticated && (
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -221,7 +220,7 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* Mobile menu */}
+      {}
       {isAuthenticated && mobileMenuOpen && (
         <div
           className="lg:hidden fixed left-0 right-0 bg-white border-b border-gray-200 shadow-lg z-50 mobile-menu"

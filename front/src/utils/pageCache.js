@@ -1,23 +1,14 @@
-/**
- * Global Page Cache System - Instagram/Google-level performance
- * Caches all page data for instant navigation
- */
-
 const pageCache = new Map()
-const CACHE_DURATION = 15 * 60 * 1000 // 15 minutes
-const PREFETCH_DELAY = 100 // ms to wait before prefetching
-
-// Cache structure: { data, timestamp, params }
+const CACHE_DURATION = 15 * 60 * 1000 
+const PREFETCH_DELAY = 100 
 
 export function getCachedPage(key, params = {}) {
   const cacheKey = `${key}:${JSON.stringify(params)}`
   const cached = pageCache.get(cacheKey)
   
   if (!cached) return null
-  
   const isExpired = Date.now() - cached.timestamp > CACHE_DURATION
   
-  // Return cached data even if expired (for instant display)
   return {
     data: cached.data,
     isExpired,
@@ -40,7 +31,6 @@ export function invalidateCache(key) {
     return
   }
   
-  // Remove all entries starting with key
   for (const [cacheKey] of pageCache.entries()) {
     if (cacheKey.startsWith(`${key}:`) || cacheKey === key) {
       pageCache.delete(cacheKey)
@@ -48,25 +38,18 @@ export function invalidateCache(key) {
   }
 }
 
-// Prefetch queue to batch requests
 const prefetchQueue = new Map()
 let prefetchTimer = null
 
 export function prefetchPage(key, fetchFn, params = {}) {
   const cacheKey = `${key}:${JSON.stringify(params)}`
-  
-  // Already cached and fresh
   const cached = getCachedPage(key, params)
   if (cached && !cached.isExpired) {
     return Promise.resolve(cached.data)
   }
-  
-  // Already in queue
   if (prefetchQueue.has(cacheKey)) {
     return prefetchQueue.get(cacheKey)
   }
-  
-  // Add to queue with delay
   const promise = new Promise((resolve) => {
     if (prefetchTimer) {
       clearTimeout(prefetchTimer)
@@ -93,7 +76,6 @@ export function prefetchPage(key, fetchFn, params = {}) {
   return promise
 }
 
-// Get cache stats (for debugging)
 export function getCacheStats() {
   return {
     size: pageCache.size,

@@ -3,7 +3,7 @@ from email.mime.text import MIMEText
 from app.core.config import settings
 
 async def send_email(to: str, subject: str, html: str):
-    # Gracefully handle missing email credentials
+    
     if not settings.EMAIL_USER or not settings.EMAIL_PASS:
         raise ValueError(
             "Email credentials not configured. Please set EMAIL_USER and EMAIL_PASS in your .env file."

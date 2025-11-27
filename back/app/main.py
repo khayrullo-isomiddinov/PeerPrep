@@ -14,8 +14,6 @@ from app.api.version_one import event_attendees as event_attendees_router
 from app.api.version_one import event_messages as event_messages_router
 from app.api.version_one import event_ws as event_ws_router
 
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -29,7 +27,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -38,7 +35,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add response compression for large JSON responses (only compress > 2KB to avoid overhead)
 app.add_middleware(GZipMiddleware, minimum_size=2000)
 
 app.include_router(health_router.router, prefix=settings.API_PREFIX)

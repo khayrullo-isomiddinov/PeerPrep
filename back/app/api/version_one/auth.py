@@ -27,8 +27,6 @@ async def register(data: RegisterIn, session: Session = Depends(get_session)):
         raise HTTPException(status_code=400, detail="Email already registered")
     token = secrets.token_urlsafe(32)
     
-    # Use raw SQL to handle is_active column that may still exist in DB
-    # Check if is_active column exists using the connection
     from app.core.db import engine
     with engine.connect() as conn:
         result = conn.execute(sql_text("PRAGMA table_info(user)"))
@@ -36,8 +34,6 @@ async def register(data: RegisterIn, session: Session = Depends(get_session)):
         has_is_active = 'is_active' in columns
     
     if has_is_active:
-        # Insert with is_active explicitly set using raw SQL
-        # Also include xp which has a default of 0 in the model
         with engine.begin() as conn:
             conn.execute(sql_text("""
                 INSERT INTO user (email, hashed_password, is_verified, verification_token, created_at, is_active, xp)
@@ -45,14 +41,12 @@ async def register(data: RegisterIn, session: Session = Depends(get_session)):
             """), {
                 "email": data.email,
                 "hashed_password": hash_password(data.password),
-                "is_verified": 0,  # False = 0 in SQLite
+                "is_verified": 0,  
                 "verification_token": token,
                 "created_at": datetime.utcnow()
             })
-        # Fetch the created user
         user = session.exec(select(User).where(User.email == data.email)).first()
     else:
-        # Normal insert if column doesn't exist
         user = User(
             email=data.email,
             hashed_password=hash_password(data.password),

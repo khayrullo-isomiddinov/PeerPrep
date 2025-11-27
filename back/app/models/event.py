@@ -15,15 +15,11 @@ class EventBase(SQLModel):
     @field_validator("starts_at", mode="before")
     def force_utc(cls, v):
         if isinstance(v, str):
-            # add Z if missing
             if not v.endswith("Z") and "+" not in v:
                 return v + "Z"
             return v
-
-        # Python datetime (from SQLite)
         if isinstance(v, datetime) and v.tzinfo is None:
             return v.replace(tzinfo=datetime.timezone.utc)
-
         return v
 
 

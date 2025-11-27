@@ -60,7 +60,7 @@ export default function RegisterForm() {
             <button
               type="button"
               onClick={() => setShow(s => !s)}
-              className="absolute inset-y-0 right-2 my-auto px-2 rounded-s premium-hover text-muted"
+              className="absolute inset-y-0 right-2 my-auto px-2 rounded-s text-muted"
               aria-label="Toggle password visibility"
             >
               {show ? "Hide" : "Show"}
@@ -68,7 +68,7 @@ export default function RegisterForm() {
           </div>
           <div className="h-1 rounded-s bg-white/10 overflow-hidden">
             <div
-              className="h-full premium-bg-primary transition-all"
+              className="h-full premium-bg-primary"
               style={{ width: Math.min(100, Math.max(10, password.length * 10)) + "%" }}
             />
           </div>

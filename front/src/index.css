@@ -1,10 +1,6 @@
-/* Main CSS Entry Point */
-/* Imports Tailwind CSS and DaisyUI, then all custom styles */
-
 @import "tailwindcss";
 @plugin "daisyui";
 
-/* Import organized CSS modules */
 @import "./css/theme.css";
 @import "./css/base.css";
 @import "./css/components.css";

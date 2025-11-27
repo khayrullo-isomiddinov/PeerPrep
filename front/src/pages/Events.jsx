@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from "react"
+import { useEffect, useState, useMemo, useCallback } from "react"
 import { useSearchParams, useLocation, Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
@@ -6,13 +6,9 @@ import {
 } from "@fortawesome/free-solid-svg-icons"
 import EventList from "../features/events/EventList"
 import EditEventForm from "../features/events/EditEventForm"
-import { listEvents, getMyEvents, getMyEventsCount, updateEvent } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
-import axios from "axios"
-import { getCachedEvents, setCachedEvents } from "../utils/dataCache"
-import { getCachedPage, setCachedPage } from "../utils/pageCache"
-import { PageSkeleton } from "../components/SkeletonLoader"
-import { startPageLoad, endPageLoad } from "../utils/usePageLoader"
+import { useEvents, useMyEvents, useMyEventsCount, useUpdateEvent } from "../hooks/useEvents"
+import { queryClient } from "../lib/queryClient"
 
 export default function Events() {
   const { isAuthenticated } = useAuth()
@@ -28,93 +24,46 @@ export default function Events() {
     status: statusView
   }), [params, statusView])
 
-  const cachedEvents = getCachedEvents(currentParams)
-  const [events, setEvents] = useState(cachedEvents || [])
-  const [myEvents, setMyEvents] = useState([])
-  const [myEventsCount, setMyEventsCount] = useState(0)
-  const [loading, setLoading] = useState(!cachedEvents || cachedEvents.length === 0)
-  const [loadingMyEvents, setLoadingMyEvents] = useState(false)
-  const [loadingMyEventsCount, setLoadingMyEventsCount] = useState(false)
+  // State declarations - must come before React Query hooks that use them
   const [searchQuery, setSearchQuery] = useState("")
   const [showMyEvents, setShowMyEvents] = useState(false)
   const [timeFilter, setTimeFilter] = useState("all")
   const [examFilter, setExamFilter] = useState("all")
   const [editingEvent, setEditingEvent] = useState(null)
 
-  const abortControllerRef = useRef(null)
-  const requestSequenceRef = useRef(0)
-  useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort()
-      }
-    }
-  }, [])
+  // React Query hooks - handles caching automatically
+  const { data: events = [], isLoading: loading, refetch } = useEvents(currentParams)
+  const { data: myEvents = [], isLoading: loadingMyEvents } = useMyEvents(
+    { status: statusView },
+    { enabled: isAuthenticated && showMyEvents }
+  )
+  const { data: myEventsCount = 0, isLoading: loadingMyEventsCount } = useMyEventsCount(
+    { status: statusView },
+    { enabled: isAuthenticated }
+  )
+  const updateEventMutation = useUpdateEvent()
 
   const statusLabel = statusView === "past" ? "Past" : statusView === "ongoing" ? "Ongoing" : "Upcoming"
 
-  async function fetchEventsWithGuard(cacheParams, nextStatus) {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-    }
-
-    const controller = new AbortController()
-    abortControllerRef.current = controller
-
-    const seq = ++requestSequenceRef.current
-
-    try {
-      const data = await listEvents(cacheParams, { signal: controller.signal })
-
-      if (controller.signal.aborted) return
-      if (seq !== requestSequenceRef.current) return
-
-      const safeData = Array.isArray(data) ? data : []
-      setEvents(safeData)
-      setCachedPage("events", safeData, cacheParams)
-      setCachedEvents(safeData, cacheParams)
-    } catch (err) {
-      if (err.name === "AbortError" || err.name === "CanceledError" || axios.isCancel(err)) {
-        return
-      }
-      console.error("Failed to load events:", err)
-    }
-  }
-
   function handleStatusChange(next) {
     if (next === statusView) return
-    
-    statusChangeHandledRef.current = true
-    
-    const q = params.get('q') || undefined
-    const location = params.get('location') || undefined
-    const exam = params.get('exam') || undefined
-    const cacheParams = { q, location, exam, status: next }
-    
-    const cached = getCachedPage("events", cacheParams)
-    const cachedEvents = getCachedEvents(cacheParams) ?? cached?.data
-    
-    if (cachedEvents !== null && cachedEvents !== undefined) {
-      setEvents(cachedEvents)
-      setLoading(false)
-    } else {
-      setLoading(false)
-    }
-    
     setStatusView(next)
-    fetchEventsWithGuard(cacheParams, next)
+    // React Query will automatically refetch with new params
   }
 
   useEffect(() => {
     setTimeFilter("all")
   }, [statusView])
 
+  // Handle event join state changes from WebSocket/other sources
   useEffect(() => {
     const handleEventJoinStateChange = (e) => {
       const eventUpdate = e.detail
       if (eventUpdate?.eventId) {
-        setEvents(prevEvents => {
-          const updatedEvents = prevEvents.map(event => {
+        // Update React Query cache directly
+        queryClient.setQueryData(['events', 'list', currentParams], (oldData) => {
+          if (!oldData) return oldData
+          return oldData.map(event => {
             if (event.id === eventUpdate.eventId) {
               return {
                 ...event,
@@ -124,13 +73,6 @@ export default function Events() {
             }
             return event
           })
-          
-          const q = params.get('q') || undefined
-          const location = params.get('location') || undefined
-          const exam = params.get('exam') || undefined
-          setCachedEvents(updatedEvents, { q, location, exam, status: statusView })
-          
-          return updatedEvents
         })
       }
     }
@@ -139,250 +81,42 @@ export default function Events() {
     return () => {
       window.removeEventListener('eventJoinStateChanged', handleEventJoinStateChange)
     }
-  }, [params, statusView])
+  }, [currentParams])
 
-  const load = useCallback(async (showLoading = true, force = false) => {
-    const { getCachedPage, setCachedPage } = await import("../utils/pageCache")
-    const q = params.get('q') || undefined
-    const location = params.get('location') || undefined
-    const exam = params.get('exam') || undefined
-    const cacheParams = { q, location, exam, status: statusView }
-
-    if (!force) {
-      const cached = getCachedPage("events", cacheParams)
-
-      if (cached && cached.data && !showLoading) {
-        setEvents(prevEvents => {
-          if (prevEvents.length === cached.data.length &&
-              prevEvents.every((e, i) => e.id === cached.data[i]?.id)) {
-            return prevEvents
-          }
-          return cached.data
-        })
-        if (cached.isExpired) {
-          setTimeout(async () => {
-            try {
-              const data = await listEvents(cacheParams)
-              setEvents(prevEvents => {
-                if (prevEvents.length === data.length &&
-                    prevEvents.every((e, i) => e.id === data[i]?.id)) {
-                  return prevEvents
-                }
-                return data
-              })
-              setCachedPage("events", data, cacheParams)
-              setCachedEvents(data, cacheParams)
-            } catch (error) {
-              console.error("Background refresh failed:", error)
-            }
-          }, 100)
-        }
-        return
-      }
-    }
-
-    if (showLoading) {
-      setLoading(true)
-    }
-    try {
-      const data = await listEvents(cacheParams)
-      setEvents(prevEvents => {
-        if (prevEvents.length === data.length &&
-            prevEvents.every((e, i) => e.id === data[i]?.id)) {
-          return prevEvents
-        }
-        return data
-      })
-      setCachedPage("events", data, cacheParams)
-      setCachedEvents(data, cacheParams)
-    } catch (error) {
-      console.error("Failed to load events:", error)
-    } finally {
-      if (showLoading) {
-        setLoading(false)
-      }
-    }
-  }, [params, statusView])
-
-  const loadMyEventsCount = useCallback(async () => {
-    if (!isAuthenticated) {
-      setMyEventsCount(0)
-      return
-    }
-    setLoadingMyEventsCount(true)
-    try {
-      const count = await getMyEventsCount({ status: statusView })
-      setMyEventsCount(count)
-    } catch (error) {
-      console.error("Failed to load my events count:", error)
-      setMyEventsCount(0)
-    } finally {
-      setLoadingMyEventsCount(false)
-    }
-  }, [isAuthenticated, statusView])
-
-  const loadMyEvents = useCallback(async () => {
-    if (!isAuthenticated) {
-      setMyEvents([])
-      return
-    }
-    setLoadingMyEvents(true)
-    try {
-      const data = await getMyEvents({ status: statusView })
-      setMyEvents(data || [])
-      setMyEventsCount(data?.length || 0)
-    } catch (error) {
-      console.error("Failed to load my events:", error)
-      setMyEvents([])
-    } finally {
-      setLoadingMyEvents(false)
-    }
-  }, [isAuthenticated, statusView])
-
+  // Handle new event creation
   useEffect(() => {
-    if (isAuthenticated) {
-      loadMyEventsCount()
-    }
-  }, [isAuthenticated, loadMyEventsCount])
-
-  useEffect(() => {
-    if (isAuthenticated && showMyEvents) {
-      loadMyEvents()
-    }
-  }, [isAuthenticated, showMyEvents, loadMyEvents])
-
-  const statusChangeHandledRef = useRef(false)
-
-  useEffect(() => {
-    if (statusChangeHandledRef.current) {
-      statusChangeHandledRef.current = false
-      return
-    }
-
-    const pageId = 'events'
-    const cached = getCachedEvents(currentParams)
-
-    const cacheInvalidatedTime = sessionStorage.getItem("events_cache_invalidated")
-    const shouldForceRefresh = cacheInvalidatedTime && 
-      (Date.now() - parseInt(cacheInvalidatedTime)) < 5000
-    if (shouldForceRefresh) {
-      sessionStorage.removeItem("events_cache_invalidated")
-      
-      Object.keys(sessionStorage).forEach(key => {
-        if (key.startsWith('event_join_state:')) {
-          try {
-            const stored = sessionStorage.getItem(key)
-            if (stored) {
-              const eventUpdate = JSON.parse(stored)
-              if (Date.now() - eventUpdate.timestamp < 60000) {
-                setEvents(prevEvents => prevEvents.map(e => {
-                  if (e.id === eventUpdate.eventId) {
-                    return {
-                      ...e,
-                      is_joined: eventUpdate.isJoined,
-                      attendee_count: eventUpdate.attendeeCount
-                    }
-                  }
-                  return e
-                }))
-              }
-            }
-          } catch (e) {
-            console.error("Failed to process stored join state:", e)
-          }
-        }
-      })
-    }
-
     if (location.state?.newEvent) {
-      const newEvent = location.state.newEvent
-
-      import("../utils/pageCache").then(({ invalidateCache }) => {
-        invalidateCache("events")
-        invalidateCache("home:events")
-      })
-
-      setLoading(true)
-      load(true).then(() => {
-        setLoading(false)
-      }).catch(() => {
-        setLoading(false)
-      })
-
-      if (showMyEvents) {
-        loadMyEvents()
-      }
-      if (isAuthenticated) {
-        loadMyEventsCount()
-      }
+      // Invalidate queries to refetch
+      queryClient.invalidateQueries({ queryKey: ['events'] })
       window.history.replaceState({}, document.title)
-      endPageLoad(pageId)
-    } else if (cached !== null && !shouldForceRefresh) {
-      setEvents(prev => {
-        if (prev.length === cached.length && 
-            prev.every((e, i) => e.id === cached[i]?.id)) {
-          return prev
-        }
-        return cached
-      })
-      setLoading(false)
-      endPageLoad(pageId)
-      if (statusView !== "past") {
-        setTimeout(() => load(false), 100)
-      }
-    } else if (shouldForceRefresh) {
-      load(false, true).catch(() => {})
-      endPageLoad(pageId)
-    } else {
-      setLoading(false)
-      endPageLoad(pageId)
-      
-      const q = params.get('q') || undefined
-      const location = params.get('location') || undefined
-      const exam = params.get('exam') || undefined
-      const cacheParams = { q, location, exam, status: statusView }
-      fetchEventsWithGuard(cacheParams, statusView)
-      
-      const otherStatuses = ["ongoing", "past"].filter(s => s !== statusView)
-      otherStatuses.forEach((status) => {
-        const delay = status === "past" ? 200 : 500
-        setTimeout(async () => {
-          try {
-            const data = await listEvents({ q, location, exam, status, limit: 50 })
-            if (data && data.length > 0) {
-              setCachedPage("events", data, { q, location, exam, status })
-              setCachedEvents(data, { q, location, exam, status })
-            }
-          } catch (error) {
-          }
-        }, delay)
-      })
     }
     setSearchQuery(params.get('q') || "")
-  }, [params, currentParams, location.state, showMyEvents, loadMyEvents, statusView])
+  }, [location.state, params])
 
 
+  // Background refresh when tab becomes visible (React Query handles this better)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden && statusView !== "past") {
-        load(false, true); 
+        refetch()
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
+    // Reduced polling frequency - React Query handles stale-while-revalidate
     const pollInterval = setInterval(() => {
       if (statusView === "past") return;
       if (!document.hidden && events.length > 0) {
-        load(false, true);
+        refetch()
       }
-    }, 5000);
+    }, 60000); // 60 seconds
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       clearInterval(pollInterval);
     };
-  }, [statusView, events.length, load])
+  }, [statusView, events.length, refetch])
 
   const parseUTCDate = (dateString) => {
     if (!dateString) return null
@@ -440,79 +174,41 @@ export default function Events() {
 
   function onChanged(updated) {
     if (!updated) {
-      load(false)
-      loadMyEvents()
+      // Invalidate queries to refetch
+      queryClient.invalidateQueries({ queryKey: ['events'] })
       return
     }
 
-    const updatedEvents = events.map(e => {
-      if (e.id === updated.id) {
-        return {
-          ...e,
-          is_joined: updated.is_joined !== undefined ? updated.is_joined : e.is_joined,
-          attendee_count: updated.attendee_count !== undefined ? updated.attendee_count : e.attendee_count
+    // Update React Query cache optimistically
+    queryClient.setQueryData(['events', 'list', currentParams], (oldData) => {
+      if (!oldData) return oldData
+      return oldData.map(e => {
+        if (e.id === updated.id) {
+          return {
+            ...e,
+            is_joined: updated.is_joined !== undefined ? updated.is_joined : e.is_joined,
+            attendee_count: updated.attendee_count !== undefined ? updated.attendee_count : e.attendee_count
+          }
         }
-      }
-      return e
+        return e
+      })
     })
-    setEvents(updatedEvents)
-
-    const q = params.get('q') || undefined
-    const location = params.get('location') || undefined
-    const exam = params.get('exam') || undefined
-    setCachedEvents(updatedEvents, { q, location, exam, status: statusView })
-    setMyEvents(prev => prev.map(e => {
-      if (e.id === updated.id) {
-        return {
-          ...e,
-          is_joined: updated.is_joined !== undefined ? updated.is_joined : e.is_joined,
-          attendee_count: updated.attendee_count !== undefined ? updated.attendee_count : e.attendee_count
-        }
-      }
-      return e
-    }))
-    if (isAuthenticated) {
-      loadMyEventsCount()
-    }
   }
 
   function handleDelete(eventId) {
-    const updatedEvents = events.filter(e => e.id !== eventId)
-    setEvents(updatedEvents)
-    const q = params.get('q') || undefined
-    const location = params.get('location') || undefined
-    const exam = params.get('exam') || undefined
-    setCachedEvents(updatedEvents, { q, location, exam, status: statusView })
-    setMyEvents(prev => prev.filter(e => e.id !== eventId))
-    if (isAuthenticated) {
-      loadMyEventsCount()
-    }
+    // Remove from cache - mutations handle this automatically
+    queryClient.removeQueries({ queryKey: ['events', 'detail', eventId] })
+    queryClient.invalidateQueries({ queryKey: ['events'] })
   }
 
   async function handleUpdateEvent(eventId, updatedData) {
-    const data = await updateEvent(eventId, updatedData)
-    const updatedEvents = events.map(e => (e.id === eventId ? data : e))
-    setEvents(updatedEvents)
-    const q = params.get('q') || undefined
-    const location = params.get('location') || undefined
-    const exam = params.get('exam') || undefined
-    setCachedEvents(updatedEvents, { q, location, exam, status: statusView })
-    setMyEvents(prev => prev.map(e => (e.id === eventId ? data : e)))
-    if (isAuthenticated) {
-      loadMyEventsCount()
-    }
-
-    const { setCachedPage, invalidateCache } = await import("../utils/pageCache")
-    setCachedPage(`event:${eventId}`, data)
-    invalidateCache("events")
-    invalidateCache("home:events")
-
+    const data = await updateEventMutation.mutateAsync({ id: eventId, data: updatedData })
     setEditingEvent(null)
     return data
   }
 
   if (loading && events.length === 0) {
-    return <PageSkeleton />
+    return null
   }
 
   return (
@@ -555,12 +251,9 @@ export default function Events() {
                   <>
                     <button
                       onClick={() => {
-                        if (!showMyEvents) {
-                          loadMyEvents()
-                        }
                         setShowMyEvents(!showMyEvents)
                       }}
-                      className="flex items-center justify-between gap-2 px-4 py-2.5 bg-white border border-gray-300 hover:bg-gray-50 transition-colors group shadow-sm"
+                      className="flex items-center justify-between gap-2 px-4 py-2.5 bg-white border border-gray-300 hover:bg-gray-50 group shadow-sm"
                       style={{ borderRadius: '0' }}
                     >
                       <div className="flex items-center gap-2">
@@ -569,7 +262,7 @@ export default function Events() {
                           {statusView === "past" ? "My Past Events" : statusView === "ongoing" ? "My Ongoing Events" : "My Events"}
                         </span>
                         {loadingMyEventsCount ? (
-                          <span className="px-1.5 py-0.5 bg-gray-200 text-gray-400 text-xs font-semibold animate-pulse">
+                          <span className="px-1.5 py-0.5 bg-gray-200 text-gray-400 text-xs font-semibold">
                             ...
                           </span>
                         ) : myEventsCount > 0 ? (
@@ -580,12 +273,12 @@ export default function Events() {
                       </div>
                       <FontAwesomeIcon
                         icon={showMyEvents ? faChevronUp : faChevronDown}
-                        className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600 transition-colors ml-1"
+                        className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600 ml-1"
                       />
                     </button>
                     <Link
                       to="/events/create"
-                      className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 transition-colors font-medium text-sm shadow-sm"
+                      className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 font-medium text-sm shadow-sm"
                       style={{ borderRadius: '0' }}
                     >
                       <FontAwesomeIcon icon={faCalendarAlt} className="w-4 h-4" />
@@ -606,7 +299,7 @@ export default function Events() {
                   placeholder={`Search ${statusLabel.toLowerCase()} events...`}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900 text-sm shadow-sm transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900 text-sm shadow-sm"
                   style={{ borderRadius: '0' }}
                 />
               </div>
@@ -626,7 +319,7 @@ export default function Events() {
                   <>
                     <button
                       onClick={() => setTimeFilter("all")}
-                      className={`px-3 py-2 text-xs font-semibold transition-colors ${timeFilter === "all"
+                      className={`px-3 py-2 text-xs font-semibold ${timeFilter === "all"
                           ? "bg-indigo-600 text-white"
                           : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-300"
                         }`}
@@ -680,7 +373,7 @@ export default function Events() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {[...Array(3)].map((_, i) => (
                     <div key={i} className="bg-white rounded-xl border border-gray-200 p-6">
-                      <div className="animate-pulse space-y-4">
+                      <div className="space-y-4">
                         <div className="h-4 bg-gray-200 rounded w-3/4"></div>
                         <div className="h-3 bg-gray-200 rounded w-1/2"></div>
                         <div className="h-3 bg-gray-200 rounded w-2/3"></div>
@@ -711,7 +404,7 @@ export default function Events() {
             </div>
 
             {loading && events.length === 0 ? (
-              <PageSkeleton />
+              null
             ) : filteredEvents.length > 0 ? (
               <EventList events={filteredEvents} onChanged={onChanged} onDelete={handleDelete} onEdit={setEditingEvent} />
             ) : (
@@ -733,7 +426,7 @@ export default function Events() {
                 {isAuthenticated && (
                   <Link
                     to="/events/create"
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold shadow-sm hover:shadow-md"
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold shadow-sm hover:shadow-md"
                   >
                     <FontAwesomeIcon icon={faCalendarAlt} className="w-4 h-4" />
                     Create Event

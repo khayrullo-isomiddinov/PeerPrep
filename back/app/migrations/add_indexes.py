@@ -1,6 +1,3 @@
-"""
-Database migration to add performance indexes (EVENT-ONLY VERSION)
-"""
 from sqlmodel import SQLModel, create_engine, text
 from app.core.config import settings
 
@@ -15,12 +12,9 @@ def add_performance_indexes():
     engine = create_engine(settings.DATABASE_URL, connect_args=connect_args)
 
     indexes = [
-        # --- EVENT TABLE INDEXES ---
         "CREATE INDEX IF NOT EXISTS idx_event_created_at ON event(created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_event_starts_at ON event(starts_at ASC)",
         "CREATE INDEX IF NOT EXISTS idx_event_created_by ON event(created_by)",
-
-        # --- EVENT ATTENDEE ---
         "CREATE INDEX IF NOT EXISTS idx_eventattendee_user_event ON eventattendee(user_id, event_id)"
     ]
 

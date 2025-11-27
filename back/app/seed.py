@@ -44,7 +44,6 @@ def seed_db(session: Session):
         print("✓ Seed skipped: events already exist")
         return
 
-    # Use pure UTC — avoids ALL timezone issues
     now = datetime.now(timezone.utc)
 
     rng = random.Random(42)
@@ -63,14 +62,12 @@ def seed_db(session: Session):
     for i, (title, desc, loc) in enumerate(sample_events):
         cover_url = COVER_IMAGES[i % len(COVER_IMAGES)]
 
-        # Events appear 1–7 days after NOW, starting 17:00 UTC
         start = now + timedelta(days=rng.randint(1, 7), hours=17)
-
         ev = Event(
             title=title,
             description=desc,
             location=loc,
-            starts_at=start,         # already UTC
+            starts_at=start,       
             capacity=20,
             duration=2,
             exam=None,

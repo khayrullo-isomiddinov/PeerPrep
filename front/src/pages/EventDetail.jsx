@@ -7,43 +7,70 @@ import {
   faUserPlus, faUserMinus, faFile, faDownload, faCheckCircle,
   faFire, faStar, faTrophy, faInfoCircle, faComments, faPaperPlane, faTrash, faExclamationTriangle, faGraduationCap
 } from "@fortawesome/free-solid-svg-icons"
-import { getEvent, getEventAttendeesWithDetails, joinEvent, leaveEvent, getEventMessages, postEventMessage, deleteEventMessage, setEventTypingStatus, getEventPresence, markEventMessageRead, getUserProfile } from "../utils/api"
+import { setEventTypingStatus, markEventMessageRead, getUserProfile } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
 import { usePrefetch } from "../utils/usePrefetch"
-import { startPageLoad, endPageLoad } from "../utils/usePageLoader"
-import { DetailPageSkeleton } from "../components/SkeletonLoader"
+import { useEvent, useJoinEvent, useLeaveEvent } from "../hooks/useEvents"
+import { useEventAttendees, useEventMessages, useEventPresence, usePostMessage, useDeleteMessage } from "../hooks/useEventData"
+import { queryClient } from "../lib/queryClient"
 
 export default function EventDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const { prefetch } = usePrefetch()
-  const [event, setEvent] = useState(null)
-  const [attendees, setAttendees] = useState([])
-  const [loading, setLoading] = useState(true)
+  
+  // State declarations - must come before React Query hooks that use them
   const [error, setError] = useState("")
   const [joined, setJoined] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [isOwner, setIsOwner] = useState(false)
-  const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState("")
   const [sendingMessage, setSendingMessage] = useState(false)
   const [deletingMessageId, setDeletingMessageId] = useState(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [messageToDelete, setMessageToDelete] = useState(null)
   const [typingUsers, setTypingUsers] = useState([])
-  const [presence, setPresence] = useState([])
+  const [wsConnected, setWsConnected] = useState(false)
+  
+  // Refs
   const typingTimeoutRef = useRef(null)
   const messagesEndRef = useRef(null)
   const messagesContainerRef = useRef(null)
   const wsRef = useRef(null)
-  const [wsConnected, setWsConnected] = useState(false)
   const presencePingIntervalRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
   const reconnectAttemptsRef = useRef(0)
   const messageQueueRef = useRef([])
   const receivedMessageIdsRef = useRef(new Set())
   const markedReadIdsRef = useRef(new Set())
+  
+  // React Query hooks
+  const { data: event, isLoading: loading, error: eventError } = useEvent(id, {
+    enabled: !!id && isAuthenticated
+  })
+  const { data: attendees = [] } = useEventAttendees(id, {
+    enabled: !!id && isAuthenticated
+  })
+  
+  // Compute isOwner from event data
+  const isOwner = user && event?.created_by === user.id
+  
+  // Messages and presence depend on joined/isOwner, so we need to compute enabled dynamically
+  const shouldLoadMessages = !!id && isAuthenticated && (joined === true || isOwner)
+  const { data: messages = [] } = useEventMessages(id, {
+    enabled: shouldLoadMessages
+  })
+  const { data: presenceData } = useEventPresence(id, {
+    enabled: shouldLoadMessages
+  })
+  
+  const joinEventMutation = useJoinEvent()
+  const leaveEventMutation = useLeaveEvent()
+  const postMessageMutation = usePostMessage()
+  const deleteMessageMutation = useDeleteMessage()
+
+  // Derived values from React Query data
+  const presence = presenceData?.presence || []
 
   useEffect(() => {
     if (!authLoading && isAuthenticated === false) {
@@ -51,150 +78,58 @@ export default function EventDetail() {
     }
   }, [isAuthenticated, authLoading, navigate])
 
-  const loadMessages = useCallback(async (shouldScroll = false) => {
-    if (!id) return
-    try {
-      const messagesData = await getEventMessages(id)
-      setMessages(messagesData || [])
-      if (shouldScroll && messagesContainerRef.current) {
-        setTimeout(() => {
-          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
-        }, 100)
-      }
-    } catch (err) {
-      console.error("Failed to load messages:", err)
-    }
-  }, [id])
-
-  const loadEvent = useCallback(async (force = false, skipMessages = false) => {
-    if (authLoading) {
-      return
-    }
-
-    if (!isAuthenticated || !id) {
-      return
-    }
-
-    const pageId = `event:${id}`
-    try {
-      const { getCachedPage, setCachedPage } = await import("../utils/pageCache")
-      const cached = getCachedPage(`event:${id}`)
-
-      if (cached && cached.data && !force) {
-        setEvent(cached.data)
-        const userIsOwner = user && cached.data.created_by === user.id
-        setIsOwner(userIsOwner)
-        
-        if (user && isAuthenticated && cached.data.is_joined !== undefined) {
-          setJoined(cached.data.is_joined || userIsOwner)
-        }
-        
-        setLoading(false)
-        endPageLoad(pageId)
-
-        Promise.all([
-          getEventAttendeesWithDetails(id).then(data => {
-            setAttendees(data)
-            let userJoined = false
-            if (user && isAuthenticated) {
-              const userAttendee = data.find(a => a.id === user.id)
-              userJoined = !!userAttendee || userIsOwner
-              setJoined(userJoined)
-            } else {
-              setJoined(false)
-            }
-            return userJoined || userIsOwner
-          }),
-          cached.isExpired ? getEvent(id).then(data => {
-            setEvent(data)
-            setCachedPage(`event:${id}`, data)
-            if (user && isAuthenticated && data.is_joined !== undefined) {
-              const userIsOwner = data.created_by === user.id
-              setJoined(data.is_joined || userIsOwner)
-            }
-          }) : Promise.resolve()
-        ]).then(([shouldLoadMessages]) => {
-          if (shouldLoadMessages && !skipMessages) {
-            loadMessages(false)
-            getEventPresence(id).then(data => {
-              setPresence(data.presence || [])
-            }).catch(() => { })
-          }
-        })
-        return
-      }
-
-      if (!force) {
-        startPageLoad(pageId)
-        setLoading(true)
-      }
-      setError("")
-      const data = await getEvent(id)
-      setEvent(data)
-      setCachedPage(`event:${id}`, data)
-
-      const userIsOwner = user && data.created_by === user.id
-      setIsOwner(userIsOwner)
-
-      if (user && isAuthenticated && data.is_joined !== undefined) {
-        setJoined(data.is_joined || userIsOwner)
-      }
-
-      const attendeesData = await getEventAttendeesWithDetails(id)
-      setAttendees(attendeesData)
-
-      let userJoined = false
-      if (user && isAuthenticated) {
-        const userAttendee = attendeesData.find(a => a.id === user.id)
-        userJoined = !!userAttendee || userIsOwner
-        setJoined(userJoined)
-      } else {
-        setJoined(false)
-      }
-
-      if ((userJoined || userIsOwner) && !skipMessages) {
-        loadMessages(false)
-        try {
-          const presenceData = await getEventPresence(id)
-          setPresence(presenceData.presence || [])
-        } catch (err) {
-        }
-      }
-    } catch (err) {
-      console.error("Failed to load event:", err)
-      setError("Event not found")
-    } finally {
-      if (!force) {
-        setLoading(false)
-        endPageLoad(`event:${id}`)
-      }
-    }
-  }, [id, user, isAuthenticated, authLoading, loadMessages])
-
+  // Scroll to bottom when messages change
   useEffect(() => {
-    loadEvent()
-  }, [loadEvent])
+    if (messages.length > 0 && messagesContainerRef.current) {
+      setTimeout(() => {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+      }, 100)
+    }
+  }, [messages])
 
+
+  // Background refresh when WebSocket is disconnected (React Query handles this)
   useEffect(() => {
     if (!id || !event) return
 
     const pollInterval = setInterval(() => {
       if (!document.hidden && event) {
         const isWsConnected = wsRef.current && wsRef.current.readyState === WebSocket.OPEN
-        loadEvent(true, isWsConnected)
+        // Only refetch if WebSocket is not connected
+        if (!isWsConnected) {
+          queryClient.invalidateQueries({ queryKey: ['events', 'detail', id] })
+        }
       }
-    }, 5000)
+    }, 30000) // 30 seconds
 
     return () => clearInterval(pollInterval)
-  }, [id, event, loadEvent, wsConnected])
+  }, [id, event, wsConnected])
 
+  // Determine joined status from event and attendees
   useEffect(() => {
-    if (event && event.is_joined !== undefined && joined !== null) {
-      if (event.is_joined !== joined) {
-        setJoined(event.is_joined)
+    if (!event || !user || !isAuthenticated) {
+      if (event && !user) {
+        setJoined(false)
       }
+      return
     }
-  }, [event?.is_joined, joined])
+
+    const userIsOwner = event.created_by === user.id
+    
+    // First check if event has is_joined property
+    if (event.is_joined !== undefined) {
+      setJoined(event.is_joined || userIsOwner)
+      return
+    }
+    
+    // Otherwise check attendees list
+    if (attendees.length > 0) {
+      const userAttendee = attendees.find(a => a.id === user.id)
+      setJoined(!!userAttendee || userIsOwner)
+    } else if (userIsOwner) {
+      setJoined(true)
+    }
+  }, [event, attendees, user, isAuthenticated])
 
   useEffect(() => {
     if (!id || !user || joined === null || (!joined && !isOwner) || messages.length === 0) return
@@ -230,15 +165,23 @@ export default function EventDetail() {
   useEffect(() => {
     if (!id || !event) return
 
+    // Reduced polling frequency from 5s to 30s, and only when tab is active
+    // WebSocket handles real-time updates, so polling is just a fallback
     const pollInterval = setInterval(() => {
       if (!document.hidden && event) {
         const isWsConnected = wsRef.current && wsRef.current.readyState === WebSocket.OPEN
-        loadEvent(true, isWsConnected)
+        // Only refetch if WebSocket is not connected
+        if (!isWsConnected) {
+          queryClient.invalidateQueries({ queryKey: ['events', 'detail', id] })
+          queryClient.invalidateQueries({ queryKey: ['events', id, 'attendees'] })
+          queryClient.invalidateQueries({ queryKey: ['events', id, 'messages'] })
+          queryClient.invalidateQueries({ queryKey: ['events', id, 'presence'] })
+        }
       }
-    }, 5000)
+    }, 30000) // 30 seconds instead of 5
 
     return () => clearInterval(pollInterval)
-  }, [id, event, loadEvent, wsConnected])
+  }, [id, event, wsConnected])
 
   useEffect(() => {
     if (!id || joined === null || (!joined && !isOwner)) {
@@ -354,7 +297,8 @@ export default function EventDetail() {
       case "initial_messages":
         const initialIds = new Set((message.messages || []).map(m => m.id))
         receivedMessageIdsRef.current = initialIds
-        setMessages(message.messages || [])
+        // Update React Query cache
+        queryClient.setQueryData(['events', id, 'messages'], message.messages || [])
         setTimeout(() => {
           if (messagesContainerRef.current) {
             messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
@@ -371,11 +315,12 @@ export default function EventDetail() {
         }
         receivedMessageIdsRef.current.add(msgId)
 
-        setMessages(prev => {
-          if (prev.some(m => m.id === msgId)) {
-            return prev
+        // Update React Query cache
+        queryClient.setQueryData(['events', id, 'messages'], (prevMessages = []) => {
+          if (prevMessages.some(m => m.id === msgId)) {
+            return prevMessages
           }
-          return [...prev, message.message]
+          return [...prevMessages, message.message]
         })
         setTimeout(() => {
           if (messagesContainerRef.current) {
@@ -391,11 +336,14 @@ export default function EventDetail() {
       case "message_deleted":
         const deletedMsgId = message.message_id
         if (deletedMsgId) {
-          setMessages(prev => prev.map(m =>
-            m.id === deletedMsgId
-              ? { ...m, is_deleted: true, content: "" }
-              : m
-          ))
+          // Update React Query cache
+          queryClient.setQueryData(['events', id, 'messages'], (prevMessages = []) =>
+            prevMessages.map(m =>
+              m.id === deletedMsgId
+                ? { ...m, is_deleted: true, content: "" }
+                : m
+            )
+          )
         }
         break
 
@@ -414,20 +362,31 @@ export default function EventDetail() {
         break
 
       case "presence_update":
+        // Update presence cache
+        if (message.presence) {
+          queryClient.setQueryData(['events', id, 'presence'], { presence: message.presence })
+        }
         break
 
       case "message_read":
-        setMessages(prev => prev.map(msg =>
-          msg.id === message.message_id
-            ? { ...msg, is_read_by_me: true }
-            : msg
-        ))
+        // Update React Query cache
+        queryClient.setQueryData(['events', id, 'messages'], (prevMessages = []) =>
+          prevMessages.map(msg =>
+            msg.id === message.message_id
+              ? { ...msg, is_read_by_me: true }
+              : msg
+          )
+        )
         break
 
       case "user_joined":
+        // Invalidate attendees to refetch
+        queryClient.invalidateQueries({ queryKey: ['events', id, 'attendees'] })
         break
 
       case "user_left":
+        // Invalidate attendees to refetch
+        queryClient.invalidateQueries({ queryKey: ['events', id, 'attendees'] })
         break
 
       case "error":
@@ -489,69 +448,40 @@ export default function EventDetail() {
 
     try {
       if (wasJoined) {
-        const result = await leaveEvent(id)
+        const result = await leaveEventMutation.mutateAsync(id)
         if (result && result.success) {
           setJoined(false)
-          setMessages([])
-          const updatedEvent = {
-            ...event,
-            is_joined: false,
-            attendee_count: result.attendee_count ?? event.attendee_count
-          }
-          setEvent(updatedEvent)
-
-          if (user) {
-            setAttendees(prevAttendees => prevAttendees.filter(a => a.id !== user.id))
-          }
-
-          const { invalidateCache } = await import("../utils/pageCache")
-          invalidateCache(`event:${id}`)
-          invalidateCache("events")
-          invalidateCache("home:events")
-          sessionStorage.setItem("events_cache_invalidated", Date.now().toString())
+          // Clear messages cache when leaving
+          queryClient.setQueryData(['events', id, 'messages'], [])
           
+          // Dispatch event for other components
           const eventUpdate = {
             eventId: id,
             isJoined: false,
-            attendeeCount: result.attendee_count ?? event.attendee_count,
+            attendeeCount: result.attendee_count ?? event?.attendee_count,
             timestamp: Date.now()
           }
-          sessionStorage.setItem(`event_join_state:${id}`, JSON.stringify(eventUpdate))
           window.dispatchEvent(new CustomEvent('eventJoinStateChanged', { detail: eventUpdate }))
-
-          getEventAttendeesWithDetails(id).then(data => setAttendees(data || [])).catch(() => { })
         }
       } else {
-        const result = await joinEvent(id)
+        const result = await joinEventMutation.mutateAsync(id)
         if (result && result.success) {
           setJoined(true)
-          const updatedEvent = {
-            ...event,
-            is_joined: true,
-            attendee_count: result.attendee_count ?? event.attendee_count
-          }
-          setEvent(updatedEvent)
-
-          const { invalidateCache } = await import("../utils/pageCache")
-          invalidateCache(`event:${id}`)
-          invalidateCache("events")
-          invalidateCache("home:events")
-          sessionStorage.setItem("events_cache_invalidated", Date.now().toString())
           
+          // Invalidate React Query cache
+          queryClient.invalidateQueries({ queryKey: ['events', 'detail', id] })
+          queryClient.invalidateQueries({ queryKey: ['events'] })
+          queryClient.invalidateQueries({ queryKey: ['events', id, 'attendees'] })
+          queryClient.invalidateQueries({ queryKey: ['events', id, 'messages'] })
+          
+          // Dispatch event for other components
           const eventUpdate = {
             eventId: id,
             isJoined: true,
-            attendeeCount: result.attendee_count ?? event.attendee_count,
+            attendeeCount: result.attendee_count ?? event?.attendee_count,
             timestamp: Date.now()
           }
-          sessionStorage.setItem(`event_join_state:${id}`, JSON.stringify(eventUpdate))
           window.dispatchEvent(new CustomEvent('eventJoinStateChanged', { detail: eventUpdate }))
-
-          Promise.all([
-            getEventAttendeesWithDetails(id).then(data => setAttendees(data)).catch(() => { }),
-            getEventMessages(id).then(data => setMessages(data || [])).catch(() => { }),
-            getEventPresence(id).then(data => setPresence(data.presence || [])).catch(() => { })
-          ])
         }
         }
     } catch (error) {
@@ -607,21 +537,13 @@ export default function EventDetail() {
     } else {
       setSendingMessage(true)
       try {
-        await postEventMessage(id, newMessage.trim())
+        await postMessageMutation.mutateAsync({ eventId: id, content: newMessage.trim() })
         setNewMessage("")
 
         if (typingTimeoutRef.current) {
           clearTimeout(typingTimeoutRef.current)
           typingTimeoutRef.current = null
         }
-
-        const messagesData = await getEventMessages(id)
-        setMessages(messagesData || [])
-        setTimeout(() => {
-          if (messagesContainerRef.current && messagesEndRef.current) {
-            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
-          }
-        }, 100)
       } catch (error) {
         console.error("Failed to send message:", error)
         alert(error?.response?.data?.detail || "Failed to send message")
@@ -666,9 +588,7 @@ export default function EventDetail() {
     setDeletingMessageId(messageToDelete)
 
     try {
-      await deleteEventMessage(id, messageToDelete)
-      const messagesData = await getEventMessages(id)
-      setMessages(messagesData || [])
+      await deleteMessageMutation.mutateAsync({ eventId: id, messageId: messageToDelete })
     } catch (error) {
       console.error("Failed to delete message:", error)
       const errorMessage = error?.response?.data?.detail || "Failed to delete message"
@@ -784,7 +704,7 @@ export default function EventDetail() {
   }
 
   if (authLoading) {
-    return <DetailPageSkeleton />
+    return null
   }
 
   if (!isAuthenticated) {
@@ -792,7 +712,7 @@ export default function EventDetail() {
   }
 
   if (loading || !event) {
-    return <DetailPageSkeleton />
+    return null
   }
 
   if (error) {
@@ -868,7 +788,7 @@ export default function EventDetail() {
       <div className="container-page section space-y-6">
         <Link
           to="/events"
-          className="inline-flex items-center gap-2 text-gray-700 hover:text-pink-600 transition-colors"
+          className="inline-flex items-center gap-2 text-gray-700 hover:text-pink-600"
         >
           <FontAwesomeIcon icon={faArrowLeft} />
           <span>Back to Events</span>
@@ -971,10 +891,10 @@ export default function EventDetail() {
                 <button
                   onClick={handleJoinLeave}
                   disabled={isLoading || (joined === false && isFull)}
-                  className={`touch-target font-bold rounded-xl px-8 py-4 shadow-lg transition-all duration-700 ease-in-out w-full lg:w-auto focus:outline-none focus:ring-0 ${
+                  className={`touch-target font-bold rounded-xl px-8 py-4 shadow-lg w-full lg:w-auto focus:outline-none focus:ring-0 ${
                     isLoading
                       ? 'cursor-default'
-                      : 'hover:shadow-xl transform hover:scale-105 active:scale-95 disabled:transform-none'
+                      : 'hover:shadow-xl'
                   } ${
                     joined === true
                       ? 'bg-gray-100 text-gray-700 border-2 border-gray-300'
@@ -983,23 +903,20 @@ export default function EventDetail() {
                   style={{
                     pointerEvents: isLoading ? 'none' : 'auto',
                     cursor: isLoading ? 'default' : 'pointer',
-                    minWidth: '160px',
-                    transition: 'background-color 0.8s cubic-bezier(0.4, 0, 0.2, 1), color 0.8s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.8s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s ease-in-out, transform 0.3s ease-in-out'
+                    minWidth: '160px'
                   }}
                   title=""
                 >
                   <span className="inline-flex items-center justify-center w-full">
                     <span 
-                      className="inline-flex items-center transition-opacity duration-500 ease-in-out"
+                      className="inline-flex items-center"
                       style={{ 
-                        opacity: isLoading ? 0.7 : 1,
-                        transition: 'opacity 0.5s ease-in-out'
+                        opacity: isLoading ? 0.7 : 1
                       }}
                     >
                       {isLoading && (
                         <span 
                           className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2"
-                          style={{ animation: 'spin 1s linear infinite' }}
                         />
                       )}
                       <span className="whitespace-nowrap">
@@ -1013,9 +930,9 @@ export default function EventDetail() {
                       {!isLoading && (
                         <>
                           {joined === true ? (
-                            <FontAwesomeIcon icon={faUserMinus} className="w-5 h-5 ml-2 transition-all duration-700 ease-in-out" />
+                            <FontAwesomeIcon icon={faUserMinus} className="w-5 h-5 ml-2" />
                           ) : (
-                            <FontAwesomeIcon icon={faUserPlus} className="w-5 h-5 ml-2 transition-all duration-700 ease-in-out" />
+                            <FontAwesomeIcon icon={faUserPlus} className="w-5 h-5 ml-2" />
                           )}
                         </>
                       )}
@@ -1061,7 +978,7 @@ export default function EventDetail() {
                         key={attendee.id}
                         to={`/profile/${attendee.id}`}
                         onMouseEnter={() => prefetch(`profile:${attendee.id}`, () => getUserProfile(attendee.id))}
-                        className="group flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-white border-2 border-gray-200 hover:border-orange-300 hover:shadow-lg transition-all duration-300"
+                        className="group flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-white border-2 border-gray-200 hover:border-orange-300 hover:shadow-lg"
                       >
                         <div className="flex-shrink-0 w-8 text-center">
                           <span className={`text-lg font-bold ${index === 0 ? 'text-yellow-500' :
@@ -1140,7 +1057,7 @@ export default function EventDetail() {
                         </div>
                         {!isPast && (
                           <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 ${isOngoing
-                            ? 'bg-green-400 border-green-600 animate-pulse'
+                            ? 'bg-green-400 border-green-600'
                             : 'bg-green-400 border-slate-900'
                             }`}></div>
                         )}
@@ -1149,7 +1066,7 @@ export default function EventDetail() {
                         <div className="flex items-center gap-2">
                           <h2 className="text-xl font-bold text-white">Event Chat</h2>
                           {!isPast && wsConnected ? (
-                            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" title="Connected"></span>
+                            <span className="w-2 h-2 bg-green-400 rounded-full" title="Connected"></span>
                           ) : !isPast ? (
                             <span className="w-2 h-2 bg-red-400 rounded-full" title="Disconnected"></span>
                           ) : null}
@@ -1157,7 +1074,7 @@ export default function EventDetail() {
                         <div className="flex items-center gap-2">
                           {isOngoing && (
                             <span className="px-2 py-0.5 bg-green-500/20 text-green-200 rounded-full text-xs font-semibold border border-green-400/30 flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
+                              <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
                               Event Ongoing
                             </span>
                           )}
@@ -1237,7 +1154,7 @@ export default function EventDetail() {
 
                             {/* Avatar */}
                             {!isOwnMessage && (
-                              <div className={`flex-shrink-0 ${isConsecutive ? 'opacity-0' : 'opacity-100'} transition-opacity mr-2`}>
+                              <div className={`flex-shrink-0 ${isConsecutive ? 'opacity-0' : 'opacity-100'} mr-2`}>
                                 {!isConsecutive ? (
                                   msg.user.photo_url ? (
                                     <img
@@ -1298,9 +1215,9 @@ export default function EventDetail() {
                       {typingUsers.length > 0 && (
                         <div className="flex items-center gap-2 px-4 py-2 text-sm text-gray-500 italic">
                           <div className="flex gap-1">
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                            <div className="w-2 h-2 bg-gray-400 rounded-full" />
+                            <div className="w-2 h-2 bg-gray-400 rounded-full" />
+                            <div className="w-2 h-2 bg-gray-400 rounded-full" />
                           </div>
                           <span>
                             {typingUsers.length === 1
@@ -1338,7 +1255,7 @@ export default function EventDetail() {
                         }
                       }}
                     >
-                      <div className="flex items-center gap-2 bg-white rounded-xl border-2 border-gray-200/60 shadow-md hover:border-indigo-300/60 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all p-1">
+                      <div className="flex items-center gap-2 bg-white rounded-xl border-2 border-gray-200/60 shadow-md hover:border-indigo-300/60 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 p-1">
                         <input
                           type="text"
                           value={newMessage}
@@ -1354,8 +1271,8 @@ export default function EventDetail() {
                         <button
                           type="submit"
                           disabled={!newMessage.trim() || sendingMessage}
-                          className={`touch-target w-11 h-11 flex items-center justify-center rounded-lg transition-all ${newMessage.trim() && !sendingMessage
-                            ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white hover:scale-110 active:scale-95'
+                          className={`touch-target w-11 h-11 flex items-center justify-center rounded-lg ${newMessage.trim() && !sendingMessage
+                            ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white'
                             : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                             }`}
                         >
@@ -1389,7 +1306,7 @@ export default function EventDetail() {
                 <p className="text-gray-500 mb-6">Join this event to participate in the group chat</p>
                 <button
                   onClick={handleJoinLeave}
-                  className="touch-target bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-600 text-white font-bold rounded-xl px-6 py-3 shadow-lg hover:shadow-xl transition-all active:scale-95"
+                  className="touch-target bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-600 text-white font-bold rounded-xl px-6 py-3 shadow-lg hover:shadow-xl"
                 >
                   Join Event
                 </button>
@@ -1416,7 +1333,7 @@ export default function EventDetail() {
               {studyMaterials.map((material, index) => (
                 <div
                   key={index}
-                  className="group flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl border-2 border-gray-200 hover:border-blue-300 hover:shadow-lg transition-all"
+                  className="group flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl border-2 border-gray-200 hover:border-blue-300 hover:shadow-lg"
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-lg flex items-center justify-center text-2xl shadow-md">
@@ -1429,7 +1346,7 @@ export default function EventDetail() {
                   </div>
                   <button
                     onClick={() => downloadFile(material)}
-                    className="ml-3 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:from-blue-600 hover:to-cyan-600 transition-all shadow-md hover:shadow-lg flex-shrink-0"
+                    className="ml-3 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:from-blue-600 hover:to-cyan-600 shadow-md hover:shadow-lg flex-shrink-0"
                     title="Download file"
                   >
                     <FontAwesomeIcon icon={faDownload} className="w-4 h-4" />
@@ -1446,8 +1363,7 @@ export default function EventDetail() {
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{
             backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            backdropFilter: 'blur(4px)',
-            animation: 'fadeIn 0.2s ease-out'
+            backdropFilter: 'blur(4px)'
           }}
           onClick={() => {
             setShowDeleteConfirm(false)
@@ -1455,10 +1371,7 @@ export default function EventDetail() {
           }}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 transform transition-all"
-            style={{
-              animation: 'slideUpFadeIn 0.3s ease-out'
-            }}
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-4 mb-4">
@@ -1479,7 +1392,7 @@ export default function EventDetail() {
               <button
                 onClick={handleDeleteConfirm}
                 disabled={deletingMessageId !== null}
-                className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-pink-600 text-white font-semibold rounded-xl hover:from-red-600 hover:to-pink-700 transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-pink-600 text-white font-semibold rounded-xl hover:from-red-600 hover:to-pink-700 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {deletingMessageId ? (
                   <>
@@ -1496,7 +1409,7 @@ export default function EventDetail() {
                   setMessageToDelete(null)
                 }}
                 disabled={deletingMessageId !== null}
-                className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>

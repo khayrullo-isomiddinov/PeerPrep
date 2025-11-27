@@ -23,19 +23,19 @@ from zoneinfo import ZoneInfo
 
 router = APIRouter(prefix="/events", tags=["events"])
 
-# In-memory storage for typing indicators (event_id -> {user_id: last_typing_timestamp})
-# In production, use Redis or similar for distributed systems
+
+
 typing_status: Dict[int, Dict[int, datetime]] = defaultdict(dict)
 
-# In-memory storage for user presence (user_id -> last_activity_timestamp)
-# Users are considered "online" if they've been active in the last 5 minutes
-user_presence: Dict[int, datetime] = {}
-PRESENCE_TIMEOUT_SECONDS = 300  # 5 minutes
 
-# WebSocket connections for event chat (event_id -> {user_id: WebSocket})
+
+user_presence: Dict[int, datetime] = {}
+PRESENCE_TIMEOUT_SECONDS = 300  
+
+
 event_connections: Dict[int, Dict[int, WebSocket]] = {}
 
-# Store reference to the main event loop for broadcasting from sync endpoints
+
 _main_event_loop = None
 
 def set_main_event_loop(loop):
@@ -57,7 +57,7 @@ def create_event(data: EventCreate, session: Session = Depends(get_session), cur
     session.commit()
     session.refresh(evt)
     
-    # Build enriched response with computed fields (same format as get_event)
+    
     now = datetime.now(timezone.utc)
     
     starts_at = evt.starts_at
@@ -68,7 +68,7 @@ def create_event(data: EventCreate, session: Session = Depends(get_session), cur
     if ends_at.tzinfo is None:
         ends_at = ends_at.replace(tzinfo=timezone.utc)
     
-    # Compute states
+    
     is_upcoming = now < starts_at
     is_ongoing = starts_at <= now < ends_at
     is_past = now >= ends_at
@@ -79,7 +79,7 @@ def create_event(data: EventCreate, session: Session = Depends(get_session), cur
         "upcoming"
     )
     
-    # Build response manually with computed fields
+    
     response_data = evt.model_dump()
     response_data.update({
         "ends_at": ends_at,
@@ -108,7 +108,7 @@ def list_events(
     if status not in {"upcoming", "past", "ongoing", "all"}:
         raise HTTPException(status_code=400, detail="Invalid status filter")
 
-    # Use timezone-aware datetime consistently
+    
     now = datetime.now(timezone.utc)
 
     if q:
@@ -126,47 +126,47 @@ def list_events(
         like_exam = f"%{exam}%"
         query = query.where(Event.exam.ilike(like_exam))
 
-    # For SQL comparison, we need to handle timezone-naive datetimes
-    # SQLite stores datetimes as strings, so we compare as naive UTC
+    
+    
     now_naive = now.replace(tzinfo=None) if now.tzinfo else now
     
     if status == "upcoming":
         query = query.where(Event.starts_at > now_naive)
 
     elif status == "ongoing":
-        # Events that have started but not ended
-        # We'll filter in Python for accurate ends_at calculation
+        
+        
         query = query.where(Event.starts_at <= now_naive)
 
     elif status == "past":
-        # Events that have ended - query all events that have started
-        # We'll filter for ended events in Python
-        # For past events, we want to prioritize events that are more likely to be past
-        # So we'll order by starts_at DESC to get most recent events first
+        
+        
+        
+        
         query = query.where(Event.starts_at < now_naive)
 
-    # Order by appropriate field based on status
+    
     if status == "past":
-        # For past events, order by starts_at DESC to get most recent past events first
+        
         query = query.order_by(Event.starts_at.desc())
     else:
-        # For upcoming/ongoing, order by created_at DESC
+        
         query = query.order_by(Event.created_at.desc())
     
-    # Optimize: For ongoing/past, we need Python filtering for accurate ends_at
-    # Reduce fetch limit to improve performance - most events are either upcoming or past
-    # For past: fetch 2x limit (some might be ongoing, but most are past)
-    # For ongoing: fetch 2x limit (some might be past, but most are either upcoming or past)
+    
+    
+    
+    
     fetch_limit = limit * 2 if status in ("past", "ongoing") else limit
     query = query.limit(fetch_limit).offset(offset)
     events = session.exec(query).all()
     
-    # Filter by status in Python for more accurate ends_at calculation
-    # Only do this if we have events to filter
+    
+    
     if events and (status == "ongoing" or status == "past"):
         now_utc = datetime.now(timezone.utc)
         if status == "ongoing":
-            # Events that have started but not ended
+            
             filtered_events = []
             for e in events:
                 starts_at = e.starts_at.replace(tzinfo=timezone.utc) if e.starts_at.tzinfo is None else e.starts_at
@@ -177,7 +177,7 @@ def list_events(
                         break
             events = filtered_events
         elif status == "past":
-            # Events that have ended - order by most recent first (already sorted by starts_at DESC)
+            
             filtered_events = []
             for e in events:
                 starts_at = e.starts_at.replace(tzinfo=timezone.utc) if e.starts_at.tzinfo is None else e.starts_at
@@ -188,20 +188,20 @@ def list_events(
                         break
             events = filtered_events
 
-    # =====================================================
-    # 🔥 AUTHENTICATED: return extra fields (is_joined & attendee_count)
-    # =====================================================
+    
+    
+    
     if current_user:
         event_ids = [e.id for e in events]
 
         if event_ids:
-            # Optimize: Get all attendee data in one query instead of multiple
+            
             all_attendee_records = session.exec(
                 select(EventAttendee.event_id, EventAttendee.user_id)
                 .where(EventAttendee.event_id.in_(event_ids))
             ).all()
 
-            # Build count map, joined set, and creator tracking in one pass
+            
             count_map = {}
             joined_set = set()
             creator_attendee_set = set()
@@ -209,16 +209,16 @@ def list_events(
             creator_ids = {e.id: e.created_by for e in events}
             
             for event_id, user_id in all_attendee_records:
-                # Count attendees
+                
                 count_map[event_id] = count_map.get(event_id, 0) + 1
-                # Track if current user joined
+                
                 if user_id == current_user.id:
                     joined_set.add(event_id)
-                # Track if creator is in attendee table
+                
                 if creator_ids.get(event_id) == user_id:
                     creator_attendee_set.add((event_id, user_id))
 
-            # Fix counts - add creator if not in attendee table
+            
             for event in events:
                 if event.id not in count_map:
                     count_map[event.id] = 0
@@ -227,11 +227,11 @@ def list_events(
                 if event.created_by and count_map[event.id] == 0:
                     count_map[event.id] = 1
 
-            # Build response
+            
             now = datetime.now(timezone.utc)
             result = []
             for event in events:
-                # Compute event state fields
+                
                 starts_at = event.starts_at
                 if starts_at.tzinfo is None:
                     starts_at = starts_at.replace(tzinfo=timezone.utc)
@@ -267,20 +267,20 @@ def list_events(
 
             return result
 
-    # =====================================================
-    # 🔥 NON-AUTHENTICATED: only attendee_count
-    # =====================================================
+    
+    
+    
 
     event_ids = [e.id for e in events]
 
     if event_ids:
-        # Optimize: Get all attendee data in one query
+        
         all_attendee_records = session.exec(
             select(EventAttendee.event_id, EventAttendee.user_id)
             .where(EventAttendee.event_id.in_(event_ids))
         ).all()
 
-        # Build count map and creator tracking in one pass
+        
         count_map = {}
         creator_attendee_set = set()
         creator_ids = {e.id: e.created_by for e in events}
@@ -290,7 +290,7 @@ def list_events(
             if creator_ids.get(event_id) == user_id:
                 creator_attendee_set.add((event_id, user_id))
 
-        # Fix counts - add creator if not in attendee table
+        
         for event in events:
             if event.id not in count_map:
                 count_map[event.id] = 0
@@ -299,11 +299,11 @@ def list_events(
             if event.created_by and count_map[event.id] == 0:
                 count_map[event.id] = 1
 
-        # Compute event state fields
+        
         now = datetime.now(timezone.utc)
         result = []
         for event in events:
-            # Compute event state fields
+            
             starts_at = event.starts_at
             if starts_at.tzinfo is None:
                 starts_at = starts_at.replace(tzinfo=timezone.utc)
@@ -335,7 +335,7 @@ def list_events(
 
         return result
 
-    # Empty response - still compute state fields
+    
     now = datetime.now(timezone.utc)
     result = []
     for event in events:
@@ -383,17 +383,17 @@ def get_my_events_count(
     if status not in {"upcoming", "past", "ongoing", "all"}:
         raise HTTPException(status_code=400, detail="Invalid status filter")
     
-    # Get event IDs user is attending
+    
     attended_event_ids = session.exec(
         select(EventAttendee.event_id).where(EventAttendee.user_id == current_user.id)
     ).all()
     
-    # Build query - handle empty list case
+    
     if not attended_event_ids:
-        # Only created events
+        
         query = select(Event).where(Event.created_by == current_user.id)
     else:
-        # Events user is attending OR created
+        
         query = select(Event).where(
             or_(
                 Event.id.in_(attended_event_ids),
@@ -401,24 +401,24 @@ def get_my_events_count(
             )
         )
     
-    # For SQL comparison, use naive datetime
+    
     now_utc = datetime.now(timezone.utc)
     now_naive = now_utc.replace(tzinfo=None)
     
-    # Apply basic time filtering in SQL (will refine in Python for ongoing/past)
+    
     if status == "upcoming":
         query = query.where(Event.starts_at > now_naive)
     elif status == "ongoing":
-        # Fetch events that have started (will filter by end time in Python)
+        
         query = query.where(Event.starts_at <= now_naive)
     elif status == "past":
-        # Fetch events that have started (will filter by end time in Python)
+        
         query = query.where(Event.starts_at < now_naive)
     
-    # Get all matching events
+    
     events = session.exec(query).all()
     
-    # Filter by status in Python for accurate ends_at calculation
+    
     if status in ("ongoing", "past") and events:
         filtered_events = []
         for e in events:
@@ -450,17 +450,17 @@ def get_my_events(
     if status not in {"upcoming", "past", "ongoing", "all"}:
         raise HTTPException(status_code=400, detail="Invalid status filter")
     
-    # Get event IDs user is attending
+    
     attended_event_ids = session.exec(
         select(EventAttendee.event_id).where(EventAttendee.user_id == current_user.id)
     ).all()
     
-    # Build query - handle empty list case
+    
     if not attended_event_ids:
-        # Only created events
+        
         query = select(Event).where(Event.created_by == current_user.id)
     else:
-        # Events user is attending OR created
+        
         query = select(Event).where(
             or_(
                 Event.id.in_(attended_event_ids),
@@ -468,32 +468,32 @@ def get_my_events(
             )
         )
     
-    # For SQL comparison, use naive datetime
+    
     now_utc = datetime.now(timezone.utc)
     now_naive = now_utc.replace(tzinfo=None)
     
-    # Apply basic time filtering in SQL (will refine in Python for ongoing/past)
+    
     if status == "upcoming":
         query = query.where(Event.starts_at > now_naive)
     elif status == "ongoing":
-        # Fetch events that have started (will filter by end time in Python)
+        
         query = query.where(Event.starts_at <= now_naive)
     elif status == "past":
-        # Fetch events that have started (will filter by end time in Python)
+        
         query = query.where(Event.starts_at < now_naive)
     
-    # Order and fetch more for ongoing/past to account for Python filtering
+    
     if status == "past":
         query = query.order_by(Event.starts_at.desc())
     else:
         query = query.order_by(Event.starts_at.asc())
     
-    # Fetch more for ongoing/past to account for Python filtering
+    
     fetch_limit = limit * 2 if status in ("ongoing", "past") else limit
     query = query.limit(fetch_limit).offset(offset)
     events = session.exec(query).all()
     
-    # Filter by status in Python for accurate ends_at calculation (same as list_events)
+    
     if status in ("ongoing", "past") and events:
         filtered_events = []
         for e in events:
@@ -511,11 +511,11 @@ def get_my_events(
                         break
         events = filtered_events
     
-    # Enrich with computed fields (same as list_events for authenticated users)
+    
     event_ids = [e.id for e in events]
     
     if event_ids:
-        # Get all attendees for these events
+        
         all_attendees = session.exec(
             select(EventAttendee.event_id)
             .where(EventAttendee.event_id.in_(event_ids))
@@ -523,7 +523,7 @@ def get_my_events(
 
         count_map = dict(Counter(all_attendees))
 
-        # Creator auto-attend fix
+        
         creator_ids = {e.id: e.created_by for e in events}
         creators_in_attendees = session.exec(
             select(EventAttendee.event_id, EventAttendee.user_id)
@@ -537,7 +537,7 @@ def get_my_events(
             (ea.event_id, ea.user_id) for ea in creators_in_attendees
         }
 
-        # Fix counts
+        
         for event in events:
             if event.id not in count_map:
                 count_map[event.id] = 0
@@ -546,7 +546,7 @@ def get_my_events(
             if event.created_by and count_map[event.id] == 0:
                 count_map[event.id] = 1
 
-        # User joined events
+        
         user_joined = session.exec(
             select(EventAttendee.event_id)
             .where(
@@ -556,11 +556,11 @@ def get_my_events(
         ).all()
         joined_set = set(user_joined)
 
-        # Build response
+        
         now = datetime.now(timezone.utc)
         result = []
         for event in events:
-            # Compute event state fields
+            
             starts_at = event.starts_at
             if starts_at.tzinfo is None:
                 starts_at = starts_at.replace(tzinfo=timezone.utc)
@@ -596,7 +596,7 @@ def get_my_events(
 
         return result
     
-    # Empty response - still compute state fields
+    
     now = datetime.now(timezone.utc)
     result = []
     for event in events:
@@ -674,7 +674,7 @@ def get_event(
     if ends_at.tzinfo is None:
         ends_at = ends_at.replace(tzinfo=timezone.utc)
 
-    # Compute states
+    
     is_upcoming = now < starts_at
     is_ongoing = starts_at <= now < ends_at
     is_past = now >= ends_at
@@ -685,9 +685,9 @@ def get_event(
         "upcoming"
     )
 
-    # Award XP retroactively if event has ended and user is an attendee
+    
     if current_user and is_past:
-        # Check if user is an attendee or the event creator
+        
         is_attendee = session.exec(
             select(EventAttendee).where(
                 EventAttendee.event_id == event_id,
@@ -697,10 +697,10 @@ def get_event(
         is_creator = evt.created_by == current_user.id
         
         if is_attendee or is_creator:
-            # Award XP (function handles duplicate prevention internally via engagement calculation)
+            
             award_xp_for_event(current_user.id, event_id, session)
 
-    # Build response manually with computed fields
+    
     data = evt.model_dump()
     data.update({
         "ends_at": ends_at,
@@ -710,9 +710,9 @@ def get_event(
         "status": status,
     })
 
-    # Add is_joined and attendee_count for authenticated users
+    
     if current_user:
-        # Check if user is an attendee
+        
         is_attendee = session.exec(
             select(EventAttendee).where(
                 EventAttendee.event_id == event_id,
@@ -720,15 +720,15 @@ def get_event(
             )
         ).first()
         
-        # Check if user is the creator
+        
         is_creator = evt.created_by == current_user.id
         
-        # Get attendee count
+        
         attendee_count = session.exec(
             select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)
         ).one()
         
-        # Creator is always counted as an attendee, but might not be in EventAttendee table
+        
         if is_creator and not is_attendee:
             attendee_count += 1
         
@@ -737,11 +737,11 @@ def get_event(
             "attendee_count": attendee_count,
         })
     else:
-        # For unauthenticated users, set defaults
+        
         attendee_count = session.exec(
             select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)
         ).one()
-        # Add 1 if creator exists (creator is always counted)
+        
         if evt.created_by:
             attendee_count += 1
         data.update({
@@ -758,12 +758,12 @@ def update_event(event_id: int, data: EventUpdate, session: Session = Depends(ge
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    # Only the creator can edit
+    
     creator_id = int(evt.created_by) if evt.created_by is not None else None
     if creator_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not allowed")
 
-    # Apply updates
+    
     updates = data.dict(exclude_unset=True)
     for k, v in updates.items():
         setattr(evt, k, v)
@@ -775,9 +775,9 @@ def update_event(event_id: int, data: EventUpdate, session: Session = Depends(ge
     session.commit()
     session.refresh(evt)
 
-    # -------------------------------------------------
-    # COMPUTE event state fields
-    # -------------------------------------------------
+    
+    
+    
     now = datetime.now(timezone.utc)
 
     starts_at = evt.starts_at
@@ -798,7 +798,7 @@ def update_event(event_id: int, data: EventUpdate, session: Session = Depends(ge
         "upcoming"
     )
 
-    # Build enriched response
+    
     data = evt.model_dump()
     data.update({
         "ends_at": ends_at,
@@ -825,7 +825,7 @@ def delete_event(
         raise HTTPException(status_code=403, detail="Not allowed")
 
 
-    # Delete event itself
+    
     session.delete(evt)
     session.commit()
     return None
@@ -847,18 +847,18 @@ def join_event(
     if starts_at <= now_utc:
         raise HTTPException(status_code=400, detail="Event has already started")
 
-    # Check if user already joined
+    
     already = session.exec(
         select(EventAttendee)
         .where(EventAttendee.event_id == event_id, EventAttendee.user_id == current_user.id)
     ).first()
 
-    # Count attendees (NOT including creator yet)
+    
     attendee_count = session.exec(
         select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)
     ).one()
 
-    # Include creator if they aren't in attendee table
+    
     creator_in_attendee = session.exec(
         select(EventAttendee)
         .where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
@@ -869,26 +869,26 @@ def join_event(
     if already:
         return {"success": True, "alreadyJoined": True, "attendee_count": attendee_count}
 
-    # Capacity check (after counting creator)
+    
     if evt.capacity and attendee_count >= evt.capacity:
         raise HTTPException(status_code=409, detail="Event is full")
 
-    # Add attendee
+    
     session.add(EventAttendee(event_id=event_id, user_id=current_user.id))
     session.commit()
 
-    # Recount after joining
+    
     attendee_count = session.exec(
         select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)
     ).one()
     if not creator_in_attendee:
         attendee_count += 1
 
-    # Update presence
+    
     user_presence[current_user.id] = now_utc
 
-    # Note: XP will be awarded retroactively when accessing past events
-    # (see get_event and get_event_messages endpoints)
+    
+    
 
     return {"success": True, "attendee_count": attendee_count}
 
@@ -912,13 +912,13 @@ def leave_event(
             detail="You cannot leave an event that has already started"
         )
 
-    # Check if user is joined
+    
     rec = session.exec(
         select(EventAttendee)
         .where(EventAttendee.event_id == event_id, EventAttendee.user_id == current_user.id)
     ).first()
 
-    # Always compute attendee count helper
+    
     def get_attendee_count():
         base = session.exec(
             select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)
@@ -929,17 +929,17 @@ def leave_event(
             .where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
         ).first()
 
-        # Add creator if not already counted
+        
         if not creator_in_attendee:
             base += 1
 
         return base
 
-    # If not joined, just return counts
+    
     if not rec:
         return {"success": True, "notJoined": True, "attendee_count": get_attendee_count()}
 
-    # Remove record
+    
     session.delete(rec)
     session.commit()
 
@@ -951,14 +951,14 @@ def list_attendees(event_id: int, session: Session = Depends(get_session)):
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    # Get all attendee user_ids
+    
     user_ids = session.exec(
         select(EventAttendee.user_id).where(EventAttendee.event_id == event_id)
     ).all()
 
     user_ids = [uid for uid in user_ids]
 
-    # ALWAYS include creator (consistent with attendee_count)
+    
     if evt.created_by not in user_ids:
         user_ids.append(evt.created_by)
 
@@ -973,28 +973,28 @@ def list_attendees_with_details(event_id: int, session: Session = Depends(get_se
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    # Load explicit attendees
+    
     attendee_records = session.exec(
         select(EventAttendee)
         .where(EventAttendee.event_id == event_id)
         .order_by(EventAttendee.joined_at.asc())
     ).all()
 
-    # Build dictionary: user_id -> joined_at
+    
     joined_times = {a.user_id: a.joined_at for a in attendee_records}
 
-    # Ensure creator exists in list
+    
     if evt.created_by not in joined_times:
-        # Creator is auto-attendee at event start
+        
         joined_times[evt.created_by] = evt.starts_at
 
     user_ids = list(joined_times.keys())
 
-    # Load user objects
+    
     users = session.exec(select(User).where(User.id.in_(user_ids))).all()
     user_map = {u.id: u for u in users}
 
-    # Build final list
+    
     result = []
     for user_id in user_ids:
         u = user_map.get(user_id)
@@ -1008,7 +1008,7 @@ def list_attendees_with_details(event_id: int, session: Session = Depends(get_se
                 "joined_at": joined_times[user_id].isoformat()
             })
 
-    # Sort by joined_at
+    
     result.sort(key=lambda x: x["joined_at"])
 
     return result
@@ -1027,7 +1027,7 @@ def get_event_messages(
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
     
-    # Optimized: Load messages with limit, order by desc (newest first) for pagination
+    
     messages = session.exec(
         select(EventMessage)
         .where(EventMessage.event_id == event_id)
@@ -1036,7 +1036,7 @@ def get_event_messages(
         .offset(offset)
     ).all()
     
-    # Reverse to get chronological order (oldest first for display)
+    
     messages = list(reversed(messages))
     
     if not messages:
@@ -1046,7 +1046,7 @@ def get_event_messages(
     users = session.exec(select(User).where(User.id.in_(user_ids))).all()
     user_map = {u.id: u for u in users}
     
-    # Get read receipts for all messages
+    
     message_ids = [msg.id for msg in messages]
     read_records = session.exec(
         select(MessageRead).where(
@@ -1054,7 +1054,7 @@ def get_event_messages(
             MessageRead.message_type == "event"
         )
     ).all()
-    read_map = {}  # {message_id: [user_ids who read it]}
+    read_map = {}  
     for read in read_records:
         if read.message_id not in read_map:
             read_map[read.message_id] = []
@@ -1064,15 +1064,15 @@ def get_event_messages(
     for msg in messages:
         user = user_map.get(msg.user_id)
         if user:
-            # Ensure timezone-aware datetime with Z suffix for UTC
+            
             created_at_str = msg.created_at.isoformat()
             if msg.created_at.tzinfo is None:
-                # If naive datetime, assume UTC
+                
                 created_at_str = msg.created_at.replace(tzinfo=timezone.utc).isoformat()
             if not created_at_str.endswith('Z') and msg.created_at.tzinfo == timezone.utc:
                 created_at_str = created_at_str.replace('+00:00', 'Z')
             
-            # Get read count and check if current user has read it
+            
             read_by = read_map.get(msg.id, [])
             read_count = len(read_by)
             is_read_by_current_user = current_user and current_user.id in read_by if current_user else False
@@ -1107,7 +1107,7 @@ def post_event_message(
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
     
-    # Check if user is an attendee or the event owner
+    
     is_attendee = session.exec(
         select(EventAttendee).where(
             EventAttendee.event_id == event_id,
@@ -1120,7 +1120,7 @@ def post_event_message(
     if not is_attendee and not is_owner:
         raise HTTPException(status_code=403, detail="You must be an attendee or event organizer to post messages")
     
-    # Update user presence
+    
     user_presence[current_user.id] = datetime.now(timezone.utc)
     
     message = EventMessage(
@@ -1132,10 +1132,10 @@ def post_event_message(
     session.commit()
     session.refresh(message)
     
-    # Ensure timezone-aware datetime with Z suffix for UTC
+    
     created_at_str = message.created_at.isoformat()
     if message.created_at.tzinfo is None:
-        # If naive datetime, assume UTC
+        
         created_at_str = message.created_at.replace(tzinfo=timezone.utc).isoformat()
     if not created_at_str.endswith('Z') and message.created_at.tzinfo == timezone.utc:
         created_at_str = created_at_str.replace('+00:00', 'Z')
@@ -1172,18 +1172,18 @@ def delete_event_message(
     if message.event_id != event_id:
         raise HTTPException(status_code=400, detail="Message does not belong to this event")
     
-    # Only the message author can delete their own message
+    
     if message.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only delete your own messages")
     
-    # Soft delete - mark as deleted instead of removing
+    
     message.is_deleted = True
-    message.content = ""  # Clear content for privacy
+    message.content = ""  
     session.add(message)
     session.commit()
     session.refresh(message)
     
-    # Broadcast deletion to all connected clients via WebSocket
+    
     import asyncio
     import threading
     
@@ -1193,14 +1193,14 @@ def delete_event_message(
         try:
             loop = _main_event_loop
             if loop is None:
-                # Fallback: try to get the event loop
+                
                 try:
                     loop = asyncio.get_running_loop()
                 except RuntimeError:
                     loop = asyncio.get_event_loop()
             
             if loop and loop.is_running():
-                # Schedule the coroutine thread-safely
+                
                 asyncio.run_coroutine_threadsafe(
                     broadcast_to_event(event_id, None, {
                         "type": "message_deleted",
@@ -1209,7 +1209,7 @@ def delete_event_message(
                     loop
                 )
             elif loop:
-                # If loop exists but not running, run it directly
+                
                 loop.run_until_complete(broadcast_to_event(event_id, None, {
                     "type": "message_deleted",
                     "message_id": message_id
@@ -1219,7 +1219,7 @@ def delete_event_message(
             import traceback
             traceback.print_exc()
     
-    # Run in background thread to avoid blocking the sync endpoint
+    
     threading.Thread(target=schedule_broadcast, daemon=True).start()
     
     return {"message": "Message deleted successfully"}
@@ -1235,7 +1235,7 @@ def set_typing_status(
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
     
-    # Check if user is an attendee or the event owner
+    
     is_attendee = session.exec(
         select(EventAttendee).where(
             EventAttendee.event_id == event_id,
@@ -1248,10 +1248,10 @@ def set_typing_status(
     if not is_attendee and not is_owner:
         raise HTTPException(status_code=403, detail="You must be an attendee or event organizer")
     
-    # Update typing status (expires after 3 seconds of inactivity)
+    
     typing_status[event_id][current_user.id] = datetime.now(timezone.utc)
     
-    # Update user presence
+    
     user_presence[current_user.id] = datetime.now(timezone.utc)
     
     return {"status": "typing"}
@@ -1267,7 +1267,7 @@ def get_typing_status(
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
     
-    # Clean up expired typing statuses (older than 3 seconds)
+    
     now = datetime.now(timezone.utc)
     expired_users = []
     if event_id in typing_status:
@@ -1277,7 +1277,7 @@ def get_typing_status(
         for user_id in expired_users:
             del typing_status[event_id][user_id]
     
-    # Get currently typing users (excluding current user)
+    
     typing_user_ids = [
         uid for uid in typing_status.get(event_id, {}).keys()
         if current_user is None or uid != current_user.id
@@ -1286,7 +1286,7 @@ def get_typing_status(
     if not typing_user_ids:
         return {"typing_users": []}
     
-    # Fetch user details
+    
     users = session.exec(select(User).where(User.id.in_(typing_user_ids))).all()
     
     return {
@@ -1311,24 +1311,24 @@ def get_event_presence(
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
     
-    # Get all attendees
+    
     attendees = session.exec(
         select(EventAttendee).where(EventAttendee.event_id == event_id)
     ).all()
     
-    # Also include the event owner
+    
     attendee_user_ids = [a.user_id for a in attendees]
     if evt.created_by not in attendee_user_ids:
         attendee_user_ids.append(evt.created_by)
     
-    # If authenticated user is viewing the page and is an attendee/owner, update their presence
+    
     if current_user and current_user.id in attendee_user_ids:
         user_presence[current_user.id] = datetime.now(timezone.utc)
     
     if not attendee_user_ids:
         return {"presence": []}
     
-    # Clean up expired presence (older than timeout)
+    
     now = datetime.now(timezone.utc)
     expired_users = [
         uid for uid, last_activity in user_presence.items()
@@ -1337,7 +1337,7 @@ def get_event_presence(
     for uid in expired_users:
         del user_presence[uid]
     
-    # Fetch user details
+    
     users = session.exec(select(User).where(User.id.in_(attendee_user_ids))).all()
     
     result = []
@@ -1371,7 +1371,7 @@ def mark_event_message_read(
     if not message or message.event_id != event_id:
         raise HTTPException(status_code=404, detail="Message not found")
     
-    # Check if already read
+    
     existing_read = session.exec(
         select(MessageRead).where(
             MessageRead.message_id == message_id,
@@ -1458,11 +1458,11 @@ async def generate_cover_image(
         raise HTTPException(status_code=500, detail=f"Failed to generate image: {str(e)}")
 
 
-# WebSocket endpoint for real-time event chat
+
 @router.websocket("/{event_id}/ws")
 async def event_chat_websocket(websocket: WebSocket, event_id: int):
     """WebSocket endpoint for real-time event chat"""
-    # Store reference to the main event loop on first connection
+    
     global _main_event_loop
     if _main_event_loop is None:
         import asyncio
@@ -1472,7 +1472,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             _main_event_loop = asyncio.get_event_loop()
     await websocket.accept()
     
-    # Get user from token
+    
     user_id = None
     user_name = None
     user_email = None
@@ -1484,7 +1484,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             payload = decode_token(token)
             user_id = int(payload.get("sub"))
             
-            # Get user details
+            
             session_gen = get_session()
             try:
                 session = next(session_gen)
@@ -1495,13 +1495,13 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                         user_email = user.email
                         user_photo_url = user.photo_url
                 finally:
-                    # Close the session by exhausting the generator
+                    
                     try:
                         next(session_gen)
                     except StopIteration:
                         pass
             except Exception:
-                # If generator fails, try to close it
+                
                 try:
                     session_gen.close()
                 except:
@@ -1515,7 +1515,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
         await websocket.close(code=1008, reason="Authentication required")
         return
     
-    # Verify event exists and user has access
+    
     session_gen = get_session()
     try:
         session = next(session_gen)
@@ -1524,7 +1524,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             await websocket.close(code=1008, reason="Event not found")
             return
         
-        # Check if user is an attendee or owner
+        
         is_attendee = session.exec(
             select(EventAttendee).where(
                 EventAttendee.event_id == event_id,
@@ -1537,35 +1537,35 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             await websocket.close(code=1008, reason="Access denied")
             return
         
-        # Initialize connection storage
+        
         if event_id not in event_connections:
             event_connections[event_id] = {}
         
-        # Add connection
+        
         event_connections[event_id][user_id] = websocket
         
-        # Update presence
+        
         user_presence[user_id] = datetime.now(timezone.utc)
         
-        # Get message synchronizer for this event
+        
         synchronizer = get_synchronizer(str(event_id), "event")
         
-        # Load messages from database and sync with synchronizer
+        
         messages = session.exec(
             select(EventMessage).where(EventMessage.event_id == event_id)
             .order_by(EventMessage.created_at.desc())
             .limit(50)
         ).all()
         
-        # Initialize message versions in synchronizer (for existing messages)
-        # Process in chronological order to build vector clocks correctly
+        
+        
         sorted_messages = sorted(messages, key=lambda m: m.created_at)
         for msg in sorted_messages:
             created_at = msg.created_at
             if created_at.tzinfo is None:
                 created_at = created_at.replace(tzinfo=timezone.utc)
             
-            # Initialize message version in synchronizer
+            
             synchronizer.initialize_message_version(
                 message_id=msg.id,
                 user_id=msg.user_id,
@@ -1573,10 +1573,10 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                 created_at=created_at
             )
         
-        # Get causally ordered messages from synchronizer
+        
         ordered_versions = synchronizer.get_ordered_messages(limit=50)
         
-        # Convert to message list format
+        
         messages_list = []
         for msg_version in ordered_versions:
             msg = session.get(EventMessage, msg_version.message_id)
@@ -1590,7 +1590,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             if not created_at_str.endswith('Z') and msg.created_at.tzinfo == timezone.utc:
                 created_at_str = created_at_str.replace('+00:00', 'Z')
             
-            # Check if message is read by current user
+            
             is_read = False
             if user_id:
                 read_record = session.exec(
@@ -1606,7 +1606,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                 "content": msg.content if not msg.is_deleted else "",
                 "is_deleted": msg.is_deleted,
                 "created_at": created_at_str,
-                "vector_clock": msg_version.vector_clock,  # Include vector clock
+                "vector_clock": msg_version.vector_clock,  
                 "version": msg_version.version,
                 "is_read_by_me": is_read,
                 "user": {
@@ -1623,7 +1623,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             "messages": messages_list
         })
         
-        # Broadcast user joined
+        
         await broadcast_to_event(event_id, user_id, {
             "type": "user_joined",
             "user_id": user_id,
@@ -1631,10 +1631,10 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             "user_photo_url": user_photo_url
         })
         
-        # Handle messages
+        
         try:
             while True:
-                # Check if WebSocket is still connected
+                
                 if websocket.client_state.name != "CONNECTED":
                     break
                 
@@ -1642,9 +1642,9 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                     data = await websocket.receive_json()
                     message_type = data.get("type")
                     
-                    # Handle incoming message sync (from other clients)
+                    
                     if message_type == "sync_message":
-                        # Client is sending a message with vector clock for sync
+                        
                         incoming_msg = data.get("message")
                         if incoming_msg:
                             synchronizer = get_synchronizer(str(event_id), "event")
@@ -1657,7 +1657,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                             )
                             is_new, merged = synchronizer.merge_message(msg_version)
                             if is_new:
-                                # Broadcast the merged message
+                                
                                 await broadcast_to_event(event_id, user_id, {
                                     "type": "new_message",
                                     "message": incoming_msg
@@ -1665,7 +1665,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                         continue
                     
                     if message_type == "message":
-                        # Check if event has ended - if so, chat is read-only
+                        
                         now = datetime.now(timezone.utc)
                         starts_at = evt.starts_at.replace(tzinfo=timezone.utc) if evt.starts_at.tzinfo is None else evt.starts_at
                         ends_at = evt.ends_at if evt.ends_at else (starts_at + timedelta(hours=evt.duration))
@@ -1674,22 +1674,22 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                         
                         is_past = now >= ends_at
                         if is_past:
-                            # Event has ended - send error message
+                            
                             await websocket.send_json({
                                 "type": "error",
                                 "message": "This event has ended. Chat is now read-only. You can still view message history."
                             })
                             continue
                         
-                        # Send a new message
+                        
                         content = data.get("content", "").strip()
                         if not content or len(content) > 1000:
                             continue
                         
-                        # Get synchronizer for this event
+                        
                         synchronizer = get_synchronizer(str(event_id), "event")
                         
-                        # Create message in database
+                        
                         message = EventMessage(
                             event_id=event_id,
                             user_id=user_id,
@@ -1699,7 +1699,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                         session.commit()
                         session.refresh(message)
                         
-                        # Create message version with vector clock
+                        
                         created_at = message.created_at
                         if created_at.tzinfo is None:
                             created_at = created_at.replace(tzinfo=timezone.utc)
@@ -1711,20 +1711,20 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                             created_at=created_at
                         )
                         
-                        # Update presence
+                        
                         user_presence[user_id] = datetime.now(timezone.utc)
                         
-                        # Format created_at
+                        
                         created_at_str = message.created_at.isoformat()
                         if message.created_at.tzinfo is None:
                             created_at_str = message.created_at.replace(tzinfo=timezone.utc).isoformat()
                         if not created_at_str.endswith('Z') and message.created_at.tzinfo == timezone.utc:
                             created_at_str = created_at_str.replace('+00:00', 'Z')
                         
-                        # Get user for message
+                        
                         msg_user = session.get(User, user_id)
                         
-                        # Broadcast message to all connected users with vector clock
+                        
                         await broadcast_to_event(event_id, None, {
                             "type": "new_message",
                             "message": {
@@ -1732,7 +1732,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                                 "content": message.content,
                                 "is_deleted": False,
                                 "created_at": created_at_str,
-                                "vector_clock": msg_version.vector_clock,  # Include vector clock
+                                "vector_clock": msg_version.vector_clock,  
                                 "version": msg_version.version,
                                 "is_read_by_me": False,
                                 "user": {
@@ -1746,11 +1746,11 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                         })
                     
                     elif message_type == "typing":
-                        # Update typing status
+                        
                         typing_status[event_id][user_id] = datetime.now(timezone.utc)
                         user_presence[user_id] = datetime.now(timezone.utc)
                         
-                        # Broadcast typing indicator
+                        
                         await broadcast_to_event(event_id, user_id, {
                             "type": "typing",
                             "user_id": user_id,
@@ -1758,10 +1758,10 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                         })
                     
                     elif message_type == "presence_ping":
-                        # Update presence
+                        
                         user_presence[user_id] = datetime.now(timezone.utc)
                         
-                        # Send current presence
+                        
                         now = datetime.now(timezone.utc)
                         online_users = []
                         if event_id in event_connections:
@@ -1776,11 +1776,11 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                         })
                     
                     elif message_type == "mark_read":
-                        # Mark message as read
+                        
                         message_id = data.get("message_id")
                         if message_id:
                             try:
-                                # Check if already read to avoid duplicates
+                                
                                 existing_read = session.exec(
                                     select(MessageRead).where(
                                         MessageRead.message_id == message_id,
@@ -1792,38 +1792,38 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
                                 if not existing_read:
                                     read_record = MessageRead(
                                         message_id=message_id,
-                                        message_type="event",  # Required field!
+                                        message_type="event",  
                                         user_id=user_id
                                     )
                                     session.add(read_record)
                                     session.commit()
                                     
-                                    # Broadcast read receipt
+                                    
                                     await broadcast_to_event(event_id, user_id, {
                                         "type": "message_read",
                                         "message_id": message_id,
                                         "user_id": user_id
                                     })
                             except Exception as e:
-                                # Rollback on error to prevent session issues
+                                
                                 session.rollback()
                                 print(f"Error marking message as read: {e}")
-                                # Don't break the connection, just log the error
+                                
                 except WebSocketDisconnect:
-                    # Normal disconnect, break out of loop
+                    
                     print("WebSocket disconnected normally")
                     break
                 except RuntimeError as e:
-                    # Handle "Cannot call receive once disconnected" error
+                    
                     if "disconnect" in str(e).lower():
                         print("WebSocket disconnected (RuntimeError)")
                         break
-                    # Re-raise other RuntimeErrors
+                    
                     raise
                 except Exception as e:
-                    # Log error but continue if connection is still open
+                    
                     print(f"Error processing WebSocket message: {e}")
-                    # Check if still connected before continuing
+                    
                     if websocket.client_state.name != "CONNECTED":
                         break
                     continue
@@ -1832,28 +1832,28 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int):
             print("WebSocket disconnected normally")
             pass
         except RuntimeError as e:
-            # Handle "Cannot call receive once disconnected" error
+            
             if "disconnect" in str(e).lower():
                 print("WebSocket disconnected (RuntimeError in outer catch)")
             else:
                 print(f"WebSocket RuntimeError: {e}")
         except Exception as e:
-            # Log unexpected errors
+            
             print(f"WebSocket error in main loop: {e}")
             import traceback
             traceback.print_exc()
         finally:
-            # Remove connection
+            
             if event_id in event_connections and user_id in event_connections[event_id]:
                 del event_connections[event_id][user_id]
             
-            # Broadcast user left
+            
             await broadcast_to_event(event_id, user_id, {
                 "type": "user_left",
                 "user_id": user_id
             })
     finally:
-        # Properly close the session
+        
         try:
             if 'session_gen' in locals():
                 try:
@@ -1881,7 +1881,7 @@ async def broadcast_to_event(event_id: int, exclude_user_id: Optional[int], mess
             except:
                 disconnected.append(user_id)
     
-    # Clean up disconnected users
+    
     for user_id in disconnected:
         if event_id in event_connections and user_id in event_connections[event_id]:
             del event_connections[event_id][user_id]

@@ -22,15 +22,13 @@ class EventRead(EventBase):
     id: int
     created_by: int
     created_at: datetime
-
-    # Computed fields from backend
     ends_at: datetime
     is_past: bool
     is_ongoing: bool
     is_upcoming: bool
-    status: str   # "upcoming" | "ongoing" | "past"
+    status: str   
     
-    # Optional enriched fields (only present when authenticated)
+    
     attendee_count: Optional[int] = None
     is_joined: Optional[bool] = None
 

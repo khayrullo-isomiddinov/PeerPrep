@@ -73,7 +73,7 @@ export default function LoginForm() {
             <button
               type="button"
               onClick={()=>setShow(s=>!s)}
-              className="absolute inset-y-0 right-2 my-auto px-2 rounded-s premium-hover text-muted"
+              className="absolute inset-y-0 right-2 my-auto px-2 rounded-s text-muted"
               aria-label="Toggle password visibility"
             >
               {show ? "Hide" : "Show"}

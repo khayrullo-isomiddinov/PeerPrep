@@ -193,7 +193,6 @@ class MessageSynchronizer:
         }
 
 
-# Global synchronizers for each event
 _synchronizers: Dict[str, MessageSynchronizer] = {}
 
 def get_synchronizer(context_id: str, context_type: str = "event") -> MessageSynchronizer:

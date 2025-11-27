@@ -1,5 +1,3 @@
-/* Theme Variables and DaisyUI Configuration */
-
 @theme {
   --brand: #34d399;
   --brand-strong: #10b981;
@@ -10,7 +8,6 @@
   --radius-pill: 999rem;
 }
 
-/* Set light theme for daisyui */
 :root,
 [data-theme] {
   color-scheme: light;

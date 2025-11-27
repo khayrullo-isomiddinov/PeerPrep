@@ -1,6 +1,3 @@
-/* Mobile Responsive Styles */
-
-/* Touch-friendly targets - Enhanced */
 .touch-target {
   min-height: 44px;
   min-width: 44px;
@@ -11,7 +8,6 @@
 }
 
 @media (max-width: 768px) {
-  /* Navbar mobile adjustments */
   .nav-bar {
     grid-template-columns: 1fr auto !important;
     padding: .5rem .75rem;
@@ -40,8 +36,6 @@
   .auth-chip span {
     display: none;
   }
-  
-  /* Home page mobile */
   .home-hero-bg {
     height: clamp(280px, 60vh, 400px) !important;
   }
@@ -71,7 +65,6 @@
     min-width: 0;
   }
   
-  /* Hide location field on mobile */
   .home-search .field:nth-child(3) {
     display: none;
   }
@@ -125,13 +118,11 @@
     grid-template-columns: 1fr !important;
   }
   
-  /* Container adjustments */
   .container-page {
     padding-left: 1rem;
     padding-right: 1rem;
   }
   
-  /* Forms mobile */
   .auth-modal {
     width: 95vw !important;
     padding: 1.5rem !important;
@@ -141,7 +132,6 @@
     font-size: 1.75rem !important;
   }
   
-  /* Footer mobile */
   .footer-grid {
     grid-template-columns: 1fr !important;
     gap: 1.5rem;
@@ -153,7 +143,6 @@
     gap: 1rem;
   }
   
-  /* CreateGroup/CreateEvent mobile */
   .group-creation-form .flex {
     flex-direction: column;
   }
@@ -168,33 +157,28 @@
     width: 100%;
   }
   
-  /* Buttons mobile */
   .btn, .btn-pink, .btn-secondary, .btn-ghost-pink {
     padding: .6rem 1rem;
     font-size: .9rem;
   }
   
-  /* Section spacing mobile */
   .section {
     padding-top: 2rem;
     padding-bottom: 2rem;
   }
   
-  /* Home section head mobile */
   .home-section-head {
     flex-direction: column;
     align-items: flex-start;
     gap: 1rem;
   }
   
-  /* Grid adjustments */
   [class*="grid-cols-1"][class*="md:grid-cols-2"],
   [class*="grid-cols-1"][class*="lg:grid-cols-2"],
   [class*="grid-cols-1"][class*="lg:grid-cols-3"] {
     grid-template-columns: 1fr !important;
   }
   
-  /* Dropdowns mobile */
   .profile-dropdown,
   .search-autocomplete {
     width: calc(100vw - 2rem) !important;
@@ -203,7 +187,6 @@
     left: auto;
   }
   
-  /* Navbar dropdown positioning */
   .nav-right .relative {
     position: static;
   }
@@ -213,7 +196,6 @@
     left: auto;
   }
   
-  /* Create menu dropdown mobile */
   .absolute.right-0.top-full.mt-2 {
     right: 0;
     left: auto;
@@ -221,84 +203,67 @@
     max-width: 20rem;
   }
   
-  /* Mobile menu positioning - using attribute selector for better specificity */
   [class*="lg:hidden"].fixed {
     top: 64px;
   }
   
-  /* Form inputs mobile */
   .input, .textarea, .auth-input, input[type="text"], 
   input[type="email"], input[type="password"], input[type="search"],
   textarea, select {
-    font-size: 16px !important; /* Prevents zoom on iOS */
+    font-size: 16px !important; 
     min-height: 44px;
     padding: 0.75rem 1rem;
   }
   
-  /* Better touch feedback */
   button:active, .btn:active, a:active {
     transform: scale(0.98);
     transition: transform 0.1s;
   }
   
-  /* Mobile menu improvements */
   .mobile-menu {
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }
   
-  /* Prevent pull-to-refresh on mobile menu */
   .mobile-menu:active {
     overscroll-behavior-y: contain;
   }
   
-  /* Better card touch targets */
   .event-card {
     min-height: 200px;
   }
   
-  /* Improve button groups on mobile */
   .flex.gap-2 > button, .flex.gap-3 > button, .flex.gap-4 > button {
     flex: 1 1 auto;
     min-width: 0;
   }
   
-  /* Step content mobile */
   .step-content {
     padding: 1rem !important;
   }
-  
-  /* Detail pages mobile - two column layout becomes single */
   .grid[class*="grid-cols-1"][class*="lg:grid-cols-3"] {
     grid-template-columns: 1fr !important;
   }
   
-  /* Info grid mobile */
   .grid[class*="grid-cols-2"][class*="md:grid-cols-4"] {
     grid-template-columns: repeat(2, 1fr) !important;
     gap: 0.75rem;
   }
-  
-  /* Members list mobile */
   .space-y-3 > * {
     padding: 0.75rem !important;
   }
-  
-  /* Create menu dropdown mobile */
   .absolute.right-0.top-full.mt-2.w-48 {
     width: calc(100vw - 2rem) !important;
     max-width: 280px;
     right: 0.5rem;
   }
   
-  /* Profile dropdown mobile */
   .profile-dropdown {
     width: calc(100vw - 2rem) !important;
     max-width: 200px;
     right: 0.5rem;
   }
   
-  /* Message delete button mobile - always visible */
   button[title="Delete message"] {
     opacity: 1 !important;
     min-width: 36px;
@@ -306,19 +271,16 @@
     padding: 0.5rem;
   }
   
-  /* Step buttons mobile */
   .step-button {
     min-height: 48px;
     padding: 0.75rem 1rem;
   }
   
-  /* Search input mobile */
   .home-search-input {
     font-size: 16px !important;
     min-height: 44px;
   }
   
-  /* Member/attendee cards mobile */
   a[href*="/profile/"] {
     min-height: 64px;
     padding: 0.75rem !important;
@@ -326,7 +288,6 @@
 }
 
 @media (max-width: 640px) {
-  /* Extra small mobile adjustments */
   .nav-spacer {
     height: 56px;
   }
@@ -344,7 +305,6 @@
     padding-right: .75rem;
   }
   
-  /* Text sizes mobile */
   h1 { font-size: 1.75rem !important; }
   h2 { font-size: 1.5rem !important; }
   h3 { font-size: 1.25rem !important; }
@@ -352,22 +312,17 @@
   .home-title {
     font-size: 1.5rem !important;
   }
-  
-  /* Button groups mobile */
   .flex.gap-2,
   .flex.gap-3,
   .flex.gap-4 {
     flex-wrap: wrap;
   }
-  
-  /* Category buttons mobile */
   .grid[class*="grid-cols-2"][class*="md:grid-cols-3"][class*="lg:grid-cols-5"] {
     grid-template-columns: repeat(2, 1fr) !important;
   }
 }
 
 @media (hover: none) and (pointer: coarse) {
-  /* All interactive elements should be touch-friendly */
   .btn, .btn-pink, .btn-secondary, .btn-ghost-pink, button:not([disabled]), 
   a:not(.no-touch-target), .tab-link, .nav-link-clean,
   input[type="button"], input[type="submit"], .event-card {
@@ -377,42 +332,34 @@
     touch-action: manipulation;
   }
   
-  /* Prevent accidental text selection on tap */
   button, .btn {
     user-select: none;
     -webkit-user-select: none;
   }
   
-  /* Larger touch targets for small buttons */
   .nav-bell, .auth-chip, button[aria-label] {
     min-height: 44px;
     min-width: 44px;
     padding: 0.5rem;
   }
   
-  /* Improve form inputs */
   input, textarea, select {
-    font-size: 16px !important; /* Prevents zoom on iOS */
+    font-size: 16px !important;
     min-height: 44px;
   }
-  
-  /* Better spacing for touch */
   .home-card-grid, .upcoming-grid {
     gap: 1rem;
   }
   
-  /* Prevent double-tap zoom */
   * {
     touch-action: manipulation;
   }
   
-  /* Better scroll behavior */
   .premium-scrollbar {
     -webkit-overflow-scrolling: touch;
   }
 }
 
-/* Landscape mobile adjustments */
 @media (max-width: 768px) and (orientation: landscape) {
   .home-hero-bg {
     height: clamp(200px, 40vh, 280px) !important;
@@ -422,8 +369,6 @@
     height: 60px;
   }
 }
-
-/* Extra small devices */
 @media (max-width: 375px) {
   .home-hero-title {
     font-size: 1.25rem !important;
@@ -453,7 +398,6 @@
   }
 }
 
-/* Safe area insets for notched devices */
 @supports (padding: max(0px)) {
   .nav-root {
     padding-top: 0;

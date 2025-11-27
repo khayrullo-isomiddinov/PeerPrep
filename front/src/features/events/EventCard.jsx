@@ -14,15 +14,13 @@ import { usePrefetch } from "../../utils/usePrefetch"
 
 function EventCard({ event, onChanged, onDelete, onEdit }) {
   const [currentTime, setCurrentTime] = useState(() => new Date())
-  
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(new Date())
     }, 60000)
-    
     return () => clearInterval(interval)
   }, [])
-  
+
   const eventStatus = useMemo(() => {
     if (!event.starts_at) {
       return {
@@ -31,7 +29,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
         isPast: event.is_past ?? false
       }
     }
-    
+
     try {
       const start = parseUTCDate(event.starts_at)
       if (!start || isNaN(start.getTime())) {
@@ -42,7 +40,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
         }
       }
       const now = currentTime
-      
+
       if (isNaN(start.getTime()) || isNaN(now.getTime())) {
         return {
           isUpcoming: event.is_upcoming ?? false,
@@ -50,7 +48,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
           isPast: event.is_past ?? false
         }
       }
-      
+
       let end
       if (event.ends_at) {
         end = parseUTCDate(event.ends_at)
@@ -77,26 +75,25 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
       }
     }
   }, [event.starts_at, event.ends_at, event.duration, event.is_upcoming, event.is_ongoing, event.is_past, currentTime])
-  
+
   const isUpcoming = eventStatus.isUpcoming
-  const isOngoing  = eventStatus.isOngoing
-  const isPast     = eventStatus.isPast
+  const isOngoing = eventStatus.isOngoing
+  const isPast = eventStatus.isPast
   const hasStarted = useMemo(() => {
     if (!event.starts_at) {
       return isOngoing || isPast;
     }
-    
     try {
       const start = parseUTCDate(event.starts_at)
       if (!start || isNaN(start.getTime())) {
         return isOngoing || isPast
       }
       const now = currentTime
-      
+
       if (isNaN(start.getTime()) || isNaN(now.getTime())) {
         return isOngoing || isPast;
       }
-      
+
       const started = now.getTime() >= start.getTime();
       return started;
     } catch (e) {
@@ -135,7 +132,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
   const isUpdatingRef = useRef(false)
   const eventRef = useRef(event)
   const onChangedRef = useRef(onChanged)
-  
+
   useEffect(() => {
     eventRef.current = event
     onChangedRef.current = onChanged
@@ -143,7 +140,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
 
   useEffect(() => {
     if (isUpdatingRef.current) return
-    
+
     const checkStoredState = () => {
       try {
         const stored = sessionStorage.getItem(`event_join_state:${event.id}`)
@@ -210,7 +207,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
           invalidateCache("events")
           invalidateCache("home:events")
         })
-        
+
         const eventUpdate = {
           eventId: event.id,
           isJoined: true,
@@ -219,7 +216,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
         }
         sessionStorage.setItem(`event_join_state:${event.id}`, JSON.stringify(eventUpdate))
         window.dispatchEvent(new CustomEvent('eventJoinStateChanged', { detail: eventUpdate }))
-        
+
         onChanged?.(updatedEvent)
       } else {
         setErr("Unexpected response from server")
@@ -263,7 +260,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
           invalidateCache("events")
           invalidateCache("home:events")
         })
-        
+
         const eventUpdate = {
           eventId: event.id,
           isJoined: false,
@@ -272,7 +269,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
         }
         sessionStorage.setItem(`event_join_state:${event.id}`, JSON.stringify(eventUpdate))
         window.dispatchEvent(new CustomEvent('eventJoinStateChanged', { detail: eventUpdate }))
-        
+
         onChanged?.(updatedEvent)
       }
     } catch (e) {
@@ -291,7 +288,6 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
   function handleDeleteClick() {
     setShowDeleteConfirm(true)
   }
-
   async function handleDeleteConfirm() {
     setShowDeleteConfirm(false)
     setErr("")
@@ -354,7 +350,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
     const start = parseUTCDate(startsAt)
     const end = parseUTCDate(endsAt ?? startsAt)
     const now = new Date()
-    
+
     if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) {
       return ''
     }
@@ -392,7 +388,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
         to={isAuthenticated ? `/events/${event.id}` : "#"}
         onClick={handleCardClick}
         onMouseEnter={() => isAuthenticated && prefetch(`event:${event.id}`, () => getEvent(event.id))}
-        className="group block bg-white rounded-xl border border-gray-200/80 overflow-hidden premium-hover hover:border-gray-300 hover:shadow-lg transition-all duration-300"
+        className="group block bg-white rounded-xl border border-gray-200/80 overflow-hidden hover:border-gray-300 hover:shadow-lg"
       >
         <div className="flex">
           <div className="w-24 h-24 flex-shrink-0 relative overflow-hidden bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
@@ -401,7 +397,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
                 src={event.cover_image_url}
                 alt={event.title}
                 loading="lazy"
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                className="w-full h-full object-cover"
               />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center">
@@ -447,7 +443,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
 
           <div className="flex-1 p-4 flex flex-col justify-between min-w-0">
             <div className="flex-1 min-w-0">
-              <h3 className="text-base font-bold text-gray-900 mb-2 truncate group-hover:text-indigo-600 transition-colors">
+              <h3 className="text-base font-bold text-gray-900 mb-2 truncate group-hover:text-indigo-600">
                 {event.title}
               </h3>
 
@@ -493,36 +489,32 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
                       }
                     }}
                     disabled={(busyLeave || busyJoin) || (!joined && full)}
-                    className={`py-1.5 rounded-md text-xs font-semibold focus:outline-none focus:ring-0 ${
-                      joined
+                    className={`py-1.5 rounded-md text-xs font-semibold focus:outline-none focus:ring-0 ${joined
                         ? 'bg-gray-100 text-gray-600'
                         : 'bg-indigo-500 text-white'
-                    }`}
+                      }`}
                     style={{
                       pointerEvents: (busyLeave || busyJoin) ? 'none' : 'auto',
                       cursor: (busyLeave || busyJoin) ? 'default' : 'pointer',
                       width: '75px',
                       paddingLeft: '0.75rem',
                       paddingRight: '0.75rem',
-                      transition: 'background-color 1s cubic-bezier(0.4, 0, 0.2, 1), color 1s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.6s ease-in-out'
                     }}
                     title=""
                   >
                     <span className="inline-flex items-center justify-center w-full relative" style={{ minHeight: '16px' }}>
-                      <span 
-                        className={`absolute inset-0 inline-flex items-center justify-center transition-opacity duration-600 ease-in-out ${
-                          (busyLeave || busyJoin) ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                        }`}
+                      <span
+                        className={`absolute inset-0 inline-flex items-center justify-center ${(busyLeave || busyJoin) ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                          }`}
                       >
                         <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1.5" />
                         <span className="whitespace-nowrap">
                           {busyLeave ? "Leaving..." : "Joining..."}
                         </span>
                       </span>
-                      <span 
-                        className={`inline-flex items-center justify-center transition-opacity duration-600 ease-in-out ${
-                          (busyLeave || busyJoin) ? 'opacity-0 pointer-events-none' : 'opacity-100'
-                        }`}
+                      <span
+                        className={`inline-flex items-center justify-center ${(busyLeave || busyJoin) ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                          }`}
                       >
                         {joined ? "Leave" : "Join"}
                       </span>
@@ -576,7 +568,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
       </Link>
 
       {err && (
-        <div className="fixed top-20 right-4 z-[10000] max-w-xs animate-in fade-in slide-in-from-top-2">
+        <div className="fixed top-20 right-4 z-[10000] max-w-xs">
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 shadow-lg">
             <p className="text-red-600 text-sm font-medium">{err}</p>
           </div>
@@ -585,9 +577,8 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
 
       {showDeleteConfirm && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ease-out"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
           style={{
-            animation: 'fadeIn 0.3s ease-out',
             top: 0,
             left: 0,
             right: 0,
@@ -601,10 +592,6 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
         >
           <div
             className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4"
-            style={{
-              animation: 'slideUpFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-              transform: 'translateY(0)',
-            }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-4">
@@ -623,13 +610,13 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
             <div className="flex gap-3 pt-2">
               <button
                 onClick={handleDeleteConfirm}
-                className="flex-1 px-4 py-2.5 rounded-lg font-medium text-white bg-red-500 hover:bg-red-600 transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] shadow-md hover:shadow-lg"
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium text-white bg-red-500 hover:bg-red-600 shadow-md hover:shadow-lg"
               >
                 Delete Event
               </button>
               <button
                 onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 px-4 py-2.5 rounded-lg font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
+                className="flex-1 px-4 py-2.5 rounded-lg font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
               >
                 Cancel
               </button>
@@ -639,22 +626,6 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
         document.body
       )}
 
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes slideUpFadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(20px) scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-      `}</style>
     </div>
   )
 }
