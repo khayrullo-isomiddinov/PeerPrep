@@ -844,7 +844,6 @@ def join_event(
     starts_at = evt.starts_at.replace(tzinfo=timezone.utc) if evt.starts_at.tzinfo is None else evt.starts_at
     ends_at = starts_at + timedelta(hours=evt.duration)
 
-    # ❌ A user cannot join after event STARTS
     if starts_at <= now_utc:
         raise HTTPException(status_code=400, detail="Event has already started")
 
@@ -907,7 +906,6 @@ def leave_event(
     starts_at = evt.starts_at.replace(tzinfo=timezone.utc) if evt.starts_at.tzinfo is None else evt.starts_at
     ends_at = starts_at + timedelta(hours=evt.duration)
 
-    # ❌ Cannot leave once event has started
     if now_utc >= starts_at:
         raise HTTPException(
             status_code=400,

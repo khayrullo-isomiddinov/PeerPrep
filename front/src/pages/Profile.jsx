@@ -33,19 +33,16 @@ export default function Profile() {
   }), [displayUser])
   const [form, setForm] = useState(initialForm)
 
-  // Load user profile if viewing someone else's profile
   useEffect(() => {
     async function loadUserProfile() {
       if (userId && user && parseInt(userId) !== user.id) {
         try {
-          // Check cache first
           const { getCachedPage, setCachedPage } = await import("../utils/pageCache")
           const cached = getCachedPage(`profile:${userId}`)
           
           if (cached && cached.data) {
             setProfileUser(cached.data)
             setLoadingProfile(false)
-            // Refresh in background if expired
             if (cached.isExpired) {
               setTimeout(async () => {
                 try {
@@ -71,7 +68,6 @@ export default function Profile() {
           setLoadingProfile(false)
         }
       } else if (userId && !user) {
-        // If not logged in but trying to view a profile, still load it
         try {
           const { getCachedPage, setCachedPage } = await import("../utils/pageCache")
           const cached = getCachedPage(`profile:${userId}`)
@@ -108,7 +104,6 @@ export default function Profile() {
     loadUserProfile()
   }, [userId, user, navigate])
 
-  // Load user stats (badge info includes stats)
   useEffect(() => {
     async function loadUserStats() {
       if (!targetUserId) return
@@ -116,13 +111,10 @@ export default function Profile() {
       try {
         setLoadingStats(true)
         
-        // If viewing own profile, award XP for all past events first
         if (isViewingOwnProfile) {
           try {
             await awardPastEventsXP()
-            // Reload stats after awarding XP
           } catch (error) {
-            // Silently fail - XP awarding is best effort
             console.debug("Failed to award past events XP:", error)
           }
         }
@@ -553,33 +545,27 @@ export default function Profile() {
                     const currentEngagement = userStats?.engagement_score || 0
                     const currentWeeklyStreak = userStats?.weekly_streak || 0
                     
-                    // Badge hierarchy for determining unlock status
                     const badgeHierarchy = ["Beginner", "Learner", "Achiever", "Expert", "Master"]
                     const currentBadgeName = userStats?.badge?.name || "Beginner"
                     const currentBadgeIndex = badgeHierarchy.indexOf(currentBadgeName)
                     const badgeIndex = badgeHierarchy.indexOf(badge.name)
                     
-                    // If backend says user has this badge or higher, it's unlocked
                     const isUnlockedByBackend = currentBadgeIndex >= badgeIndex
                     
-                    // Also check requirements as fallback (for cases where backend might not have badge info)
                     const meetsXP = currentXP >= badge.requirements.xp
                     const meetsEvents = !badge.requirements.events || currentEvents >= badge.requirements.events
                     const meetsWeeklyStreak = !badge.requirements.weekly_streak || currentWeeklyStreak >= badge.requirements.weekly_streak
                     const meetsEngagement = !badge.requirements.engagement || currentEngagement >= badge.requirements.engagement
                     const meetsRequirements = meetsXP && meetsEvents && meetsWeeklyStreak && meetsEngagement
                     
-                    // Unlocked if backend says so OR if requirements are met
                     const isUnlocked = isUnlockedByBackend || meetsRequirements
                     const isCurrent = userStats?.badge?.name === badge.name
                     
-                    // Calculate progress percentage to next badge
                     const progressBadgeIndex = badgeHierarchy.indexOf(badge.name)
                     const nextBadgeIndex = progressBadgeIndex + 1
                     
                     let progress = 0
                     if (nextBadgeIndex < badgeHierarchy.length) {
-                      // Calculate progress to next badge
                       const nextBadge = badgeHierarchy[nextBadgeIndex]
                       const nextBadgeData = [
                         { name: "Beginner", min_xp: 0 },
@@ -595,7 +581,6 @@ export default function Profile() {
                         progress = range > 0 ? Math.min(100, Math.max(0, (progressInRange / range) * 100)) : 0
                       }
                     } else {
-                      // Master badge - show 100% if unlocked, otherwise progress to Master
                       progress = isUnlocked ? 100 : Math.min(100, (currentXP / badge.min_xp) * 100) || 0
                     }
                     
@@ -781,7 +766,6 @@ export default function Profile() {
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2.5">
                     {(() => {
-                      // Calculate progress to next badge
                       const badgeHierarchy = ["Beginner", "Learner", "Achiever", "Expert", "Master"]
                       const currentBadgeName = userStats.badge.name
                       const currentBadgeIndex = badgeHierarchy.indexOf(currentBadgeName)
@@ -811,7 +795,6 @@ export default function Profile() {
                         }
                         nextLevelXP = nextBadgeMinXP
                       } else {
-                        // Master badge - show 100%
                         progressWidth = 100
                       }
                       

@@ -5,9 +5,9 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
   faArrowLeft, faUsers, faCalendar, faMapMarkerAlt, faClock,
   faUserPlus, faUserMinus, faFile, faDownload, faCheckCircle,
-  faFire, faStar, faTrophy, faInfoCircle, faChevronRight, faComments, faPaperPlane, faUpload, faTrash, faExclamationTriangle, faGraduationCap
+  faFire, faStar, faTrophy, faInfoCircle, faComments, faPaperPlane, faTrash, faExclamationTriangle, faGraduationCap
 } from "@fortawesome/free-solid-svg-icons"
-import { getEvent, getEventAttendeesWithDetails, joinEvent, leaveEvent, getEventMessages, postEventMessage, deleteEventMessage, setEventTypingStatus, getEventTypingStatus, getEventPresence, markEventMessageRead, getUserProfile } from "../utils/api"
+import { getEvent, getEventAttendeesWithDetails, joinEvent, leaveEvent, getEventMessages, postEventMessage, deleteEventMessage, setEventTypingStatus, getEventPresence, markEventMessageRead, getUserProfile } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
 import { usePrefetch } from "../utils/usePrefetch"
 import { startPageLoad, endPageLoad } from "../utils/usePageLoader"
@@ -24,12 +24,10 @@ export default function EventDetail() {
   const [error, setError] = useState("")
   const [joined, setJoined] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [isJoining, setIsJoining] = useState(false)
   const [isOwner, setIsOwner] = useState(false)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState("")
   const [sendingMessage, setSendingMessage] = useState(false)
-  const [messagesLoading, setMessagesLoading] = useState(false)
   const [deletingMessageId, setDeletingMessageId] = useState(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [messageToDelete, setMessageToDelete] = useState(null)
@@ -38,7 +36,6 @@ export default function EventDetail() {
   const typingTimeoutRef = useRef(null)
   const messagesEndRef = useRef(null)
   const messagesContainerRef = useRef(null)
-  const shouldAutoScrollRef = useRef(true)
   const wsRef = useRef(null)
   const [wsConnected, setWsConnected] = useState(false)
   const presencePingIntervalRef = useRef(null)
@@ -48,20 +45,17 @@ export default function EventDetail() {
   const receivedMessageIdsRef = useRef(new Set())
   const markedReadIdsRef = useRef(new Set())
 
-  // Redirect to login if not authenticated (only after auth has finished loading)
   useEffect(() => {
     if (!authLoading && isAuthenticated === false) {
       navigate("/login")
     }
   }, [isAuthenticated, authLoading, navigate])
 
-
   const loadMessages = useCallback(async (shouldScroll = false) => {
     if (!id) return
     try {
       const messagesData = await getEventMessages(id)
       setMessages(messagesData || [])
-      // Only scroll on initial load if explicitly requested, or if user just sent a message
       if (shouldScroll && messagesContainerRef.current) {
         setTimeout(() => {
           messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
@@ -72,10 +66,7 @@ export default function EventDetail() {
     }
   }, [id])
 
-  
-
   const loadEvent = useCallback(async (force = false, skipMessages = false) => {
-    // Wait for auth to finish loading before making requests
     if (authLoading) {
       return
     }
@@ -86,17 +77,14 @@ export default function EventDetail() {
 
     const pageId = `event:${id}`
     try {
-      // Check cache first (unless forcing refresh)
       const { getCachedPage, setCachedPage } = await import("../utils/pageCache")
       const cached = getCachedPage(`event:${id}`)
 
       if (cached && cached.data && !force) {
-        // Show cached data instantly
         setEvent(cached.data)
         const userIsOwner = user && cached.data.created_by === user.id
         setIsOwner(userIsOwner)
         
-        // Use is_joined from event data as initial value (if available)
         if (user && isAuthenticated && cached.data.is_joined !== undefined) {
           setJoined(cached.data.is_joined || userIsOwner)
         }
@@ -104,13 +92,11 @@ export default function EventDetail() {
         setLoading(false)
         endPageLoad(pageId)
 
-        // Load attendees and messages in parallel
         Promise.all([
           getEventAttendeesWithDetails(id).then(data => {
             setAttendees(data)
             let userJoined = false
             if (user && isAuthenticated) {
-              // Check if user is in attendees list OR is the owner
               const userAttendee = data.find(a => a.id === user.id)
               userJoined = !!userAttendee || userIsOwner
               setJoined(userJoined)
@@ -122,7 +108,6 @@ export default function EventDetail() {
           cached.isExpired ? getEvent(id).then(data => {
             setEvent(data)
             setCachedPage(`event:${id}`, data)
-            // Update joined state from fresh event data
             if (user && isAuthenticated && data.is_joined !== undefined) {
               const userIsOwner = data.created_by === user.id
               setJoined(data.is_joined || userIsOwner)
@@ -139,7 +124,6 @@ export default function EventDetail() {
         return
       }
 
-      // No cache or forcing refresh, load normally
       if (!force) {
         startPageLoad(pageId)
         setLoading(true)
@@ -152,17 +136,13 @@ export default function EventDetail() {
       const userIsOwner = user && data.created_by === user.id
       setIsOwner(userIsOwner)
 
-      // Use is_joined from event data as initial value (if available)
       if (user && isAuthenticated && data.is_joined !== undefined) {
         setJoined(data.is_joined || userIsOwner)
       }
 
-      // Always refresh attendees to get updated member counts
       const attendeesData = await getEventAttendeesWithDetails(id)
       setAttendees(attendeesData)
 
-      // Set joined state from attendees data (this is the source of truth)
-      // User is considered "joined" if they're in the attendees list OR they're the owner
       let userJoined = false
       if (user && isAuthenticated) {
         const userAttendee = attendeesData.find(a => a.id === user.id)
@@ -172,16 +152,12 @@ export default function EventDetail() {
         setJoined(false)
       }
 
-      // Load messages but don't auto-scroll on initial page load
-      // Skip messages if WebSocket is connected (real-time updates handle messages)
       if ((userJoined || userIsOwner) && !skipMessages) {
         loadMessages(false)
-        // Immediately update presence when viewing the page
         try {
           const presenceData = await getEventPresence(id)
           setPresence(presenceData.presence || [])
         } catch (err) {
-          // Silently fail
         }
       }
     } catch (err) {
@@ -199,25 +175,19 @@ export default function EventDetail() {
     loadEvent()
   }, [loadEvent])
 
-  // Periodic polling to keep data fresh (only metadata, not messages)
-  // Poll every 5 seconds to catch changes from other users (like member counts)
-  // Skip messages if WebSocket is connected to avoid flickering read marks
   useEffect(() => {
     if (!id || !event) return
 
     const pollInterval = setInterval(() => {
       if (!document.hidden && event) {
-        // Only update metadata (event data, attendees) but skip messages
-        // Messages are handled by WebSocket in real-time
         const isWsConnected = wsRef.current && wsRef.current.readyState === WebSocket.OPEN
-        loadEvent(true, isWsConnected) // Skip messages if WebSocket is connected
+        loadEvent(true, isWsConnected)
       }
-    }, 5000) // 5 seconds - good balance between freshness and performance
+    }, 5000)
 
     return () => clearInterval(pollInterval)
   }, [id, event, loadEvent, wsConnected])
 
-  // Sync joined state when event data changes (e.g., from cache updates)
   useEffect(() => {
     if (event && event.is_joined !== undefined && joined !== null) {
       if (event.is_joined !== joined) {
@@ -226,12 +196,9 @@ export default function EventDetail() {
     }
   }, [event?.is_joined, joined])
 
-  // Mark messages as read when they're viewed
-  // Use a ref to track which messages we've already marked to prevent re-marking
   useEffect(() => {
     if (!id || !user || joined === null || (!joined && !isOwner) || messages.length === 0) return
 
-    // Mark all unread messages as read (only if not already marked)
     const unreadMessages = messages.filter(msg =>
       msg.user.id !== user.id &&
       !msg.is_read_by_me &&
@@ -239,10 +206,8 @@ export default function EventDetail() {
     )
 
     if (unreadMessages.length > 0) {
-      // Mark messages as read via WebSocket if connected, otherwise HTTP
       const timeoutId = setTimeout(() => {
         unreadMessages.forEach(msg => {
-          // Track that we're marking this message
           markedReadIdsRef.current.add(msg.id)
 
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -251,9 +216,7 @@ export default function EventDetail() {
               message_id: msg.id
             }))
           } else {
-            // Fallback to HTTP
             markEventMessageRead(id, msg.id).catch(err => {
-              // If it fails, remove from tracked set so we can retry
               markedReadIdsRef.current.delete(msg.id)
             })
           }
@@ -264,10 +227,21 @@ export default function EventDetail() {
     }
   }, [id, user, joined, isOwner, messages])
 
-  // WebSocket connection for real-time chat
+  useEffect(() => {
+    if (!id || !event) return
+
+    const pollInterval = setInterval(() => {
+      if (!document.hidden && event) {
+        const isWsConnected = wsRef.current && wsRef.current.readyState === WebSocket.OPEN
+        loadEvent(true, isWsConnected)
+      }
+    }, 5000)
+
+    return () => clearInterval(pollInterval)
+  }, [id, event, loadEvent, wsConnected])
+
   useEffect(() => {
     if (!id || joined === null || (!joined && !isOwner)) {
-      // Disconnect if conditions not met
       if (wsRef.current) {
         wsRef.current.close()
         wsRef.current = null
@@ -288,13 +262,11 @@ export default function EventDetail() {
     if (!token) return
 
     function connectWebSocket() {
-      // Clear any existing reconnection timeout
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
         reconnectTimeoutRef.current = null
       }
 
-      // Connect WebSocket
       const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
       const wsProtocol = apiBase.startsWith("https") ? "wss" : "ws"
       const wsHost = apiBase.replace(/^https?:\/\//, "").replace(/\/$/, "")
@@ -303,27 +275,24 @@ export default function EventDetail() {
 
       ws.onopen = () => {
         setWsConnected(true)
-        reconnectAttemptsRef.current = 0 // Reset on successful connection
+        reconnectAttemptsRef.current = 0
 
-        // Send queued messages
         while (messageQueueRef.current.length > 0) {
           const queuedMessage = messageQueueRef.current.shift()
           try {
             ws.send(JSON.stringify(queuedMessage))
           } catch (err) {
             console.error("Failed to send queued message:", err)
-            // Re-queue if send fails
             messageQueueRef.current.unshift(queuedMessage)
             break
           }
         }
 
-        // Start presence ping interval
         presencePingIntervalRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "presence_ping" }))
           }
-        }, 30000) // Ping every 30 seconds
+        }, 30000)
       }
 
       ws.onmessage = (event) => {
@@ -343,15 +312,12 @@ export default function EventDetail() {
           presencePingIntervalRef.current = null
         }
 
-        // Only attempt reconnection if it wasn't a manual close (code 1000) or auth error (1008)
         if (event.code !== 1000 && event.code !== 1008) {
-          // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
           const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000)
           reconnectAttemptsRef.current++
 
           reconnectTimeoutRef.current = setTimeout(() => {
             if (id && (joined || isOwner)) {
-              // Attempting to reconnect
               connectWebSocket()
             }
           }, delay)
@@ -386,11 +352,9 @@ export default function EventDetail() {
   function handleWebSocketMessage(message) {
     switch (message.type) {
       case "initial_messages":
-        // Track received message IDs to prevent duplicates
         const initialIds = new Set((message.messages || []).map(m => m.id))
         receivedMessageIdsRef.current = initialIds
         setMessages(message.messages || [])
-        // Auto-scroll to bottom after initial load
         setTimeout(() => {
           if (messagesContainerRef.current) {
             messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
@@ -402,21 +366,17 @@ export default function EventDetail() {
         const msgId = message.message?.id
         if (!msgId) break
 
-        // Prevent duplicate messages
         if (receivedMessageIdsRef.current.has(msgId)) {
-          // Duplicate message detected, ignoring
           break
         }
         receivedMessageIdsRef.current.add(msgId)
 
         setMessages(prev => {
-          // Double-check for duplicates in state
           if (prev.some(m => m.id === msgId)) {
             return prev
           }
           return [...prev, message.message]
         })
-        // Auto-scroll if near bottom
         setTimeout(() => {
           if (messagesContainerRef.current) {
             const container = messagesContainerRef.current
@@ -429,7 +389,6 @@ export default function EventDetail() {
         break
 
       case "message_deleted":
-        // Update the message to mark it as deleted
         const deletedMsgId = message.message_id
         if (deletedMsgId) {
           setMessages(prev => prev.map(m =>
@@ -448,7 +407,6 @@ export default function EventDetail() {
             }
             return [...prev, { id: message.user_id, name: message.user_name }]
           })
-          // Remove typing indicator after 3 seconds
           setTimeout(() => {
             setTypingUsers(prev => prev.filter(u => u.id !== message.user_id))
           }, 3000)
@@ -456,11 +414,9 @@ export default function EventDetail() {
         break
 
       case "presence_update":
-        // Update presence based on online users
         break
 
       case "message_read":
-        // Update read status for a message
         setMessages(prev => prev.map(msg =>
           msg.id === message.message_id
             ? { ...msg, is_read_by_me: true }
@@ -469,21 +425,57 @@ export default function EventDetail() {
         break
 
       case "user_joined":
-        // User joined - could update presence
         break
 
       case "user_left":
-        // User left - could update presence
         break
 
       case "error":
-        // Handle error messages from server (e.g., event ended, read-only)
         if (message.message) {
           alert(message.message)
         }
         break
     }
   }
+
+  useEffect(() => {
+    if (event && event.is_joined !== undefined && joined !== null) {
+      if (event.is_joined !== joined) {
+        setJoined(event.is_joined)
+      }
+    }
+  }, [event?.is_joined, joined])
+
+  useEffect(() => {
+    if (!id || !user || joined === null || (!joined && !isOwner) || messages.length === 0) return
+
+    const unreadMessages = messages.filter(msg =>
+      msg.user.id !== user.id &&
+      !msg.is_read_by_me &&
+      !markedReadIdsRef.current.has(msg.id)
+    )
+
+    if (unreadMessages.length > 0) {
+      const timeoutId = setTimeout(() => {
+        unreadMessages.forEach(msg => {
+          markedReadIdsRef.current.add(msg.id)
+
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({
+              type: "mark_read",
+              message_id: msg.id
+            }))
+          } else {
+            markEventMessageRead(id, msg.id).catch(err => {
+              markedReadIdsRef.current.delete(msg.id)
+            })
+          }
+        })
+      }, 500)
+
+      return () => clearTimeout(timeoutId)
+    }
+  }, [id, user, joined, isOwner, messages])
 
   async function handleJoinLeave() {
     if (!isAuthenticated || joined === null) {
@@ -493,20 +485,14 @@ export default function EventDetail() {
       return
     }
     setIsLoading(true)
-    // Track what action we're performing
     const wasJoined = joined
-    setIsJoining(!wasJoined) // true if joining, false if leaving
-    // Don't do optimistic update - keep button in original state during loading
-    // setJoined(wasJoined ? false : true)
 
     try {
       if (wasJoined) {
         const result = await leaveEvent(id)
         if (result && result.success) {
-          // Update state after successful leave
           setJoined(false)
           setMessages([])
-          // Use server-provided count for accuracy
           const updatedEvent = {
             ...event,
             is_joined: false,
@@ -514,26 +500,31 @@ export default function EventDetail() {
           }
           setEvent(updatedEvent)
 
-          // Immediately remove current user from attendees list (optimistic update)
           if (user) {
             setAttendees(prevAttendees => prevAttendees.filter(a => a.id !== user.id))
           }
 
-          // Invalidate all caches to ensure fresh data
           const { invalidateCache } = await import("../utils/pageCache")
           invalidateCache(`event:${id}`)
           invalidateCache("events")
           invalidateCache("home:events")
+          sessionStorage.setItem("events_cache_invalidated", Date.now().toString())
+          
+          const eventUpdate = {
+            eventId: id,
+            isJoined: false,
+            attendeeCount: result.attendee_count ?? event.attendee_count,
+            timestamp: Date.now()
+          }
+          sessionStorage.setItem(`event_join_state:${id}`, JSON.stringify(eventUpdate))
+          window.dispatchEvent(new CustomEvent('eventJoinStateChanged', { detail: eventUpdate }))
 
-          // Also fetch fresh attendees list in background to ensure accuracy
           getEventAttendeesWithDetails(id).then(data => setAttendees(data || [])).catch(() => { })
         }
       } else {
         const result = await joinEvent(id)
         if (result && result.success) {
-          // Update state immediately for smooth UI
           setJoined(true)
-          // Use server-provided count for accuracy
           const updatedEvent = {
             ...event,
             is_joined: true,
@@ -541,28 +532,34 @@ export default function EventDetail() {
           }
           setEvent(updatedEvent)
 
-          // Invalidate all caches to ensure fresh data
           const { invalidateCache } = await import("../utils/pageCache")
           invalidateCache(`event:${id}`)
           invalidateCache("events")
           invalidateCache("home:events")
+          sessionStorage.setItem("events_cache_invalidated", Date.now().toString())
+          
+          const eventUpdate = {
+            eventId: id,
+            isJoined: true,
+            attendeeCount: result.attendee_count ?? event.attendee_count,
+            timestamp: Date.now()
+          }
+          sessionStorage.setItem(`event_join_state:${id}`, JSON.stringify(eventUpdate))
+          window.dispatchEvent(new CustomEvent('eventJoinStateChanged', { detail: eventUpdate }))
 
-          // Load additional data in parallel (non-blocking)
           Promise.all([
             getEventAttendeesWithDetails(id).then(data => setAttendees(data)).catch(() => { }),
             getEventMessages(id).then(data => setMessages(data || [])).catch(() => { }),
             getEventPresence(id).then(data => setPresence(data.presence || [])).catch(() => { })
           ])
         }
-      }
+        }
     } catch (error) {
-      // Revert optimistic update on error
       setJoined(wasJoined)
       console.error('Join/Leave failed:', error)
       alert(error?.response?.data?.detail || "Failed to join/leave event")
     } finally {
       setIsLoading(false)
-      setIsJoining(false)
     }
   }
 
@@ -571,13 +568,11 @@ export default function EventDetail() {
     e.stopPropagation()
     if (!newMessage.trim() || sendingMessage || !id) return
 
-    // Prevent sending if event has ended
     if (isPast) {
       alert("This event has ended. Chat is now read-only. You can still view message history.")
       return
     }
 
-    // Send via WebSocket if connected, otherwise queue or fallback to HTTP
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       setSendingMessage(true)
       try {
@@ -588,14 +583,12 @@ export default function EventDetail() {
         wsRef.current.send(JSON.stringify(messageData))
         setNewMessage("")
 
-        // Clear typing timeout when message is sent
         if (typingTimeoutRef.current) {
           clearTimeout(typingTimeoutRef.current)
           typingTimeoutRef.current = null
         }
       } catch (error) {
         console.error("Failed to send message via WebSocket:", error)
-        // Queue message for retry when connection is restored
         messageQueueRef.current.push({
           type: "message",
           content: newMessage.trim()
@@ -605,7 +598,6 @@ export default function EventDetail() {
         setSendingMessage(false)
       }
     } else if (wsRef.current && wsRef.current.readyState === WebSocket.CONNECTING) {
-      // Queue message if WebSocket is connecting
       messageQueueRef.current.push({
         type: "message",
         content: newMessage.trim()
@@ -613,13 +605,11 @@ export default function EventDetail() {
       setNewMessage("")
       alert("Connecting... Message will be sent when connection is established.")
     } else {
-      // Fallback to HTTP POST
       setSendingMessage(true)
       try {
         await postEventMessage(id, newMessage.trim())
         setNewMessage("")
 
-        // Clear typing timeout when message is sent
         if (typingTimeoutRef.current) {
           clearTimeout(typingTimeoutRef.current)
           typingTimeoutRef.current = null
@@ -644,24 +634,18 @@ export default function EventDetail() {
   function handleTyping() {
     if (!id || !isAuthenticated || joined === null || (!joined && !isOwner)) return
 
-    // Send typing status via WebSocket if connected
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "typing" }))
     } else {
-      // Fallback to HTTP
       setEventTypingStatus(id).catch(() => {
-        // Silently fail - typing indicators are not critical
       })
     }
 
-    // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current)
     }
 
-    // Set new timeout to stop typing indicator after 2 seconds of inactivity
     typingTimeoutRef.current = setTimeout(() => {
-      // Typing status will expire on backend after 3 seconds
     }, 2000)
   }
 
@@ -690,7 +674,6 @@ export default function EventDetail() {
       const errorMessage = error?.response?.data?.detail || "Failed to delete message"
       alert(errorMessage)
 
-      // If unauthorized, redirect to login
       if (error?.response?.status === 401) {
         navigate("/login")
       }
@@ -700,15 +683,11 @@ export default function EventDetail() {
     }
   }
 
-  // Helper to parse UTC datetime strings correctly
-  // Backend sends UTC times, so if no timezone indicator, assume UTC
   const parseUTCDate = (dateString) => {
     if (!dateString) return null
-    // If already has timezone info, use as-is
     if (dateString.includes('Z') || dateString.includes('+') || dateString.match(/-\d{2}:\d{2}$/)) {
       return new Date(dateString)
     }
-    // Otherwise, treat as UTC by appending 'Z'
     return new Date(dateString + 'Z')
   }
 
@@ -804,17 +783,14 @@ export default function EventDetail() {
     document.body.removeChild(link)
   }
 
-  // Show loading skeleton while auth is loading
   if (authLoading) {
     return <DetailPageSkeleton />
   }
 
-  // Don't render anything if not authenticated (will redirect)
   if (!isAuthenticated) {
     return null
   }
 
-  // Don't render until data is ready (GitHub-style)
   if (loading || !event) {
     return <DetailPageSkeleton />
   }
@@ -890,7 +866,6 @@ export default function EventDetail() {
       )}
 
       <div className="container-page section space-y-6">
-        {/* Back Button */}
         <Link
           to="/events"
           className="inline-flex items-center gap-2 text-gray-700 hover:text-pink-600 transition-colors"
@@ -899,7 +874,6 @@ export default function EventDetail() {
           <span>Back to Events</span>
         </Link>
 
-        {/* 1. General Information Board - Top Wide Panel */}
         <section className="bg-white rounded-2xl shadow-xl border border-gray-200/60 p-6 lg:p-8">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             {/* Left: Event Info */}
@@ -992,44 +966,69 @@ export default function EventDetail() {
               </div>
             </div>
 
-            {/* Right: Join/Leave Button */}
-            {/* Right: Join/Leave Button */}
-            {!isOwner && !isPast && !hasStarted && (
+            {!isOwner && !isPast && !hasStarted && joined !== null && (
               <div className="flex-shrink-0">
-
-                {/* If not joined + not full + loading */}
-                {joined === false && !isFull && (
-                  <button
-                    onClick={handleJoinLeave}
-                    disabled={isLoading}
-                    className="touch-target bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-600 text-white font-bold rounded-xl px-8 py-4 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none w-full lg:w-auto"
-                  >
-                    <FontAwesomeIcon icon={faUserPlus} className="w-5 h-5 inline mr-2" />
-                    {isLoading ? "Joining..." : "Join Event"}
-                  </button>
-                )}
-
-                {/* If joined + not past + not started */}
-                {joined === true && (
-                  <button
-                    onClick={handleJoinLeave}
-                    disabled={isLoading}
-                    className="touch-target bg-gray-100 text-gray-700 font-bold rounded-xl px-8 py-4 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none border-2 border-gray-300 w-full lg:w-auto"
-                  >
-                    <FontAwesomeIcon icon={faUserMinus} className="w-5 h-5 inline mr-2" />
-                    {isLoading ? "Leaving..." : "Leave Event"}
-                  </button>
-                )}
-
+                <button
+                  onClick={handleJoinLeave}
+                  disabled={isLoading || (joined === false && isFull)}
+                  className={`touch-target font-bold rounded-xl px-8 py-4 shadow-lg transition-all duration-700 ease-in-out w-full lg:w-auto focus:outline-none focus:ring-0 ${
+                    isLoading
+                      ? 'cursor-default'
+                      : 'hover:shadow-xl transform hover:scale-105 active:scale-95 disabled:transform-none'
+                  } ${
+                    joined === true
+                      ? 'bg-gray-100 text-gray-700 border-2 border-gray-300'
+                      : 'bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-600 text-white'
+                  }`}
+                  style={{
+                    pointerEvents: isLoading ? 'none' : 'auto',
+                    cursor: isLoading ? 'default' : 'pointer',
+                    minWidth: '160px',
+                    transition: 'background-color 0.8s cubic-bezier(0.4, 0, 0.2, 1), color 0.8s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.8s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s ease-in-out, transform 0.3s ease-in-out'
+                  }}
+                  title=""
+                >
+                  <span className="inline-flex items-center justify-center w-full">
+                    <span 
+                      className="inline-flex items-center transition-opacity duration-500 ease-in-out"
+                      style={{ 
+                        opacity: isLoading ? 0.7 : 1,
+                        transition: 'opacity 0.5s ease-in-out'
+                      }}
+                    >
+                      {isLoading && (
+                        <span 
+                          className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2"
+                          style={{ animation: 'spin 1s linear infinite' }}
+                        />
+                      )}
+                      <span className="whitespace-nowrap">
+                        {isLoading 
+                          ? (joined ? "Leaving..." : "Joining...")
+                          : joined === true 
+                            ? "Leave Event"
+                            : "Join Event"
+                        }
+                      </span>
+                      {!isLoading && (
+                        <>
+                          {joined === true ? (
+                            <FontAwesomeIcon icon={faUserMinus} className="w-5 h-5 ml-2 transition-all duration-700 ease-in-out" />
+                          ) : (
+                            <FontAwesomeIcon icon={faUserPlus} className="w-5 h-5 ml-2 transition-all duration-700 ease-in-out" />
+                          )}
+                        </>
+                      )}
+                    </span>
+                  </span>
+                </button>
               </div>
             )}
 
           </div>
         </section>
 
-        {/* 2. Two-Column Layout: Leaderboard (Left) and Chat (Right) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: Leaderboard - Vertical Column */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden flex flex-col h-[400px] lg:h-[600px]">
               <div className="bg-gradient-to-r from-yellow-500 via-orange-500 to-pink-500 p-5 flex-shrink-0">
@@ -1117,13 +1116,8 @@ export default function EventDetail() {
             </div>
           </div>
 
-          {/* Right: Group Chat - Large Messaging Area */}
           <div className="lg:col-span-2">
             {(joined || isOwner) ? (
-
-              /* ===========================
-                        CHAT UI (YOUR FULL CODE)
-                 =========================== */
               <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden flex flex-col h-[400px] lg:h-[600px]">
 
                 {/* Chat Header */}
@@ -1378,10 +1372,6 @@ export default function EventDetail() {
               </div>
 
             ) : isPast ? (
-
-              /* ===========================
-                      EVENT ENDED UI
-                 =========================== */
               <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 p-12 text-center">
                 <div className="w-20 h-20 bg-gradient-to-br from-gray-200 to-gray-300 rounded-full flex items-center justify-center mx-auto mb-4">
                   <FontAwesomeIcon icon={faCheckCircle} className="w-10 h-10 text-gray-500" />
@@ -1391,10 +1381,6 @@ export default function EventDetail() {
               </div>
 
             ) : !isOwner && !hasStarted && (
-
-              /* ===========================
-                     JOIN TO CHAT UI
-                 =========================== */
               <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 p-12 text-center">
                 <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
                   <FontAwesomeIcon icon={faComments} className="w-10 h-10 text-gray-400" />
@@ -1414,7 +1400,6 @@ export default function EventDetail() {
           </div>
         </div>
 
-        {/* 3. Mission Submission Area - Bottom Wide Panel */}
         {studyMaterials.length > 0 && (
           <section className="bg-white rounded-2xl shadow-xl border border-gray-200/60 p-6 lg:p-8">
             <div className="flex items-center gap-4 mb-6">
@@ -1456,7 +1441,6 @@ export default function EventDetail() {
         )}
       </div>
 
-      {/* Delete Message Confirmation Modal */}
       {showDeleteConfirm && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"

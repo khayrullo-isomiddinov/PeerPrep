@@ -80,7 +80,6 @@ def leave_event(
     now_utc = datetime.now(timezone.utc)
     starts_at = evt.starts_at.replace(tzinfo=timezone.utc) if evt.starts_at.tzinfo is None else evt.starts_at
 
-    # ❌ Cannot leave once event has started
     if now_utc >= starts_at:
         raise HTTPException(
             status_code=400,

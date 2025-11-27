@@ -23,7 +23,6 @@ export default function Home() {
   const locDebounce = useRef(null)
   const queryDebounce = useRef(null)
 
-  // Location autocomplete
   useEffect(() => {
     if (locDebounce.current) clearTimeout(locDebounce.current)
     locDebounce.current = setTimeout(async () => {
@@ -41,7 +40,6 @@ export default function Home() {
     return () => locDebounce.current && clearTimeout(locDebounce.current)
   }, [location])
 
-  // Event autocomplete
   useEffect(() => {
     if (queryDebounce.current) clearTimeout(queryDebounce.current)
     queryDebounce.current = setTimeout(async () => {
@@ -59,7 +57,6 @@ export default function Home() {
     return () => queryDebounce.current && clearTimeout(queryDebounce.current)
   }, [query])
 
-  // Search button
   function onSearch() {
     const params = new URLSearchParams()
     if (query.trim()) params.set("q", query.trim())
@@ -67,7 +64,6 @@ export default function Home() {
     navigate(`/events?${params.toString()}`)
   }
 
-  // Detect user city
   useEffect(() => {
     async function detectCity() {
       try {
@@ -113,7 +109,6 @@ export default function Home() {
     detectCity()
   }, [])
 
-  // Load all events
   useEffect(() => {
     async function loadEvents() {
       try {
@@ -150,19 +145,14 @@ export default function Home() {
     loadEvents()
   }, [])
 
-  // Helper to parse UTC datetime strings correctly
-  // Backend sends UTC times, so if no timezone indicator, assume UTC
   const parseUTCDate = (dateString) => {
     if (!dateString) return null
-    // If already has timezone info, use as-is
     if (dateString.includes('Z') || dateString.includes('+') || dateString.match(/-\d{2}:\d{2}$/)) {
       return new Date(dateString)
     }
-    // Otherwise, treat as UTC by appending 'Z'
     return new Date(dateString + 'Z')
   }
 
-  // Derived sections
   const localEvents = useMemo(() => {
     const now = new Date()
     if (!userCity || userCity === "NYC") {
@@ -270,11 +260,8 @@ export default function Home() {
           </h1>
         </div>
 
-        {/* Search */}
         <div className="search-wrap">
           <div className="home-search">
-
-            {/* Query */}
             <div className="field" style={{ position: "relative" }}>
               <svg width="16" height="16" viewBox="0 0 24 24" className="flex-shrink-0">
                 <path fill="#ec4899" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z" stroke="#ec4899" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -309,7 +296,6 @@ export default function Home() {
 
             <div className="divider" />
 
-            {/* Location */}
             <div className="field" style={{ position: "relative" }}>
               <svg width="16" height="16" viewBox="0 0 24 24" className="flex-shrink-0">
                 <path fill="#ec4899" d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" />
@@ -348,7 +334,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* New events section */}
       <section className="home-section">
         <div className="home-section-inner">
           <div className="home-section-head">
@@ -391,7 +376,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Next 24h */}
       <section className="home-section">
         <div className="home-section-inner">
           <div className="home-section-head">
@@ -431,7 +415,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* More events */}
       <section className="home-section">
         <div className="home-section-inner">
           <div className="home-section-head">

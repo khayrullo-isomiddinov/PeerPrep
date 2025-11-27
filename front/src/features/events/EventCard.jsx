@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo, useCallback, memo } from "react"
+import { useEffect, useState, useMemo, memo, useRef } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate, Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
@@ -8,30 +8,23 @@ import {
   faGraduationCap, faBook, faMicroscope, faCode,
   faMusic, faPalette, faDumbbell, faHeartbeat
 } from "@fortawesome/free-solid-svg-icons"
-import { deleteEvent, getAttendees, joinEvent, leaveEvent, getEvent } from "../../utils/api"
+import { deleteEvent, joinEvent, leaveEvent, getEvent } from "../../utils/api"
 import { useAuth } from "../auth/AuthContext"
 import { usePrefetch } from "../../utils/usePrefetch"
 
-
-
 function EventCard({ event, onChanged, onDelete, onEdit }) {
-  // Add a timestamp state that updates periodically to trigger status recalculation
   const [currentTime, setCurrentTime] = useState(() => new Date())
   
   useEffect(() => {
-    // Update current time every minute to refresh status badges
     const interval = setInterval(() => {
       setCurrentTime(new Date())
-    }, 60000) // Update every minute
+    }, 60000)
     
     return () => clearInterval(interval)
   }, [])
   
-  // Calculate status dynamically based on current time (not just API flags)
-  // This ensures the badge updates in real-time as events start/end
   const eventStatus = useMemo(() => {
     if (!event.starts_at) {
-      // Fallback to API flags if no start time
       return {
         isUpcoming: event.is_upcoming ?? false,
         isOngoing: event.is_ongoing ?? false,
@@ -48,10 +41,9 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
           isPast: event.is_past ?? false
         }
       }
-      const now = currentTime // Use state instead of new Date() for reactivity
+      const now = currentTime
       
       if (isNaN(start.getTime()) || isNaN(now.getTime())) {
-        // Invalid dates - fallback to API flags
         return {
           isUpcoming: event.is_upcoming ?? false,
           isOngoing: event.is_ongoing ?? false,
@@ -59,21 +51,17 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
         }
       }
       
-      // Calculate end time
       let end
       if (event.ends_at) {
         end = parseUTCDate(event.ends_at)
         if (!end || isNaN(end.getTime())) {
-          // Fallback to calculating from start + duration
           const duration = event.duration || 1
           end = new Date(start.getTime() + duration * 60 * 60 * 1000)
         }
       } else {
-        const duration = event.duration || 1 // default 1 hour
+        const duration = event.duration || 1
         end = new Date(start.getTime() + duration * 60 * 60 * 1000)
       }
-      
-      // Determine status based on current time
       if (now < start) {
         return { isUpcoming: true, isOngoing: false, isPast: false }
       } else if (now >= end) {
@@ -82,7 +70,6 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
         return { isUpcoming: false, isOngoing: true, isPast: false }
       }
     } catch (e) {
-      // Fallback to API flags on error
       return {
         isUpcoming: event.is_upcoming ?? false,
         isOngoing: event.is_ongoing ?? false,
@@ -94,11 +81,8 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
   const isUpcoming = eventStatus.isUpcoming
   const isOngoing  = eventStatus.isOngoing
   const isPast     = eventStatus.isPast
-  // Calculate hasStarted: event has started if current time >= event start time
-  // Always calculate from starts_at to be reliable (don't trust API flags alone)
   const hasStarted = useMemo(() => {
     if (!event.starts_at) {
-      // If no start time, can't determine - but check API flags as fallback
       return isOngoing || isPast;
     }
     
@@ -107,19 +91,15 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
       if (!start || isNaN(start.getTime())) {
         return isOngoing || isPast
       }
-      const now = currentTime; // Use same time state for consistency
+      const now = currentTime
       
-      // Check if dates are valid
       if (isNaN(start.getTime()) || isNaN(now.getTime())) {
-        // Invalid dates - fallback to API flags
         return isOngoing || isPast;
       }
       
-      // Event has started if now >= start time (this is the source of truth)
       const started = now.getTime() >= start.getTime();
       return started;
     } catch (e) {
-      // If date parsing fails, fallback to API flags
       return isOngoing || isPast;
     }
   }, [event.starts_at, isOngoing, isPast, currentTime]);
@@ -129,14 +109,11 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
   const currentId = useMemo(() => user ? Number(user.id ?? user?.user?.id) : null, [user])
   const creatorId = useMemo(() => event.created_by != null ? Number(event.created_by) : null, [event.created_by])
   const mine = useMemo(() => currentId != null && creatorId === currentId, [currentId, creatorId])
-  
 
-  // Use enriched data from API - simple and straightforward
   const count = event.attendee_count ?? 0
   const isJoinedFromAPI = event.is_joined ?? false
 
   const [joined, setJoined] = useState(() => {
-    // Initialize from API data if available
     if (mine) return true
     return isJoinedFromAPI
   })
@@ -147,26 +124,75 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [err, setErr] = useState("")
 
-  // Update joined state when API data is available - simple sync
   useEffect(() => {
     if (mine) {
       setJoined(true)
-    } else if (!busyJoin && !busyLeave) {
-      // Only update if not in the middle of an operation
+    } else {
       setJoined(isJoinedFromAPI)
     }
-  }, [mine, isJoinedFromAPI, busyJoin, busyLeave])
+  }, [mine, isJoinedFromAPI])
+
+  const isUpdatingRef = useRef(false)
+  const eventRef = useRef(event)
+  const onChangedRef = useRef(onChanged)
+  
+  useEffect(() => {
+    eventRef.current = event
+    onChangedRef.current = onChanged
+  }, [event, onChanged])
+
+  useEffect(() => {
+    if (isUpdatingRef.current) return
+    
+    const checkStoredState = () => {
+      try {
+        const stored = sessionStorage.getItem(`event_join_state:${event.id}`)
+        if (stored) {
+          const eventUpdate = JSON.parse(stored)
+          if (Date.now() - eventUpdate.timestamp < 60000) {
+            setJoined(eventUpdate.isJoined)
+          } else {
+            sessionStorage.removeItem(`event_join_state:${event.id}`)
+          }
+        }
+      } catch (e) {
+        console.error("Failed to check stored join state:", e)
+      }
+    }
+
+    checkStoredState()
+  }, [event.id])
+
+  useEffect(() => {
+    const handleStateChange = (e) => {
+      if (e.detail?.eventId === event.id && !isUpdatingRef.current) {
+        setJoined(e.detail.isJoined)
+        if (onChangedRef.current) {
+          onChangedRef.current({
+            ...eventRef.current,
+            is_joined: e.detail.isJoined,
+            attendee_count: e.detail.attendeeCount ?? eventRef.current.attendee_count
+          })
+        }
+      }
+    }
+
+    window.addEventListener('eventJoinStateChanged', handleStateChange)
+    return () => {
+      window.removeEventListener('eventJoinStateChanged', handleStateChange)
+    }
+  }, [event.id])
 
   const full = count >= event.capacity
 
   async function onJoin() {
-    // Prevent multiple simultaneous operations
     if (busyJoin || busyLeave) {
       return
     }
 
     setErr("")
     setBusyJoin(true)
+    isUpdatingRef.current = true
     const previousJoined = joined
 
     try {
@@ -174,41 +200,52 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
 
       if (result?.success) {
         setJoined(true)
-        // Use server-provided count for accuracy
         const updatedEvent = {
           ...event,
           is_joined: true,
           attendee_count: result.attendee_count ?? event.attendee_count
         }
-        // Invalidate cache to ensure fresh data when navigating
         import("../../utils/pageCache").then(({ invalidateCache }) => {
           invalidateCache(`event:${event.id}`)
           invalidateCache("events")
           invalidateCache("home:events")
         })
+        
+        const eventUpdate = {
+          eventId: event.id,
+          isJoined: true,
+          attendeeCount: result.attendee_count ?? event.attendee_count,
+          timestamp: Date.now()
+        }
+        sessionStorage.setItem(`event_join_state:${event.id}`, JSON.stringify(eventUpdate))
+        window.dispatchEvent(new CustomEvent('eventJoinStateChanged', { detail: eventUpdate }))
+        
         onChanged?.(updatedEvent)
       } else {
         setErr("Unexpected response from server")
         setTimeout(() => setErr(""), 5000)
       }
     } catch (e) {
-      setJoined(previousJoined) // Revert on error
+      setJoined(previousJoined)
       const errorMsg = e?.response?.data?.detail || e?.message || "Join failed"
       setErr(errorMsg)
       setTimeout(() => setErr(""), 5000)
     } finally {
       setBusyJoin(false)
+      setTimeout(() => {
+        isUpdatingRef.current = false
+      }, 100)
     }
   }
 
   async function onLeave() {
-    // Prevent multiple simultaneous operations
     if (busyJoin || busyLeave) {
       return
     }
 
     setErr("")
     setBusyLeave(true)
+    isUpdatingRef.current = true
     const previousJoined = joined
 
     try {
@@ -216,27 +253,38 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
 
       if (result?.success) {
         setJoined(false)
-        // Use server-provided count for accuracy
         const updatedEvent = {
           ...event,
           is_joined: false,
           attendee_count: result.attendee_count ?? event.attendee_count
         }
-        // Invalidate cache to ensure fresh data when navigating
         import("../../utils/pageCache").then(({ invalidateCache }) => {
           invalidateCache(`event:${event.id}`)
           invalidateCache("events")
           invalidateCache("home:events")
         })
+        
+        const eventUpdate = {
+          eventId: event.id,
+          isJoined: false,
+          attendeeCount: result.attendee_count ?? event.attendee_count,
+          timestamp: Date.now()
+        }
+        sessionStorage.setItem(`event_join_state:${event.id}`, JSON.stringify(eventUpdate))
+        window.dispatchEvent(new CustomEvent('eventJoinStateChanged', { detail: eventUpdate }))
+        
         onChanged?.(updatedEvent)
       }
     } catch (e) {
-      setJoined(previousJoined) // Revert on error
+      setJoined(previousJoined)
       const errorMsg = e?.response?.data?.detail || "Leave failed"
       setErr(errorMsg)
       setTimeout(() => setErr(""), 5000)
     } finally {
       setBusyLeave(false)
+      setTimeout(() => {
+        isUpdatingRef.current = false
+      }, 100)
     }
   }
 
@@ -296,11 +344,9 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
 
   const parseUTCDate = (dateString) => {
     if (!dateString) return null
-    // If already has timezone info, use as-is
     if (dateString.includes('Z') || dateString.includes('+') || dateString.match(/-\d{2}:\d{2}$/)) {
       return new Date(dateString)
     }
-    // Otherwise, treat as UTC by appending 'Z'
     return new Date(dateString + 'Z')
   }
 
@@ -313,18 +359,13 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
       return ''
     }
 
-    // If event already ended → treat as past
     if (end < now) return start.toLocaleDateString()
 
-    // If it starts today AND hasn't ended yet
     if (start.toDateString() === now.toDateString()) return "Today"
 
-    // If it starts tomorrow
     const tomorrow = new Date()
     tomorrow.setDate(tomorrow.getDate() + 1)
     if (start.toDateString() === tomorrow.toDateString()) return "Tomorrow"
-
-    // If within 7 days
     const diffDays = Math.ceil((start - now) / (1000 * 60 * 60 * 24))
     if (diffDays < 7) return `In ${diffDays} days`
 
@@ -354,7 +395,6 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
         className="group block bg-white rounded-xl border border-gray-200/80 overflow-hidden premium-hover hover:border-gray-300 hover:shadow-lg transition-all duration-300"
       >
         <div className="flex">
-          {/* Compact Image/Thumbnail */}
           <div className="w-24 h-24 flex-shrink-0 relative overflow-hidden bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
             {event.cover_image_url ? (
               <img
@@ -375,7 +415,6 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
                 </span>
               </div>
             )}
-            {/* Status Badge - show on top right */}
             {isOngoing && (
               <div className="absolute top-1 right-1">
                 <span className="px-1.5 py-0.5 bg-green-500/90 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
@@ -397,7 +436,6 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
                 </span>
               </div>
             )}
-            {/* Full badge - show on top left if not owner */}
             {full && !mine && (
               <div className="absolute top-1 left-1">
                 <span className="px-1.5 py-0.5 bg-red-500/90 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
@@ -407,7 +445,6 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
             )}
           </div>
 
-          {/* Content Section */}
           <div className="flex-1 p-4 flex flex-col justify-between min-w-0">
             <div className="flex-1 min-w-0">
               <h3 className="text-base font-bold text-gray-900 mb-2 truncate group-hover:text-indigo-600 transition-colors">
@@ -437,7 +474,6 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
               )}
             </div>
 
-            {/* Bottom Actions Bar */}
             <div className="flex items-center justify-between pt-2 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center gap-1 text-xs text-gray-500">
                 <FontAwesomeIcon icon={faUsers} className="w-3 h-3" />
@@ -445,31 +481,52 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
               </div>
 
               <div className="flex items-center gap-1.5">
-                {/* Only show leave button if event hasn't started */}
-                {!mine && !hasStarted && isAuthenticated && joined && (
+                {!mine && !hasStarted && isAuthenticated && (
                   <button
                     onClick={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
-                      if (!busyLeave) onLeave()
+                      if (joined) {
+                        onLeave()
+                      } else {
+                        onJoin()
+                      }
                     }}
-                    className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-md text-xs font-semibold"
-                  >
-                    Leave
-                  </button>
-                )}
-                {/* Only show join button if event hasn't started */}
-                {!mine && !hasStarted && isAuthenticated && !joined && !full && (
-
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      if (!busyJoin) onJoin()
+                    disabled={(busyLeave || busyJoin) || (!joined && full)}
+                    className={`py-1.5 rounded-md text-xs font-semibold focus:outline-none focus:ring-0 ${
+                      joined
+                        ? 'bg-gray-100 text-gray-600'
+                        : 'bg-indigo-500 text-white'
+                    }`}
+                    style={{
+                      pointerEvents: (busyLeave || busyJoin) ? 'none' : 'auto',
+                      cursor: (busyLeave || busyJoin) ? 'default' : 'pointer',
+                      width: '75px',
+                      paddingLeft: '0.75rem',
+                      paddingRight: '0.75rem',
+                      transition: 'background-color 1s cubic-bezier(0.4, 0, 0.2, 1), color 1s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.6s ease-in-out'
                     }}
-                    className="px-3 py-1.5 bg-indigo-500 text-white rounded-md text-xs font-semibold"
+                    title=""
                   >
-                    Join
+                    <span className="inline-flex items-center justify-center w-full relative" style={{ minHeight: '16px' }}>
+                      <span 
+                        className={`absolute inset-0 inline-flex items-center justify-center transition-opacity duration-600 ease-in-out ${
+                          (busyLeave || busyJoin) ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                        }`}
+                      >
+                        <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1.5" />
+                        <span className="whitespace-nowrap">
+                          {busyLeave ? "Leaving..." : "Joining..."}
+                        </span>
+                      </span>
+                      <span 
+                        className={`inline-flex items-center justify-center transition-opacity duration-600 ease-in-out ${
+                          (busyLeave || busyJoin) ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                        }`}
+                      >
+                        {joined ? "Leave" : "Join"}
+                      </span>
+                    </span>
                   </button>
                 )}
                 {!mine && !hasStarted && !isAuthenticated && !full && (

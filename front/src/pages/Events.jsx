@@ -1,9 +1,8 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react"
-import { useSearchParams, useLocation } from "react-router-dom"
-import { Link } from "react-router-dom"
+import { useSearchParams, useLocation, Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
-  faCalendarAlt, faArrowsRotate, faSearch, faChevronDown, faChevronUp
+  faCalendarAlt, faSearch, faChevronDown, faChevronUp
 } from "@fortawesome/free-solid-svg-icons"
 import EventList from "../features/events/EventList"
 import EditEventForm from "../features/events/EditEventForm"
@@ -15,9 +14,8 @@ import { getCachedPage, setCachedPage } from "../utils/pageCache"
 import { PageSkeleton } from "../components/SkeletonLoader"
 import { startPageLoad, endPageLoad } from "../utils/usePageLoader"
 
-
 export default function Events() {
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { isAuthenticated } = useAuth()
   const [params] = useSearchParams()
   const location = useLocation()
 
@@ -39,15 +37,12 @@ export default function Events() {
   const [loadingMyEventsCount, setLoadingMyEventsCount] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [showMyEvents, setShowMyEvents] = useState(false)
-  const [timeFilter, setTimeFilter] = useState("all") // "all", "upcoming", "today", "week"
-  const [examFilter, setExamFilter] = useState("all") // "all" or specific exam
+  const [timeFilter, setTimeFilter] = useState("all")
+  const [examFilter, setExamFilter] = useState("all")
   const [editingEvent, setEditingEvent] = useState(null)
 
-  // --- Race condition prevention: request control ---
   const abortControllerRef = useRef(null)
   const requestSequenceRef = useRef(0)
-
-  // Cleanup on unmount: abort any in-flight request
   useEffect(() => {
     return () => {
       if (abortControllerRef.current) {
@@ -59,7 +54,6 @@ export default function Events() {
   const statusLabel = statusView === "past" ? "Past" : statusView === "ongoing" ? "Ongoing" : "Upcoming"
 
   async function fetchEventsWithGuard(cacheParams, nextStatus) {
-    // Cancel previous request, if any
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
     }
@@ -68,66 +62,46 @@ export default function Events() {
     abortControllerRef.current = controller
 
     const seq = ++requestSequenceRef.current
-    // Never show loading state - always fetch in background for smooth UX
-    // The UI already shows cached data or empty state immediately
 
     try {
       const data = await listEvents(cacheParams, { signal: controller.signal })
 
-      // If this request was aborted, or another request has started since, ignore
       if (controller.signal.aborted) return
       if (seq !== requestSequenceRef.current) return
 
       const safeData = Array.isArray(data) ? data : []
-      
-      // Always update with fresh data (don't compare - let React handle optimization)
-      // The comparison was causing issues where updates were prevented when they should happen
       setEvents(safeData)
-
-      // Update cache
       setCachedPage("events", safeData, cacheParams)
       setCachedEvents(safeData, cacheParams)
     } catch (err) {
       if (err.name === "AbortError" || err.name === "CanceledError" || axios.isCancel(err)) {
-        // Silent: this is an expected case when switching tabs quickly
         return
       }
       console.error("Failed to load events:", err)
-      // Don't clear events on error - keep what we have for smooth UX
     }
   }
 
   function handleStatusChange(next) {
     if (next === statusView) return
     
-    // Mark that we're handling status change to prevent duplicate loads
     statusChangeHandledRef.current = true
     
-    // 1) Build cache params FIRST (before any state changes)
     const q = params.get('q') || undefined
     const location = params.get('location') || undefined
     const exam = params.get('exam') || undefined
     const cacheParams = { q, location, exam, status: next }
     
-    // 2) Get cached data BEFORE changing status (prevents useEffect interference)
     const cached = getCachedPage("events", cacheParams)
     const cachedEvents = getCachedEvents(cacheParams) ?? cached?.data
     
-    // 3) Show cached data IMMEDIATELY and synchronously (before status change)
-    // This ensures UI updates before useEffect can interfere
     if (cachedEvents !== null && cachedEvents !== undefined) {
       setEvents(cachedEvents)
       setLoading(false)
     } else {
-      // No cache: keep current events visible (don't clear) until new data arrives
-      // This prevents the "shocked" blank state
       setLoading(false)
     }
     
-    // 4) NOW change the status view (after events are already set)
     setStatusView(next)
-    
-    // 5) Fetch fresh data in background (smooth, non-blocking)
     fetchEventsWithGuard(cacheParams, next)
   }
 
@@ -135,38 +109,64 @@ export default function Events() {
     setTimeFilter("all")
   }, [statusView])
 
+  useEffect(() => {
+    const handleEventJoinStateChange = (e) => {
+      const eventUpdate = e.detail
+      if (eventUpdate?.eventId) {
+        setEvents(prevEvents => {
+          const updatedEvents = prevEvents.map(event => {
+            if (event.id === eventUpdate.eventId) {
+              return {
+                ...event,
+                is_joined: eventUpdate.isJoined,
+                attendee_count: eventUpdate.attendeeCount
+              }
+            }
+            return event
+          })
+          
+          const q = params.get('q') || undefined
+          const location = params.get('location') || undefined
+          const exam = params.get('exam') || undefined
+          setCachedEvents(updatedEvents, { q, location, exam, status: statusView })
+          
+          return updatedEvents
+        })
+      }
+    }
+
+    window.addEventListener('eventJoinStateChanged', handleEventJoinStateChange)
+    return () => {
+      window.removeEventListener('eventJoinStateChanged', handleEventJoinStateChange)
+    }
+  }, [params, statusView])
+
   const load = useCallback(async (showLoading = true, force = false) => {
-    // Check page cache first (skip if force = true)
     const { getCachedPage, setCachedPage } = await import("../utils/pageCache")
     const q = params.get('q') || undefined
     const location = params.get('location') || undefined
     const exam = params.get('exam') || undefined
     const cacheParams = { q, location, exam, status: statusView }
 
-    // Skip cache when force = true (for polling)
     if (!force) {
       const cached = getCachedPage("events", cacheParams)
 
       if (cached && cached.data && !showLoading) {
-        // Background refresh - use cached data
-        // Only update if actually different
         setEvents(prevEvents => {
           if (prevEvents.length === cached.data.length &&
               prevEvents.every((e, i) => e.id === cached.data[i]?.id)) {
-            return prevEvents // Same data, no update
+            return prevEvents
           }
           return cached.data
         })
-        // Refresh in background if expired
         if (cached.isExpired) {
           setTimeout(async () => {
             try {
               const data = await listEvents(cacheParams)
               setEvents(prevEvents => {
-                // Only update if different
                 if (prevEvents.length === data.length &&
                     prevEvents.every((e, i) => e.id === data[i]?.id)) {
-                  return prevEvents // Same data, no update
+                  return prevEvents
                 }
                 return data
               })
@@ -181,17 +181,15 @@ export default function Events() {
       }
     }
 
-    // No cache or initial load or forced refresh
     if (showLoading) {
       setLoading(true)
     }
     try {
       const data = await listEvents(cacheParams)
       setEvents(prevEvents => {
-        // Only update if different to prevent flicker
         if (prevEvents.length === data.length &&
             prevEvents.every((e, i) => e.id === data[i]?.id)) {
-          return prevEvents // Same data, no update
+          return prevEvents
         }
         return data
       })
@@ -231,18 +229,7 @@ export default function Events() {
     setLoadingMyEvents(true)
     try {
       const data = await getMyEvents({ status: statusView })
-      console.log("My Events API response:", data)
-      if (data && data.length > 0) {
-        console.log("First event sample:", {
-          id: data[0].id,
-          title: data[0].title,
-          attendee_count: data[0].attendee_count,
-          is_joined: data[0].is_joined,
-          created_by: data[0].created_by
-        })
-      }
       setMyEvents(data || [])
-      // Update count when full list loads
       setMyEventsCount(data?.length || 0)
     } catch (error) {
       console.error("Failed to load my events:", error)
@@ -264,11 +251,9 @@ export default function Events() {
     }
   }, [isAuthenticated, showMyEvents, loadMyEvents])
 
-  // Track if we've already handled a status change to prevent duplicate loads
   const statusChangeHandledRef = useRef(false)
 
   useEffect(() => {
-    // Skip if status change was already handled (prevents interference)
     if (statusChangeHandledRef.current) {
       statusChangeHandledRef.current = false
       return
@@ -277,26 +262,53 @@ export default function Events() {
     const pageId = 'events'
     const cached = getCachedEvents(currentParams)
 
+    const cacheInvalidatedTime = sessionStorage.getItem("events_cache_invalidated")
+    const shouldForceRefresh = cacheInvalidatedTime && 
+      (Date.now() - parseInt(cacheInvalidatedTime)) < 5000
+    if (shouldForceRefresh) {
+      sessionStorage.removeItem("events_cache_invalidated")
+      
+      Object.keys(sessionStorage).forEach(key => {
+        if (key.startsWith('event_join_state:')) {
+          try {
+            const stored = sessionStorage.getItem(key)
+            if (stored) {
+              const eventUpdate = JSON.parse(stored)
+              if (Date.now() - eventUpdate.timestamp < 60000) {
+                setEvents(prevEvents => prevEvents.map(e => {
+                  if (e.id === eventUpdate.eventId) {
+                    return {
+                      ...e,
+                      is_joined: eventUpdate.isJoined,
+                      attendee_count: eventUpdate.attendeeCount
+                    }
+                  }
+                  return e
+                }))
+              }
+            }
+          } catch (e) {
+            console.error("Failed to process stored join state:", e)
+          }
+        }
+      })
+    }
+
     if (location.state?.newEvent) {
       const newEvent = location.state.newEvent
 
-      // Invalidate cache to force fresh data
       import("../utils/pageCache").then(({ invalidateCache }) => {
         invalidateCache("events")
         invalidateCache("home:events")
       })
 
-      // Immediately refresh the list to get enriched data (attendee_count, is_joined)
-      // This ensures the new event appears with all the data it needs
       setLoading(true)
       load(true).then(() => {
-        // After refresh, the new event will be in the list with all enriched data
         setLoading(false)
       }).catch(() => {
         setLoading(false)
       })
 
-      // Refresh my events if the section is open
       if (showMyEvents) {
         loadMyEvents()
       }
@@ -305,41 +317,34 @@ export default function Events() {
       }
       window.history.replaceState({}, document.title)
       endPageLoad(pageId)
-    } else if (cached !== null) {
-      // Show cached data immediately (even if empty) for smooth UX
-      // Only update if different to prevent unnecessary re-renders
+    } else if (cached !== null && !shouldForceRefresh) {
       setEvents(prev => {
         if (prev.length === cached.length && 
             prev.every((e, i) => e.id === cached[i]?.id)) {
-          return prev // Same data, no update needed
+          return prev
         }
         return cached
       })
       setLoading(false)
       endPageLoad(pageId)
-      // Background refresh for non-past events (quiet, non-blocking)
       if (statusView !== "past") {
         setTimeout(() => load(false), 100)
       }
-      
+    } else if (shouldForceRefresh) {
+      load(false, true).catch(() => {})
+      endPageLoad(pageId)
     } else {
-      // No cache: keep current events visible (don't clear) until new data arrives
-      // This prevents the "shocked" blank state
       setLoading(false)
       endPageLoad(pageId)
       
-      // Fetch in background
       const q = params.get('q') || undefined
       const location = params.get('location') || undefined
       const exam = params.get('exam') || undefined
       const cacheParams = { q, location, exam, status: statusView }
       fetchEventsWithGuard(cacheParams, statusView)
       
-      // Pre-cache other status views in background for instant switching
-      // Pre-cache past events earlier since they're slower to load
       const otherStatuses = ["ongoing", "past"].filter(s => s !== statusView)
-      otherStatuses.forEach((status, index) => {
-        // Pre-cache past events sooner (200ms) since they take longer
+      otherStatuses.forEach((status) => {
         const delay = status === "past" ? 200 : 500
         setTimeout(async () => {
           try {
@@ -349,7 +354,6 @@ export default function Events() {
               setCachedEvents(data, { q, location, exam, status })
             }
           } catch (error) {
-            // Silently fail - this is just pre-caching
           }
         }, delay)
       })
@@ -380,27 +384,17 @@ export default function Events() {
     };
   }, [statusView, events.length, load])
 
-
-
-  // Helper to parse UTC datetime strings correctly
-  // Backend sends UTC times, so if no timezone indicator, assume UTC
   const parseUTCDate = (dateString) => {
     if (!dateString) return null
-    // If already has timezone info, use as-is
     if (dateString.includes('Z') || dateString.includes('+') || dateString.match(/-\d{2}:\d{2}$/)) {
       return new Date(dateString)
     }
-    // Otherwise, treat as UTC by appending 'Z'
     return new Date(dateString + 'Z')
   }
 
   const filteredEvents = useMemo(() => {
-    // Backend already filters by status, so we can trust the events array
-    // Only apply client-side filters (search, time filter, exam filter)
     let filtered = events
     const now = new Date()
-
-    // Only apply time filter for upcoming events
     if (statusView === "upcoming" && timeFilter !== "all") {
       if (timeFilter === "today") {
         const todayStart = new Date(now)
@@ -443,20 +437,6 @@ export default function Events() {
 
     return filtered
   }, [events, searchQuery, timeFilter, examFilter, statusView])
-
-
-
-  const trendingEvents = useMemo(() => {
-    if (statusView !== "upcoming") return []
-    const now = new Date()
-    return events
-      .filter(event => {
-        const start = parseUTCDate(event.starts_at)
-        return start && start > now
-      })
-      .sort((a, b) => (b.attendees || 0) - (a.attendees || 0))
-      .slice(0, 3)
-  }, [events, statusView])
 
   function onChanged(updated) {
     if (!updated) {
@@ -536,7 +516,7 @@ export default function Events() {
   }
 
   return (
-    <div className="min-h-screen tap-safe premium-scrollbar route-transition bg-gray-50">
+    <div className="min-h-screen tap-safe premium-scrollbar route-transition bg-gray-50 relative">
       <div className="nav-spacer" />
 
       <section className="container-page pt-4 pb-6">
@@ -731,7 +711,6 @@ export default function Events() {
             </div>
 
             {loading && events.length === 0 ? (
-              // Only show skeleton on initial page load, not when switching tabs
               <PageSkeleton />
             ) : filteredEvents.length > 0 ? (
               <EventList events={filteredEvents} onChanged={onChanged} onDelete={handleDelete} onEdit={setEditingEvent} />
