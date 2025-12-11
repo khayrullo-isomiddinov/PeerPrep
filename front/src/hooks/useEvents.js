@@ -12,15 +12,18 @@ export const eventKeys = {
   myEventsCount: (params) => [...eventKeys.all, 'my-events-count', params],
 }
 
-// Events list query - cached for 60s
 export function useEvents(params = {}, options = {}) {
   return useQuery({
     queryKey: eventKeys.list(params),
     queryFn: () => listEvents(params),
-    staleTime: 60 * 1000, // 60 seconds
+    staleTime: 1000 * 60 * 5,
+    cacheTime: 1000 * 60 * 10,
+    refetchOnWindowFocus: false,
+
     ...options,
   })
 }
+
 
 // Single event query - cached for 30s
 export function useEvent(id, options = {}) {

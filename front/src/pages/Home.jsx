@@ -63,49 +63,63 @@ export default function Home() {
   }
 
   useEffect(() => {
-    async function detectCity() {
-      try {
-        setDetectingCity(true)
+  const cachedCity = localStorage.getItem("userCity")
 
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            async (position) => {
-              try {
-                const response = await fetch(
-                  `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${position.coords.latitude}&longitude=${position.coords.longitude}&localityLanguage=en`
-                )
-                const data = await response.json()
-                setUserCity(data.city || data.locality || "NYC")
-              } catch {
-                detectCityByIP()
-              } finally {
-                setDetectingCity(false)
-              }
-            },
-            detectCityByIP,
-            { timeout: 5000 }
-          )
-        } else {
-          detectCityByIP()
-        }
-      } catch {
-        setDetectingCity(false)
+  if (cachedCity) {
+    setUserCity(cachedCity)
+    setDetectingCity(false)
+    return
+  }
+
+  async function detectCity() {
+    try {
+      setDetectingCity(true)
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            try {
+              const response = await fetch(
+                `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${position.coords.latitude}&longitude=${position.coords.longitude}&localityLanguage=en`
+              )
+              const data = await response.json()
+
+              const city = data.city || data.locality || "NYC"
+              setUserCity(city)
+              localStorage.setItem("userCity", city) // ✅ CACHE
+            } catch {
+              detectCityByIP()
+            } finally {
+              setDetectingCity(false)
+            }
+          },
+          detectCityByIP,
+          { timeout: 5000 }
+        )
+      } else {
+        detectCityByIP()
       }
+    } catch {
+      setDetectingCity(false)
     }
+  }
 
-    async function detectCityByIP() {
-      try {
-        const response = await fetch("https://ipapi.co/json/")
-        const data = await response.json()
-        setUserCity(data.city || data.region || "NYC")
-      } catch {}
-      finally {
-        setDetectingCity(false)
-      }
+  async function detectCityByIP() {
+    try {
+      const response = await fetch("https://ipapi.co/json/")
+      const data = await response.json()
+
+      const city = data.city || data.region || "NYC"
+      setUserCity(city)
+      localStorage.setItem("userCity", city) // ✅ CACHE
+    } finally {
+      setDetectingCity(false)
     }
+  }
 
-    detectCity()
-  }, [])
+  detectCity()
+}, [])
+
 
   // Use React Query for events - cached automatically
   const { data: allEvents = [], isLoading: loadingEvents } = useEvents({ limit: 100 })
