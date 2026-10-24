@@ -13,6 +13,7 @@ from app.api.version_one import events as events_router
 from app.api.version_one import event_attendees as event_attendees_router
 from app.api.version_one import event_messages as event_messages_router
 from app.api.version_one import event_ws as event_ws_router
+from app.api.version_one import whiteboard as whiteboard_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,4 +45,5 @@ app.include_router(events_router.router, prefix=settings.API_PREFIX)
 app.include_router(event_attendees_router.router, prefix=settings.API_PREFIX)
 app.include_router(event_messages_router.router, prefix=settings.API_PREFIX)
 app.include_router(event_ws_router.router, prefix=settings.API_PREFIX)
+app.include_router(whiteboard_router.router, prefix=settings.API_PREFIX)
 

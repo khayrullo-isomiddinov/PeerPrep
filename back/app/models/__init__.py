@@ -3,6 +3,7 @@ from .event_attendee import EventAttendee
 from .event_message import EventMessage
 from .message_read import MessageRead
 from .user import User
+from .whiteboard_element import WhiteboardElement
 
 __all__ = [
     "Event",
@@ -11,4 +12,5 @@ __all__ = [
     "EventMessage",
     "MessageRead",
     "User",
+    "WhiteboardElement",
 ]
