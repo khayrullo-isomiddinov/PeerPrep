@@ -1,0 +1,36 @@
+# Render Blueprint: defines the backend API.
+# Values marked "sync: false" are secrets/URLs you enter in the Render dashboard when applying it.
+services:
+  - type: web
+    name: peerprep-api
+    runtime: python
+    plan: free
+    rootDir: back
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.1
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: BACKEND_BASE_URL
+        sync: false
+      - key: FRONTEND_BASE_URL
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+
+# The frontend is hosted on Vercel (see front/vercel.json)
