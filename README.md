@@ -11,7 +11,7 @@ Optional (for emails): a test SMTP account (e.g. Gmail App Password, Mailtrap)
 
 ### 2) Clone the repo
 ```bash
-git clone https://github.com/<your-username>/PeerPrep.git
+git clone https://github.com/khayrullo-isomiddinov/PeerPrep.git
 cd PeerPrep
 ```
 
