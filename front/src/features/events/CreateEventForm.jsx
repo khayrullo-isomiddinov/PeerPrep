@@ -6,7 +6,7 @@ import {
   faChevronLeft, faCalendarAlt, faClock, faUsers, faGraduationCap,
   faBook, faTrash, faUpload, faCheck, faWandMagicSparkles, faTimes
 } from "@fortawesome/free-solid-svg-icons"
-import { createEvent, refineEventText, generateCoverImage } from "../../utils/api"
+import { createEvent, refineEventText, generateCoverImage, getErrorMessage } from "../../utils/api"
 
 const STEPS = [
   { id: 'cover', title: 'Upload cover', icon: faImage, section: 'EVENT INFORMATION' },
@@ -185,7 +185,7 @@ export default function CreateEventForm({ onCreated }) {
         setError("Your session has expired. Please log in again.")
         navigate("/login")
       } else {
-        setError(e?.response?.data?.detail || "Failed to refine title. Please try again.")
+        setError(getErrorMessage(e, "Failed to refine title. Please try again."))
       }
       console.error("Refinement error:", e)
     } finally {
@@ -216,7 +216,7 @@ export default function CreateEventForm({ onCreated }) {
         setError("Your session has expired. Please log in again.")
         navigate("/login")
       } else {
-        setError(e?.response?.data?.detail || "Failed to refine description. Please try again.")
+        setError(getErrorMessage(e, "Failed to refine description. Please try again."))
       }
       console.error("Refinement error:", e)
     } finally {
@@ -304,7 +304,7 @@ export default function CreateEventForm({ onCreated }) {
     } catch (e) {
       setLoading(false)
       console.error('Event creation failed:', e)
-      const errorMessage = e?.response?.data?.detail || e?.message || "Failed to create event"
+      const errorMessage = getErrorMessage(e, "Failed to create event")
       setError(errorMessage)
       if (!e?.response && e?.message?.includes('Network')) {
         setError("Network error. Please check if the event was created and refresh the page.")
@@ -555,7 +555,7 @@ function UploadCoverStep({ formData, updateFormData, fieldErrors }) {
       updateFormData({ coverImage: file })
     } catch (e) {
       console.error("Image generation error:", e)
-      setGenerateError(e?.response?.data?.detail || "Failed to generate image. Please try again.")
+      setGenerateError(getErrorMessage(e, "Failed to generate image. Please try again."))
     } finally {
       setGenerating(false)
     }

@@ -2,7 +2,7 @@ import smtplib
 from email.mime.text import MIMEText
 from app.core.config import settings
 
-async def send_email(to: str, subject: str, html: str):
+def send_email(to: str, subject: str, html: str):
     
     if not settings.EMAIL_USER or not settings.EMAIL_PASS:
         raise ValueError(

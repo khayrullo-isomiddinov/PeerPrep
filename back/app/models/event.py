@@ -1,5 +1,5 @@
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlmodel import SQLModel, Field
 from pydantic import field_validator
 
@@ -19,7 +19,7 @@ class EventBase(SQLModel):
                 return v + "Z"
             return v
         if isinstance(v, datetime) and v.tzinfo is None:
-            return v.replace(tzinfo=datetime.timezone.utc)
+            return v.replace(tzinfo=timezone.utc)
         return v
 
 

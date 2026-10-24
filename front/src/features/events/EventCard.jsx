@@ -8,7 +8,7 @@ import {
   faGraduationCap, faBook, faMicroscope, faCode,
   faMusic, faPalette, faDumbbell, faHeartbeat
 } from "@fortawesome/free-solid-svg-icons"
-import { deleteEvent, joinEvent, leaveEvent, getEvent } from "../../utils/api"
+import { deleteEvent, joinEvent, leaveEvent, getEvent, getErrorMessage } from "../../utils/api"
 import { useAuth } from "../auth/AuthContext"
 import { usePrefetch } from "../../utils/usePrefetch"
 
@@ -224,7 +224,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
       }
     } catch (e) {
       setJoined(previousJoined)
-      const errorMsg = e?.response?.data?.detail || e?.message || "Join failed"
+      const errorMsg = getErrorMessage(e, "Join failed")
       setErr(errorMsg)
       setTimeout(() => setErr(""), 5000)
     } finally {
@@ -274,7 +274,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
       }
     } catch (e) {
       setJoined(previousJoined)
-      const errorMsg = e?.response?.data?.detail || "Leave failed"
+      const errorMsg = getErrorMessage(e, "Leave failed")
       setErr(errorMsg)
       setTimeout(() => setErr(""), 5000)
     } finally {
@@ -306,7 +306,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
         })
       })
     } catch (e) {
-      setErr(e?.response?.data?.detail || "Delete failed")
+      setErr(getErrorMessage(e, "Delete failed"))
       setBusyDelete(false)
     }
   }

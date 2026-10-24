@@ -1,11 +1,12 @@
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 
 export default function AuthLayout({ title, subtitle, children }) {
+  const navigate = useNavigate()
   return (
     <div className="auth-overlay">
       <div className="auth-bg" />
       <div className="auth-modal">
-        <button as="a" aria-label="Close" className="auth-close" onClick={() => (window.location.hash = "#/")}>×</button>
+        <button type="button" aria-label="Close" className="auth-close" onClick={() => navigate("/")}>×</button>
         <div className="text-center auth-header">
           <h2 className="auth-title">{title || "Welcome."}</h2>
           {subtitle ? <p className="auth-subtitle">{subtitle}</p> : null}

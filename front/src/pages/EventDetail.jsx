@@ -5,9 +5,9 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
   faArrowLeft, faUsers, faCalendar, faMapMarkerAlt, faClock,
   faUserPlus, faUserMinus, faFile, faDownload, faCheckCircle,
-  faFire, faStar, faTrophy, faInfoCircle, faComments, faPaperPlane, faTrash, faExclamationTriangle, faGraduationCap
+  faFire, faStar, faTrophy, faInfoCircle, faComments, faPaperPlane, faTrash, faExclamationTriangle, faGraduationCap, faChalkboard
 } from "@fortawesome/free-solid-svg-icons"
-import { setEventTypingStatus, markEventMessageRead, getUserProfile } from "../utils/api"
+import { setEventTypingStatus, markEventMessageRead, getUserProfile, getErrorMessage } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
 import { usePrefetch } from "../utils/usePrefetch"
 import { useEvent, useJoinEvent, useLeaveEvent } from "../hooks/useEvents"
@@ -487,7 +487,7 @@ export default function EventDetail() {
     } catch (error) {
       setJoined(wasJoined)
       console.error('Join/Leave failed:', error)
-      alert(error?.response?.data?.detail || "Failed to join/leave event")
+      alert(getErrorMessage(error, "Failed to join/leave event"))
     } finally {
       setIsLoading(false)
     }
@@ -546,7 +546,7 @@ export default function EventDetail() {
         }
       } catch (error) {
         console.error("Failed to send message:", error)
-        alert(error?.response?.data?.detail || "Failed to send message")
+        alert(getErrorMessage(error, "Failed to send message"))
       } finally {
         setSendingMessage(false)
       }
@@ -591,7 +591,7 @@ export default function EventDetail() {
       await deleteMessageMutation.mutateAsync({ eventId: id, messageId: messageToDelete })
     } catch (error) {
       console.error("Failed to delete message:", error)
-      const errorMessage = error?.response?.data?.detail || "Failed to delete message"
+      const errorMessage = getErrorMessage(error, "Failed to delete message")
       alert(errorMessage)
 
       if (error?.response?.status === 401) {
@@ -711,18 +711,22 @@ export default function EventDetail() {
     return null
   }
 
-  if (loading || !event) {
-    return null
-  }
+  const loadError = error || (eventError && !event
+    ? (eventError?.response?.status === 404
+      ? "This event doesn't exist or has been deleted."
+      : getErrorMessage(eventError, "We couldn't load this event."))
+    : "")
 
-  if (error) {
+  if (loadError) {
     return (
       <div className="min-h-screen tap-safe premium-scrollbar bg-gradient-to-br from-gray-50 via-slate-50 to-blue-50/30 route-transition">
         <div className="nav-spacer" />
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Event Not Found</h2>
-            <p className="text-gray-600 mb-6">{error || "The event you're looking for doesn't exist."}</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              {eventError?.response?.status === 404 ? "Event Not Found" : "Something Went Wrong"}
+            </h2>
+            <p className="text-gray-600 mb-6">{loadError}</p>
             <Link to="/events" className="btn-pink-pill">
               <FontAwesomeIcon icon={faArrowLeft} className="mr-2" />
               Back to Events
@@ -731,6 +735,10 @@ export default function EventDetail() {
         </div>
       </div>
     )
+  }
+
+  if (loading || !event) {
+    return null
   }
 
   const studyMaterials = parseStudyMaterials(event.study_materials)
@@ -1097,6 +1105,14 @@ export default function EventDetail() {
                         </div>
                       </div>
                     </div>
+                    <Link
+                      to={`/events/${id}/whiteboard`}
+                      className="touch-target inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 text-white text-sm font-semibold flex-shrink-0"
+                      title={isPast ? "View the group's whiteboard" : "Draw and plan together on a shared whiteboard"}
+                    >
+                      <FontAwesomeIcon icon={faChalkboard} />
+                      <span className="hidden sm:inline">Whiteboard</span>
+                    </Link>
                   </div>
                 </div>
 

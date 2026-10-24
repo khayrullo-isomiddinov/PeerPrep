@@ -1,14 +1,16 @@
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Header, Response
 from fastapi.responses import RedirectResponse
-from sqlmodel import Session, select, text
+from sqlmodel import Session, select, func
 from sqlalchemy import text as sql_text
 from app.core.db import get_session
 from app.models import User
 from app.core.security import hash_password, verify_password, create_access_token, decode_token
 from app.core.config import settings
-from app.schemas.auth import RegisterIn, LoginIn, ProfileUpdate
+from app.schemas.auth import RegisterIn, LoginIn, ResendVerificationIn, ProfileUpdate
 import secrets
 from app.services.email import send_email
+from app.services.cleanup import delete_user_data
 from typing import Optional
 from datetime import datetime
 
@@ -20,20 +22,69 @@ async def options_auth():
     """Handle CORS preflight for auth endpoints"""
     return {}
 
+
+def _find_user_by_email(session: Session, email: str) -> Optional[User]:
+    # Older accounts may have been stored with mixed-case emails
+    return session.exec(select(User).where(func.lower(User.email) == email.lower())).first()
+
+
+def _user_payload(user: User) -> dict:
+    return {
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "bio": user.bio,
+        "photo_url": user.photo_url,
+        "is_verified": user.is_verified,
+        "created_at": user.created_at.isoformat(),
+        "xp": user.xp or 0,
+    }
+
+
+async def _send_verification(user: User, token: str) -> dict:
+    """Email the verification link. If email isn't configured or sending fails, return the link
+    instead so local development still works."""
+    verify_url = f"{settings.BACKEND_BASE_URL}{settings.API_PREFIX}/auth/verify?token={token}"
+    html = f"<p>Verify your email:</p><p><a href='{verify_url}'>{verify_url}</a></p>"
+    try:
+        # smtplib is blocking, so keep it off the event loop
+        await asyncio.to_thread(send_email, to=user.email, subject="Verify your PeerPrep account", html=html)
+        return {"email_sent": True}
+    except Exception as e:
+        print(f"Verification email failed for {user.email}: {e}")
+        return {"email_sent": False, "verify_url": verify_url}
+
+
 @router.post("/register")
 async def register(data: RegisterIn, session: Session = Depends(get_session)):
-    existing = session.exec(select(User).where(User.email == data.email)).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
+    existing = _find_user_by_email(session, data.email)
+    if existing and existing.is_verified:
+        raise HTTPException(status_code=400, detail="An account with this email already exists. Try signing in instead.")
+
     token = secrets.token_urlsafe(32)
-    
+    if existing:
+        # Registered before but never verified: send a fresh link. The original password is kept,
+        # so nobody can take over a pending account by registering it again.
+        existing.verification_token = token
+        session.add(existing)
+        session.commit()
+        result = await _send_verification(existing, token)
+        message = (
+            "This email is already registered but not verified yet. We've sent you a new verification link."
+            if result["email_sent"] else
+            "This email is already registered but not verified yet. Use the link below to verify it."
+        )
+        return {"message": message, **result}
+
     from app.core.db import engine
-    with engine.connect() as conn:
-        result = conn.execute(sql_text("PRAGMA table_info(user)"))
-        columns = [row[1] for row in result.fetchall()]
-        has_is_active = 'is_active' in columns
-    
-    if has_is_active:
+    columns = []
+    if engine.dialect.name == "sqlite":
+        # Only the old local SQLite database can have the legacy columns; PRAGMA is SQLite-only
+        with engine.connect() as conn:
+            columns = [row[1] for row in conn.execute(sql_text("PRAGMA table_info(user)")).fetchall()]
+
+    if "is_active" in columns:
+        # Legacy databases have extra NOT NULL columns the model doesn't know about
         with engine.begin() as conn:
             conn.execute(sql_text("""
                 INSERT INTO user (email, hashed_password, is_verified, verification_token, created_at, is_active, xp)
@@ -41,11 +92,11 @@ async def register(data: RegisterIn, session: Session = Depends(get_session)):
             """), {
                 "email": data.email,
                 "hashed_password": hash_password(data.password),
-                "is_verified": 0,  
+                "is_verified": 0,
                 "verification_token": token,
                 "created_at": datetime.utcnow()
             })
-        user = session.exec(select(User).where(User.email == data.email)).first()
+        user = _find_user_by_email(session, data.email)
     else:
         user = User(
             email=data.email,
@@ -56,44 +107,51 @@ async def register(data: RegisterIn, session: Session = Depends(get_session)):
         session.add(user)
         session.commit()
         session.refresh(user)
-    verify_url = f"{settings.BACKEND_BASE_URL}{settings.API_PREFIX}/auth/verify?token={token}"
-    html = f"<p>Verify your email:</p><p><a href='{verify_url}'>{verify_url}</a></p>"
-    try:
-        await send_email(to=user.email, subject="Verify your PeerPrep account", html=html)
-        return {"message": "Registration successful. Please check your email to verify your account."}
-    except Exception as e:
-        return {
-            "message": "Registration successful, but email could not be sent. Use this link to verify:",
-            "verify_url": verify_url,
-            "error": str(e)
-        }
+
+    result = await _send_verification(user, token)
+    message = (
+        "Account created! Check your email for a link to verify your account."
+        if result["email_sent"] else
+        "Account created! We couldn't send the verification email, so use the link below to verify your account."
+    )
+    return {"message": message, **result}
+
+
+@router.post("/resend-verification")
+async def resend_verification(data: ResendVerificationIn, session: Session = Depends(get_session)):
+    user = _find_user_by_email(session, data.email)
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found with this email.")
+    if user.is_verified:
+        return {"message": "This email is already verified. You can sign in.", "already_verified": True}
+
+    token = secrets.token_urlsafe(32)
+    user.verification_token = token
+    session.add(user)
+    session.commit()
+    result = await _send_verification(user, token)
+    message = (
+        "We've sent a new verification link to your email."
+        if result["email_sent"] else
+        "We couldn't send the verification email. Use the link below to verify your account."
+    )
+    return {"message": message, **result}
+
 
 @router.post("/login")
 def login(data: LoginIn, session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.email == data.email)).first()
+    user = _find_user_by_email(session, data.email)
     if not user or not verify_password(data.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(status_code=401, detail="Incorrect email or password.")
     if not user.is_verified:
-        raise HTTPException(status_code=403, detail="Email not verified")
+        raise HTTPException(status_code=403, detail="Please verify your email before signing in.")
     token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    return {
-        "access_token": token, 
-        "token_type": "bearer", 
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "bio": user.bio,
-            "photo_url": user.photo_url,
-            "is_verified": user.is_verified,
-            "created_at": user.created_at.isoformat(),
-            "xp": user.xp or 0,
-        }
-    }
+    return {"access_token": token, "token_type": "bearer", "user": _user_payload(user)}
+
 
 @router.get("/verify")
 def verify_email(token: str, session: Session = Depends(get_session)):
-    frontend_login = "http://localhost:5173/#/login"
+    frontend_login = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/login"
     user = session.exec(select(User).where(User.verification_token == token)).first()
     if not user:
         return RedirectResponse(url=f"{frontend_login}?verified=0", status_code=303)
@@ -138,17 +196,9 @@ def _get_optional_user_from_token(
 
 @router.get("/me")
 def me(response: Response, current_user: User = Depends(_get_user_from_token)):
-    response.headers["Cache-Control"] = "private, max-age=300"
-    return {
-        "id": current_user.id,
-        "email": current_user.email,
-        "name": current_user.name,
-        "bio": current_user.bio,
-        "photo_url": current_user.photo_url,
-        "is_verified": current_user.is_verified,
-        "created_at": current_user.created_at.isoformat(),
-        "xp": current_user.xp or 0,
-    }
+    # Never cache: a cached /me makes profile edits look unsaved after a reload
+    response.headers["Cache-Control"] = "no-store"
+    return _user_payload(current_user)
 
 @router.put("/profile")
 def update_profile(
@@ -166,16 +216,7 @@ def update_profile(
     session.add(current_user)
     session.commit()
     session.refresh(current_user)
-    
-    return {
-        "id": current_user.id,
-        "email": current_user.email,
-        "name": current_user.name,
-        "bio": current_user.bio,
-        "photo_url": current_user.photo_url,
-        "is_verified": current_user.is_verified,
-        "created_at": current_user.created_at.isoformat(),
-    }
+    return _user_payload(current_user)
 
 @router.get("/user/{user_id}")
 def get_user_profile(user_id: int, session: Session = Depends(get_session)):
@@ -207,6 +248,7 @@ def delete_account(
             detail="Admin account cannot be deleted"
         )
     
+    delete_user_data(session, current_user)
     session.delete(current_user)
     session.commit()
     

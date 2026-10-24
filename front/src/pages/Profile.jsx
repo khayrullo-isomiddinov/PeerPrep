@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from "react"
 import { useNavigate, useParams, Link } from "react-router-dom"
 import { useAuth } from "../features/auth/AuthContext"
-import { deleteAccount } from "../utils/api"
+import { deleteAccount, updateProfile, getErrorMessage } from "../utils/api"
 import { useUserProfile, useUserBadge, useUpdateProfile, useAwardPastEventsXP } from "../hooks/useProfile"
 import UserBadge from "../components/UserBadge"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
@@ -109,14 +109,15 @@ export default function Profile() {
 
       setForm(prev => ({
         ...prev,
-        name: updatedProfile.name || prev.name,
-        bio: updatedProfile.bio || prev.bio,
-        photoUrl: updatedProfile.photo_url || prev.photoUrl
+        name: updatedProfile.name ?? "",
+        bio: updatedProfile.bio ?? "",
+        photoUrl: updatedProfile.photo_url ?? ""
       }))
 
       setEditing(false)
     } catch (error) {
       console.error("Failed to save profile:", error)
+      alert(getErrorMessage(error, "Failed to save your profile. Please try again."))
     }
   }
 
@@ -160,6 +161,7 @@ export default function Profile() {
 
     reader.onload = async () => {
       const photoUrl = String(reader.result || "")
+      const previousPhotoUrl = form.photoUrl
 
       setForm(prev => ({ ...prev, photoUrl }))
 
@@ -182,9 +184,8 @@ export default function Profile() {
 
       } catch (error) {
         console.error("Failed to save photo:", error)
-        alert("Failed to save profile picture. Please try again.")
-        const updatedUser = { ...user, photo_url: photoUrl }
-        setUser(updatedUser)
+        setForm(prev => ({ ...prev, photoUrl: previousPhotoUrl }))
+        alert(getErrorMessage(error, "Failed to save profile picture. Please try again."))
       }
 
       setUploading(false)
@@ -218,7 +219,7 @@ export default function Profile() {
       navigate("/", { replace: true })
     } catch (error) {
       console.error("Failed to delete account:", error)
-      alert("Failed to delete account. Please try again.")
+      alert(getErrorMessage(error, "Failed to delete account. Please try again."))
     } finally {
       setDeleting(false)
     }

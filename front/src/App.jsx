@@ -1,5 +1,5 @@
-import { Routes, Route } from "react-router-dom"
-import { useEffect, Suspense, lazy } from "react"
+import { Routes, Route, useLocation } from "react-router-dom"
+import { Suspense, lazy } from "react"
 import Navbar from "./components/Navbar"
 import Footer from "./components/Footer"
 import { useAuth } from "./features/auth/AuthContext"
@@ -7,13 +7,17 @@ import { useAuth } from "./features/auth/AuthContext"
 const Home = lazy(() => import("./pages/Home"))
 const Events = lazy(() => import("./pages/Events"))
 const EventDetail = lazy(() => import("./pages/EventDetail"))
+const Whiteboard = lazy(() => import("./pages/Whiteboard"))
 const CreateEvent = lazy(() => import("./pages/CreateEvent"))
 const Profile = lazy(() => import("./pages/Profile"))
 const RegisterForm = lazy(() => import("./features/auth/RegisterForm"))
 const LoginForm = lazy(() => import("./features/auth/LoginForm"))
+const NotFound = lazy(() => import("./pages/NotFound"))
 
 export default function App() {
   const { isLoading } = useAuth()
+  const { pathname } = useLocation()
+  const isFullScreen = pathname.endsWith("/whiteboard")
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50">
@@ -34,15 +38,17 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/events" element={<Events />} />
             <Route path="/events/:id" element={<EventDetail />} />
+            <Route path="/events/:id/whiteboard" element={<Whiteboard />} />
             <Route path="/events/create" element={<CreateEvent />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/profile/:userId" element={<Profile />} />
             <Route path="/register" element={<RegisterForm />} />
             <Route path="/login" element={<LoginForm />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </main>
-      <Footer />
+      {!isFullScreen && <Footer />}
     </div>
   )
 }

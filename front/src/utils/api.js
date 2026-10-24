@@ -1,6 +1,7 @@
 import axios from "axios"
 
-const base = "http://localhost:8000/api"
+// Set VITE_API_BASE_URL at build time (e.g. https://peerprep-api.onrender.com); defaults to the local backend
+const base = `${(import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "")}/api`
 
 export const api = axios.create({ baseURL: base })
 
@@ -41,24 +42,55 @@ api.interceptors.request.use(
   }
 )
 
+// Fired when a signed-in request comes back 401 (expired or revoked token); AuthContext signs the user out
+export const SESSION_EXPIRED_EVENT = "auth:session-expired"
+// sessionStorage key for a one-time notice shown on the login page (e.g. after the session expired)
+export const AUTH_NOTICE_KEY = "auth_notice"
+
 api.interceptors.response.use(
   r => r,
   err => {
-    if (err?.response?.status === 401) {
-      const token = localStorage.getItem("access_token")
-      if (token) {
-      }
+    const isAuthCall = /auth\/(login|register|resend-verification)/.test(err?.config?.url || "")
+    if (err?.response?.status === 401 && !isAuthCall && localStorage.getItem("access_token")) {
+      window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT))
     }
     return Promise.reject(err)
   }
 )
 
+// Turns any API error into a sentence that's safe to show to the user.
+// FastAPI returns `detail` as a string for HTTPExceptions but as a list of objects for validation errors.
+export function getErrorMessage(err, fallback = "Something went wrong. Please try again.") {
+  if (!err?.response) {
+    if (err?.code === "ERR_CANCELED") return fallback
+    return "Can't reach the server. Check that the backend is running and try again."
+  }
+  const { status, data } = err.response
+  const detail = data?.detail
+  if (typeof detail === "string" && detail.trim()) return detail
+  if (Array.isArray(detail) && detail.length > 0) {
+    return detail
+      .map(d => (d?.msg || "").replace(/^Value error, /, ""))
+      .filter(Boolean)
+      .join(" ") || fallback
+  }
+  if (status === 401) return "Your session has expired. Please sign in again."
+  if (status === 403) return "You don't have permission to do that."
+  if (status === 404) return "We couldn't find what you were looking for."
+  if (status >= 500) return "The server ran into a problem. Please try again in a moment."
+  return fallback
+}
+
 export async function registerUser({ email, password }) {
-  const { data } = await api.post("auth/register", { email, password })
+  const { data } = await api.post("auth/register", { email: email.trim(), password })
   return data
 }
 export async function loginUser({ email, password }) {
-  const { data } = await api.post("auth/login", { email, password })
+  const { data } = await api.post("auth/login", { email: email.trim(), password })
+  return data
+}
+export async function resendVerification(email) {
+  const { data } = await api.post("auth/resend-verification", { email: email.trim() })
   return data
 }
 export async function listEvents(params = {}, options = {}) {
@@ -118,19 +150,13 @@ export async function updateEvent(id, patch) {
 export async function deleteEvent(id) {
   await api.delete(`events/${id}`)
 }
+// Errors (e.g. 409 "Event is full") propagate so callers can show them
 export async function joinEvent(id) {
-  try {
-    const response = await api.post(`events/${id}/join`)
-    return { 
-      success: true, 
-      attendee_count: response.data?.attendee_count,
-      alreadyJoined: response.data?.alreadyJoined
-    }
-  } catch (error) {
-    if (error?.response?.status === 409) {
-      return { success: true, alreadyJoined: true }
-    }
-    throw error
+  const response = await api.post(`events/${id}/join`)
+  return {
+    success: true,
+    attendee_count: response.data?.attendee_count,
+    alreadyJoined: response.data?.alreadyJoined
   }
 }
 export async function leaveEvent(id) {

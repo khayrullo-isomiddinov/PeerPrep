@@ -2,10 +2,11 @@ from typing import List, Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, Query, Header, WebSocket, WebSocketDisconnect
 from sqlmodel import Session, select, func
 from app.core.db import get_session
-from app.models import Event, User, EventAttendee, EventMessage, MessageRead
+from app.models import Event, User, EventAttendee, EventMessage, MessageRead, WhiteboardElement
 
 from datetime import datetime, timezone, timedelta
-from app.schemas.events import EventCreate, EventRead, EventUpdate
+from app.schemas.events import EventCreate, EventRead, EventUpdate, as_utc
+from app.services.cleanup import delete_event_data
 from app.api.version_one.auth import _get_user_from_token, _get_optional_user_from_token
 
 from app.api.version_one.badges import award_xp_for_event
@@ -45,9 +46,7 @@ def set_main_event_loop(loop):
 
 @router.post("", response_model=EventRead, status_code=201)
 def create_event(data: EventCreate, session: Session = Depends(get_session), current_user: User = Depends(_get_user_from_token)):
-    if data.capacity is not None and data.capacity < 1:
-        raise HTTPException(status_code=422, detail="Capacity must be >= 1")
-    payload = data.dict()
+    payload = data.model_dump()
 
     evt = Event(**payload, created_by=current_user.id)
     session.add(evt)
@@ -741,8 +740,10 @@ def get_event(
         attendee_count = session.exec(
             select(func.count()).select_from(EventAttendee).where(EventAttendee.event_id == event_id)
         ).one()
-        
-        if evt.created_by:
+        creator_is_attendee = session.exec(
+            select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == evt.created_by)
+        ).first()
+        if evt.created_by and not creator_is_attendee:
             attendee_count += 1
         data.update({
             "attendee_count": attendee_count,
@@ -764,12 +765,27 @@ def update_event(event_id: int, data: EventUpdate, session: Session = Depends(ge
         raise HTTPException(status_code=403, detail="Not allowed")
 
     
-    updates = data.dict(exclude_unset=True)
+    updates = data.model_dump(exclude_unset=True)
+    for field in ("title", "location", "starts_at", "capacity", "duration"):
+        if field in updates and updates[field] is None:
+            raise HTTPException(status_code=422, detail=f"{field.replace('_', ' ').capitalize()} cannot be empty")
+
+    now_utc = datetime.now(timezone.utc)
+    if "starts_at" in updates and as_utc(updates["starts_at"]) != as_utc(evt.starts_at):
+        if as_utc(updates["starts_at"]) <= now_utc:
+            raise HTTPException(status_code=422, detail="Start time must be in the future")
+
+    if "capacity" in updates:
+        member_ids = set(session.exec(select(EventAttendee.user_id).where(EventAttendee.event_id == event_id)).all())
+        member_ids.add(evt.created_by)
+        if updates["capacity"] < len(member_ids):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Capacity can't be lower than the number of people already attending ({len(member_ids)})",
+            )
+
     for k, v in updates.items():
         setattr(evt, k, v)
-
-    if getattr(evt, "capacity", 1) < 1:
-        raise HTTPException(status_code=422, detail="Capacity must be >= 1")
 
     session.add(evt)
     session.commit()
@@ -824,8 +840,7 @@ def delete_event(
     if evt.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="Not allowed")
 
-
-    
+    delete_event_data(session, event_id)
     session.delete(evt)
     session.commit()
     return None
@@ -1017,8 +1032,8 @@ def list_attendees_with_details(event_id: int, session: Session = Depends(get_se
 @router.get("/{event_id}/messages")
 def get_event_messages(
     event_id: int, 
-    session: Session = Depends(get_session), 
-    current_user: Optional[User] = Depends(_get_optional_user_from_token),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(_get_user_from_token),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0)
 ):
@@ -1026,6 +1041,12 @@ def get_event_messages(
     evt = session.get(Event, event_id)
     if not evt:
         raise HTTPException(status_code=404, detail="Event not found")
+
+    is_member = evt.created_by == current_user.id or session.exec(
+        select(EventAttendee).where(EventAttendee.event_id == event_id, EventAttendee.user_id == current_user.id)
+    ).first() is not None
+    if not is_member:
+        raise HTTPException(status_code=403, detail="Join this event to see its chat")
     
     
     messages = session.exec(
@@ -1119,8 +1140,13 @@ def post_event_message(
     
     if not is_attendee and not is_owner:
         raise HTTPException(status_code=403, detail="You must be an attendee or event organizer to post messages")
-    
-    
+
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    if datetime.now(timezone.utc) >= as_utc(evt.starts_at) + timedelta(hours=evt.duration):
+        raise HTTPException(status_code=400, detail="This event has ended. The chat is now read-only.")
+
     user_presence[current_user.id] = datetime.now(timezone.utc)
     
     message = EventMessage(
@@ -1388,8 +1414,8 @@ def mark_event_message_read(
         )
         session.add(read_record)
         session.commit()
-    
-        return {"status": "read"}
+
+    return {"status": "read"}
 
 class TextRefinementRequest(BaseModel):
     text: str
@@ -1453,6 +1479,8 @@ async def generate_cover_image(
         
         image_data_url = await generate_image(request.prompt.strip())
         return {"image_url": image_data_url}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Image generation error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to generate image: {str(e)}")

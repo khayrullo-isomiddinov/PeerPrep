@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faTimes, faCalendarAlt, faMapMarkerAlt, faUsers, faSave, faExclamationTriangle, faImage, faUpload, faWandMagicSparkles } from "@fortawesome/free-solid-svg-icons"
 import { useAuth } from "../auth/AuthContext"
-import { generateCoverImage } from "../../utils/api"
+import { generateCoverImage, getErrorMessage } from "../../utils/api"
 
 export default function EditEventForm({ event, onUpdate, onCancel }) {
   const { isAuthenticated } = useAuth()
@@ -112,7 +112,7 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
       setCoverImageFile(file)
       setCoverImagePreview(URL.createObjectURL(file))
     } catch (e) {
-      setErrors(prev => ({ ...prev, coverImage: e?.response?.data?.detail || "Failed to generate image. Please try again." }))
+      setErrors(prev => ({ ...prev, coverImage: getErrorMessage(e, "Failed to generate image. Please try again.") }))
     } finally {
       setGeneratingCover(false)
     }
@@ -152,7 +152,7 @@ export default function EditEventForm({ event, onUpdate, onCancel }) {
 
       await onUpdate(event.id, payload)
     } catch (err) {
-      const message = err?.response?.data?.detail || err?.response?.data?.message || "Failed to update event"
+      const message = getErrorMessage(err, "Failed to update event")
       setErrors({ submit: message })
     } finally {
       setLoading(false)

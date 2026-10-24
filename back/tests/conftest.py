@@ -99,3 +99,15 @@ def test_event(session, test_user):
     session.refresh(event)
     return event
 
+
+
+@pytest.fixture(autouse=True)
+def no_real_emails(monkeypatch):
+    """Never send real email from tests, even when SMTP is configured in .env"""
+    sent = []
+
+    def fake_send_email(to, subject, html):
+        sent.append({"to": to, "subject": subject, "html": html})
+
+    monkeypatch.setattr("app.api.version_one.auth.send_email", fake_send_email)
+    return sent

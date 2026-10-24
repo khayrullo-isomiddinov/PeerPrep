@@ -1,6 +1,40 @@
 from typing import Optional
 from sqlmodel import SQLModel
-from datetime import datetime
+from pydantic import field_validator
+from datetime import datetime, timezone
+
+MAX_CAPACITY = 1000
+MAX_DURATION_HOURS = 24
+
+
+def _required_text(field: str, max_length: int):
+    def check(v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError(f"{field} is required")
+        if len(v) > max_length:
+            raise ValueError(f"{field} must be at most {max_length} characters")
+        return v
+    return check
+
+
+def _check_capacity(v):
+    if v is not None and not 1 <= v <= MAX_CAPACITY:
+        raise ValueError(f"Capacity must be between 1 and {MAX_CAPACITY}")
+    return v
+
+
+def _check_duration(v):
+    if v is not None and not 1 <= v <= MAX_DURATION_HOURS:
+        raise ValueError(f"Duration must be between 1 and {MAX_DURATION_HOURS} hours")
+    return v
+
+
+def as_utc(dt: datetime) -> datetime:
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+
 
 class EventBase(SQLModel):
     title: str
@@ -15,7 +49,17 @@ class EventBase(SQLModel):
 
 
 class EventCreate(EventBase):
-    pass
+    _title = field_validator("title")(_required_text("Title", 200))
+    _location = field_validator("location")(_required_text("Location", 300))
+    _capacity = field_validator("capacity")(_check_capacity)
+    _duration = field_validator("duration")(_check_duration)
+
+    @field_validator("starts_at")
+    @classmethod
+    def must_be_future(cls, v: datetime) -> datetime:
+        if as_utc(v) <= datetime.now(timezone.utc):
+            raise ValueError("Start time must be in the future")
+        return v
 
 
 class EventRead(EventBase):
@@ -26,9 +70,9 @@ class EventRead(EventBase):
     is_past: bool
     is_ongoing: bool
     is_upcoming: bool
-    status: str   
-    
-    
+    status: str
+
+
     attendee_count: Optional[int] = None
     is_joined: Optional[bool] = None
 
@@ -43,3 +87,8 @@ class EventUpdate(SQLModel):
     cover_image_url: Optional[str] = None
     study_materials: Optional[str] = None
     exam: Optional[str] = None
+
+    _title = field_validator("title")(_required_text("Title", 200))
+    _location = field_validator("location")(_required_text("Location", 300))
+    _capacity = field_validator("capacity")(_check_capacity)
+    _duration = field_validator("duration")(_check_duration)

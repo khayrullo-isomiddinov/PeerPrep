@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react"
-import { setAuthHeader, api } from "../../utils/api"
+import { setAuthHeader, api, SESSION_EXPIRED_EVENT, AUTH_NOTICE_KEY } from "../../utils/api"
 
 const AuthContext = createContext(null)
 
@@ -43,6 +43,18 @@ export function AuthProvider({ children }) {
       setAuthHeader(token)
     }
   }, [token])
+
+  useEffect(() => {
+    function handleExpired() {
+      try { sessionStorage.setItem(AUTH_NOTICE_KEY, "Your session has expired. Please sign in again.") } catch { /* storage unavailable (private mode) */ }
+      localStorage.removeItem("access_token")
+      setAuthHeader(null)
+      setToken(null)
+      setUser(null)
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleExpired)
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleExpired)
+  }, [])
 
   async function login({ access_token, user: fullUser }) {
     localStorage.setItem("access_token", access_token)

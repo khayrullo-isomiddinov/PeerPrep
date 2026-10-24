@@ -14,7 +14,7 @@ def test_register_success(client):
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert "message" in data
-    assert "Registration successful" in data["message"]
+    assert "Account created" in data["message"]
 
 
 def test_register_duplicate_email(client, test_user):
@@ -27,7 +27,7 @@ def test_register_duplicate_email(client, test_user):
         }
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "already registered" in response.json()["detail"].lower()
+    assert "already exists" in response.json()["detail"].lower()
 
 
 def test_register_invalid_email(client):
@@ -70,7 +70,7 @@ def test_login_wrong_password(client, test_user):
         }
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    assert "invalid credentials" in response.json()["detail"].lower()
+    assert "incorrect email or password" in response.json()["detail"].lower()
 
 
 def test_login_unverified_user(client, test_user_unverified):
@@ -83,7 +83,7 @@ def test_login_unverified_user(client, test_user_unverified):
         }
     )
     assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert "not verified" in response.json()["detail"].lower()
+    assert "verify your email" in response.json()["detail"].lower()
 
 
 def test_login_nonexistent_user(client):
@@ -96,7 +96,7 @@ def test_login_nonexistent_user(client):
         }
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    assert "invalid credentials" in response.json()["detail"].lower()
+    assert "incorrect email or password" in response.json()["detail"].lower()
 
 
 def test_get_me(client, auth_headers, test_user):
