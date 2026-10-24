@@ -22,3 +22,4 @@ instance/
 *.db
 node_modules/
 UTIL.md
+.secret_key
