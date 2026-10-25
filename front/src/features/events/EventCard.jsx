@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, memo, useRef } from "react"
+import { useEffect, useState, useMemo, memo } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate, Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
@@ -8,11 +8,11 @@ import {
   faGraduationCap, faBook, faMicroscope, faCode,
   faMusic, faPalette, faDumbbell, faHeartbeat
 } from "@fortawesome/free-solid-svg-icons"
-import { deleteEvent, joinEvent, leaveEvent, getEvent, getErrorMessage } from "../../utils/api"
+import { getErrorMessage } from "../../utils/api"
 import { useAuth } from "../auth/AuthContext"
-import { usePrefetch } from "../../utils/usePrefetch"
+import { useJoinEvent, useLeaveEvent, useDeleteEvent, usePrefetchEvents } from "../../hooks/useEvents"
 
-function EventCard({ event, onChanged, onDelete, onEdit }) {
+function EventCard({ event, onEdit }) {
   const [currentTime, setCurrentTime] = useState(() => new Date())
   useEffect(() => {
     const interval = setInterval(() => {
@@ -67,7 +67,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
       } else {
         return { isUpcoming: false, isOngoing: true, isPast: false }
       }
-    } catch (e) {
+    } catch {
       return {
         isUpcoming: event.is_upcoming ?? false,
         isOngoing: event.is_ongoing ?? false,
@@ -96,219 +96,58 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
 
       const started = now.getTime() >= start.getTime();
       return started;
-    } catch (e) {
+    } catch {
       return isOngoing || isPast;
     }
   }, [event.starts_at, isOngoing, isPast, currentTime]);
   const { user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
-  const { prefetch } = usePrefetch()
+  const { prefetchEvent } = usePrefetchEvents()
+  const joinMutation = useJoinEvent()
+  const leaveMutation = useLeaveEvent()
+  const deleteMutation = useDeleteEvent()
   const currentId = useMemo(() => user ? Number(user.id ?? user?.user?.id) : null, [user])
   const creatorId = useMemo(() => event.created_by != null ? Number(event.created_by) : null, [event.created_by])
   const mine = useMemo(() => currentId != null && creatorId === currentId, [currentId, creatorId])
 
+  // Join state comes straight from the cached event; the mutations update that cache everywhere
   const count = event.attendee_count ?? 0
-  const isJoinedFromAPI = event.is_joined ?? false
+  const joined = mine || !!event.is_joined
+  const busyJoin = joinMutation.isPending
+  const busyLeave = leaveMutation.isPending
+  const busyDelete = deleteMutation.isPending
 
-  const [joined, setJoined] = useState(() => {
-    if (mine) return true
-    return isJoinedFromAPI
-  })
-
-  const [busyJoin, setBusyJoin] = useState(false)
-  const [busyLeave, setBusyLeave] = useState(false)
-  const [busyDelete, setBusyDelete] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [err, setErr] = useState("")
 
   useEffect(() => {
-    if (mine) {
-      setJoined(true)
-    } else {
-      setJoined(isJoinedFromAPI)
-    }
-  }, [mine, isJoinedFromAPI])
-
-  const isUpdatingRef = useRef(false)
-  const eventRef = useRef(event)
-  const onChangedRef = useRef(onChanged)
-
-  useEffect(() => {
-    eventRef.current = event
-    onChangedRef.current = onChanged
-  }, [event, onChanged])
-
-  useEffect(() => {
-    if (isUpdatingRef.current) return
-
-    const checkStoredState = () => {
-      try {
-        const stored = sessionStorage.getItem(`event_join_state:${event.id}`)
-        if (stored) {
-          const eventUpdate = JSON.parse(stored)
-          if (Date.now() - eventUpdate.timestamp < 60000) {
-            setJoined(eventUpdate.isJoined)
-          } else {
-            sessionStorage.removeItem(`event_join_state:${event.id}`)
-          }
-        }
-      } catch (e) {
-        console.error("Failed to check stored join state:", e)
-      }
-    }
-
-    checkStoredState()
-  }, [event.id])
-
-  useEffect(() => {
-    const handleStateChange = (e) => {
-      if (e.detail?.eventId === event.id && !isUpdatingRef.current) {
-        setJoined(e.detail.isJoined)
-        if (onChangedRef.current) {
-          onChangedRef.current({
-            ...eventRef.current,
-            is_joined: e.detail.isJoined,
-            attendee_count: e.detail.attendeeCount ?? eventRef.current.attendee_count
-          })
-        }
-      }
-    }
-
-    window.addEventListener('eventJoinStateChanged', handleStateChange)
-    return () => {
-      window.removeEventListener('eventJoinStateChanged', handleStateChange)
-    }
-  }, [event.id])
+    if (!err) return
+    const t = setTimeout(() => setErr(""), 5000)
+    return () => clearTimeout(t)
+  }, [err])
 
   const full = count >= event.capacity
 
-  async function onJoin() {
-    if (busyJoin || busyLeave) {
-      return
-    }
-
+  function onJoin() {
+    if (busyJoin || busyLeave) return
     setErr("")
-    setBusyJoin(true)
-    isUpdatingRef.current = true
-    const previousJoined = joined
-
-    try {
-      const result = await joinEvent(event.id)
-
-      if (result?.success) {
-        setJoined(true)
-        const updatedEvent = {
-          ...event,
-          is_joined: true,
-          attendee_count: result.attendee_count ?? event.attendee_count
-        }
-        import("../../utils/pageCache").then(({ invalidateCache }) => {
-          invalidateCache(`event:${event.id}`)
-          invalidateCache("events")
-          invalidateCache("home:events")
-        })
-
-        const eventUpdate = {
-          eventId: event.id,
-          isJoined: true,
-          attendeeCount: result.attendee_count ?? event.attendee_count,
-          timestamp: Date.now()
-        }
-        sessionStorage.setItem(`event_join_state:${event.id}`, JSON.stringify(eventUpdate))
-        window.dispatchEvent(new CustomEvent('eventJoinStateChanged', { detail: eventUpdate }))
-
-        onChanged?.(updatedEvent)
-      } else {
-        setErr("Unexpected response from server")
-        setTimeout(() => setErr(""), 5000)
-      }
-    } catch (e) {
-      setJoined(previousJoined)
-      const errorMsg = getErrorMessage(e, "Join failed")
-      setErr(errorMsg)
-      setTimeout(() => setErr(""), 5000)
-    } finally {
-      setBusyJoin(false)
-      setTimeout(() => {
-        isUpdatingRef.current = false
-      }, 100)
-    }
+    joinMutation.mutate(event.id, { onError: (e) => setErr(getErrorMessage(e, "Join failed")) })
   }
 
-  async function onLeave() {
-    if (busyJoin || busyLeave) {
-      return
-    }
-
+  function onLeave() {
+    if (busyJoin || busyLeave) return
     setErr("")
-    setBusyLeave(true)
-    isUpdatingRef.current = true
-    const previousJoined = joined
-
-    try {
-      const result = await leaveEvent(event.id)
-
-      if (result?.success) {
-        setJoined(false)
-        const updatedEvent = {
-          ...event,
-          is_joined: false,
-          attendee_count: result.attendee_count ?? event.attendee_count
-        }
-        import("../../utils/pageCache").then(({ invalidateCache }) => {
-          invalidateCache(`event:${event.id}`)
-          invalidateCache("events")
-          invalidateCache("home:events")
-        })
-
-        const eventUpdate = {
-          eventId: event.id,
-          isJoined: false,
-          attendeeCount: result.attendee_count ?? event.attendee_count,
-          timestamp: Date.now()
-        }
-        sessionStorage.setItem(`event_join_state:${event.id}`, JSON.stringify(eventUpdate))
-        window.dispatchEvent(new CustomEvent('eventJoinStateChanged', { detail: eventUpdate }))
-
-        onChanged?.(updatedEvent)
-      }
-    } catch (e) {
-      setJoined(previousJoined)
-      const errorMsg = getErrorMessage(e, "Leave failed")
-      setErr(errorMsg)
-      setTimeout(() => setErr(""), 5000)
-    } finally {
-      setBusyLeave(false)
-      setTimeout(() => {
-        isUpdatingRef.current = false
-      }, 100)
-    }
+    leaveMutation.mutate(event.id, { onError: (e) => setErr(getErrorMessage(e, "Leave failed")) })
   }
 
   function handleDeleteClick() {
     setShowDeleteConfirm(true)
   }
-  async function handleDeleteConfirm() {
+
+  function handleDeleteConfirm() {
     setShowDeleteConfirm(false)
     setErr("")
-    setBusyDelete(true)
-    try {
-      await deleteEvent(event.id)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setTimeout(() => {
-            if (onDelete) {
-              onDelete(event.id)
-            } else {
-              onChanged?.()
-            }
-          }, 350)
-        })
-      })
-    } catch (e) {
-      setErr(getErrorMessage(e, "Delete failed"))
-      setBusyDelete(false)
-    }
+    deleteMutation.mutate(event.id, { onError: (e) => setErr(getErrorMessage(e, "Delete failed")) })
   }
 
 
@@ -323,19 +162,6 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
     if (text.includes("sport") || text.includes("fitness") || text.includes("exercise")) return faDumbbell
     if (text.includes("health") || text.includes("medical") || text.includes("medicine")) return faHeartbeat
     return faGraduationCap
-  }
-
-  const getCategoryColor = (title, description) => {
-    const text = (title + " " + (description || "")).toLowerCase()
-    if (text.includes("math") || text.includes("calculus") || text.includes("algebra")) return "text-blue-600"
-    if (text.includes("science") || text.includes("biology") || text.includes("chemistry") || text.includes("physics")) return "text-green-600"
-    if (text.includes("tech") || text.includes("programming") || text.includes("coding") || text.includes("computer")) return "text-purple-600"
-    if (text.includes("literature") || text.includes("english") || text.includes("writing") || text.includes("book")) return "text-orange-600"
-    if (text.includes("art") || text.includes("design") || text.includes("creative")) return "text-pink-600"
-    if (text.includes("music") || text.includes("sound") || text.includes("audio")) return "text-indigo-600"
-    if (text.includes("sport") || text.includes("fitness") || text.includes("exercise")) return "text-red-600"
-    if (text.includes("health") || text.includes("medical") || text.includes("medicine")) return "text-emerald-600"
-    return "text-gray-600"
   }
 
   const parseUTCDate = (dateString) => {
@@ -387,7 +213,7 @@ function EventCard({ event, onChanged, onDelete, onEdit }) {
       <Link
         to={isAuthenticated ? `/events/${event.id}` : "#"}
         onClick={handleCardClick}
-        onMouseEnter={() => isAuthenticated && prefetch(`event:${event.id}`, () => getEvent(event.id))}
+        onMouseEnter={() => isAuthenticated && prefetchEvent(event.id)}
         className="group block bg-white rounded-xl border border-gray-200/80 overflow-hidden hover:border-gray-300 hover:shadow-lg"
       >
         <div className="flex">

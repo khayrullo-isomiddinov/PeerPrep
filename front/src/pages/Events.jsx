@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { useSearchParams, useLocation, Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
@@ -7,7 +7,7 @@ import {
 import EventList from "../features/events/EventList"
 import EditEventForm from "../features/events/EditEventForm"
 import { useAuth } from "../features/auth/AuthContext"
-import { useEvents, useMyEvents, useMyEventsCount, useUpdateEvent } from "../hooks/useEvents"
+import { useEvents, useMyEvents, useMyEventsCount, useUpdateEvent, eventKeys } from "../hooks/useEvents"
 import { queryClient } from "../lib/queryClient"
 
 export default function Events() {
@@ -32,7 +32,11 @@ export default function Events() {
   const [editingEvent, setEditingEvent] = useState(null)
 
   // React Query hooks - handles caching automatically
-  const { data: events = [], isLoading: loading, refetch } = useEvents(currentParams)
+  // Live-ish list: refresh every minute and when the tab regains focus (past events don't change)
+  const { data: events = [], isLoading: loading } = useEvents(currentParams, {
+    refetchInterval: statusView === "past" ? false : 60 * 1000,
+    refetchOnWindowFocus: statusView !== "past",
+  })
   const { data: myEvents = [], isLoading: loadingMyEvents } = useMyEvents(
     { status: statusView },
     { enabled: isAuthenticated && showMyEvents }
@@ -55,68 +59,16 @@ export default function Events() {
     setTimeFilter("all")
   }, [statusView])
 
-  // Handle event join state changes from WebSocket/other sources
-  useEffect(() => {
-    const handleEventJoinStateChange = (e) => {
-      const eventUpdate = e.detail
-      if (eventUpdate?.eventId) {
-        // Update React Query cache directly
-        queryClient.setQueryData(['events', 'list', currentParams], (oldData) => {
-          if (!oldData) return oldData
-          return oldData.map(event => {
-            if (event.id === eventUpdate.eventId) {
-              return {
-                ...event,
-                is_joined: eventUpdate.isJoined,
-                attendee_count: eventUpdate.attendeeCount
-              }
-            }
-            return event
-          })
-        })
-      }
-    }
-
-    window.addEventListener('eventJoinStateChanged', handleEventJoinStateChange)
-    return () => {
-      window.removeEventListener('eventJoinStateChanged', handleEventJoinStateChange)
-    }
-  }, [currentParams])
-
   // Handle new event creation
   useEffect(() => {
     if (location.state?.newEvent) {
       // Invalidate queries to refetch
-      queryClient.invalidateQueries({ queryKey: ['events'] })
+      queryClient.invalidateQueries({ queryKey: eventKeys.all })
       window.history.replaceState({}, document.title)
     }
     setSearchQuery(params.get('q') || "")
   }, [location.state, params])
 
-
-  // Background refresh when tab becomes visible (React Query handles this better)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden && statusView !== "past") {
-        refetch()
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    // Reduced polling frequency - React Query handles stale-while-revalidate
-    const pollInterval = setInterval(() => {
-      if (statusView === "past") return;
-      if (!document.hidden && events.length > 0) {
-        refetch()
-      }
-    }, 60000); // 60 seconds
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      clearInterval(pollInterval);
-    };
-  }, [statusView, events.length, refetch])
 
   const parseUTCDate = (dateString) => {
     if (!dateString) return null
@@ -171,35 +123,6 @@ export default function Events() {
 
     return filtered
   }, [events, searchQuery, timeFilter, examFilter, statusView])
-
-  function onChanged(updated) {
-    if (!updated) {
-      // Invalidate queries to refetch
-      queryClient.invalidateQueries({ queryKey: ['events'] })
-      return
-    }
-
-    // Update React Query cache optimistically
-    queryClient.setQueryData(['events', 'list', currentParams], (oldData) => {
-      if (!oldData) return oldData
-      return oldData.map(e => {
-        if (e.id === updated.id) {
-          return {
-            ...e,
-            is_joined: updated.is_joined !== undefined ? updated.is_joined : e.is_joined,
-            attendee_count: updated.attendee_count !== undefined ? updated.attendee_count : e.attendee_count
-          }
-        }
-        return e
-      })
-    })
-  }
-
-  function handleDelete(eventId) {
-    // Remove from cache - mutations handle this automatically
-    queryClient.removeQueries({ queryKey: ['events', 'detail', eventId] })
-    queryClient.invalidateQueries({ queryKey: ['events'] })
-  }
 
   async function handleUpdateEvent(eventId, updatedData) {
     const data = await updateEventMutation.mutateAsync({ id: eventId, data: updatedData })
@@ -382,7 +305,7 @@ export default function Events() {
                   ))}
                 </div>
               ) : myEvents.length > 0 ? (
-                <EventList events={myEvents} onChanged={onChanged} onDelete={handleDelete} onEdit={setEditingEvent} />
+                <EventList events={myEvents} onEdit={setEditingEvent} />
               ) : (
                 <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
                   <p className="text-gray-600 text-sm">
@@ -406,7 +329,7 @@ export default function Events() {
             {loading && events.length === 0 ? (
               null
             ) : filteredEvents.length > 0 ? (
-              <EventList events={filteredEvents} onChanged={onChanged} onDelete={handleDelete} onEdit={setEditingEvent} />
+              <EventList events={filteredEvents} onEdit={setEditingEvent} />
             ) : (
               <div className="text-center py-16 bg-white rounded-xl border border-gray-200 shadow-sm">
                 <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-5">

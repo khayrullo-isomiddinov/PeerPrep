@@ -41,6 +41,27 @@ export function useUserBadge(userId, options = {}) {
   })
 }
 
+// Prefetch on hover so profile pages open instantly. Your own profile reads you from auth,
+// so only the badge needs warming; other people's profiles also need their user details.
+export function usePrefetchProfile() {
+  const queryClient = useQueryClient()
+  return (userId, { own = false } = {}) => {
+    if (!userId) return
+    if (!own) {
+      queryClient.prefetchQuery({
+        queryKey: profileKeys.detail(userId),
+        queryFn: () => getUserProfile(userId),
+        staleTime: 5 * 60 * 1000,
+      })
+    }
+    queryClient.prefetchQuery({
+      queryKey: profileKeys.badge(userId),
+      queryFn: () => getUserBadge(userId),
+      staleTime: 5 * 60 * 1000,
+    })
+  }
+}
+
 // Mutations
 export function useUpdateProfile() {
   const queryClient = useQueryClient()

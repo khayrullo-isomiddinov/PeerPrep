@@ -7,9 +7,9 @@ import {
   faUserPlus, faUserMinus, faFile, faDownload, faCheckCircle,
   faFire, faStar, faTrophy, faInfoCircle, faComments, faPaperPlane, faTrash, faExclamationTriangle, faGraduationCap, faChalkboard
 } from "@fortawesome/free-solid-svg-icons"
-import { setEventTypingStatus, markEventMessageRead, getUserProfile, getErrorMessage } from "../utils/api"
+import { setEventTypingStatus, markEventMessageRead, getErrorMessage } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
-import { usePrefetch } from "../utils/usePrefetch"
+import { usePrefetchProfile } from "../hooks/useProfile"
 import { useEvent, useJoinEvent, useLeaveEvent } from "../hooks/useEvents"
 import { useEventAttendees, useEventMessages, useEventPresence, usePostMessage, useDeleteMessage } from "../hooks/useEventData"
 import { queryClient } from "../lib/queryClient"
@@ -18,7 +18,7 @@ export default function EventDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-  const { prefetch } = usePrefetch()
+  const prefetchProfile = usePrefetchProfile()
   
   // State declarations - must come before React Query hooks that use them
   const [error, setError] = useState("")
@@ -453,37 +453,14 @@ export default function EventDetail() {
           setJoined(false)
           // Clear messages cache when leaving
           queryClient.setQueryData(['events', id, 'messages'], [])
-          
-          // Dispatch event for other components
-          const eventUpdate = {
-            eventId: id,
-            isJoined: false,
-            attendeeCount: result.attendee_count ?? event?.attendee_count,
-            timestamp: Date.now()
-          }
-          window.dispatchEvent(new CustomEvent('eventJoinStateChanged', { detail: eventUpdate }))
         }
       } else {
+        // The mutation updates every cached copy of this event (lists, detail, attendees)
         const result = await joinEventMutation.mutateAsync(id)
         if (result && result.success) {
           setJoined(true)
-          
-          // Invalidate React Query cache
-          queryClient.invalidateQueries({ queryKey: ['events', 'detail', id] })
-          queryClient.invalidateQueries({ queryKey: ['events'] })
-          queryClient.invalidateQueries({ queryKey: ['events', id, 'attendees'] })
-          queryClient.invalidateQueries({ queryKey: ['events', id, 'messages'] })
-          
-          // Dispatch event for other components
-          const eventUpdate = {
-            eventId: id,
-            isJoined: true,
-            attendeeCount: result.attendee_count ?? event?.attendee_count,
-            timestamp: Date.now()
-          }
-          window.dispatchEvent(new CustomEvent('eventJoinStateChanged', { detail: eventUpdate }))
         }
-        }
+      }
     } catch (error) {
       setJoined(wasJoined)
       console.error('Join/Leave failed:', error)
@@ -985,7 +962,7 @@ export default function EventDetail() {
                       <Link
                         key={attendee.id}
                         to={`/profile/${attendee.id}`}
-                        onMouseEnter={() => prefetch(`profile:${attendee.id}`, () => getUserProfile(attendee.id))}
+                        onMouseEnter={() => prefetchProfile(attendee.id, { own: attendee.id === user?.id })}
                         className="group flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-white border-2 border-gray-200 hover:border-orange-300 hover:shadow-lg"
                       >
                         <div className="flex-shrink-0 w-8 text-center">

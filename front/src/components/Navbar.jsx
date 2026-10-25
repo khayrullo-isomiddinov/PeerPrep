@@ -1,8 +1,8 @@
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useEffect, useState, useRef } from "react"
 import { useAuth } from "../features/auth/AuthContext"
-import { usePrefetch } from "../utils/usePrefetch"
-import { listEvents, getUserProfile } from "../utils/api"
+import { usePrefetchEvents } from "../hooks/useEvents"
+import { usePrefetchProfile } from "../hooks/useProfile"
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -12,7 +12,8 @@ export default function Navbar() {
   const loc = useLocation()
   const navigate = useNavigate()
   const createMenuRef = useRef(null)
-  const { prefetch } = usePrefetch()
+  const { prefetchEventList } = usePrefetchEvents()
+  const prefetchProfile = usePrefetchProfile()
 
   useEffect(() => {
     setMenuOpen(false)
@@ -74,7 +75,7 @@ export default function Navbar() {
                   <NavLink
                     to="/events"
                     className={({ isActive }) => `nav-link-clean ${isActive ? 'is-active' : ''}`}
-                    onMouseEnter={() => prefetch("events", () => listEvents({}))}
+                    onMouseEnter={() => prefetchEventList()}
                   >
                     Events
                   </NavLink>
@@ -90,7 +91,7 @@ export default function Navbar() {
                       to="/"
                       end
                       className={({ isActive }) => `tab-link ${isActive ? 'is-active' : ''}`}
-                      onMouseEnter={() => prefetch("home:events", () => listEvents({ limit: 100 }))}
+                      onMouseEnter={() => prefetchEventList({ limit: 100 })}
                     >
                       Explore
                     </NavLink>
@@ -100,7 +101,7 @@ export default function Navbar() {
                     <NavLink
                       to="/events"
                       className={({ isActive }) => `tab-link ${isActive ? 'is-active' : ''}`}
-                      onMouseEnter={() => prefetch("events", () => listEvents({}))}
+                      onMouseEnter={() => prefetchEventList()}
                     >
                       Events
                     </NavLink>
@@ -196,7 +197,7 @@ export default function Navbar() {
                             to="/profile"
                             className="profile-dropdown-item"
                             onClick={() => setMenuOpen(false)}
-                            onMouseEnter={() => user && prefetch(`profile:${user.id}`, () => getUserProfile(user.id))}
+                            onMouseEnter={() => user && prefetchProfile(user.id, { own: true })}
                           >
                             <svg width="16" height="16" viewBox="0 0 24 24" className="mr-2">
                               <path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
@@ -260,7 +261,7 @@ export default function Navbar() {
                   to="/profile"
                   className="block px-4 py-4 rounded-lg font-medium transition-colors touch-target text-gray-700 active:bg-gray-100"
                   onClick={() => setMobileMenuOpen(false)}
-                  onMouseEnter={() => user && prefetch(`profile:${user.id}`, () => getUserProfile(user.id))}
+                  onMouseEnter={() => user && prefetchProfile(user.id, { own: true })}
                   style={{ minHeight: '48px', display: 'flex', alignItems: 'center', gap: '0.75rem' }}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" className="text-gray-500">

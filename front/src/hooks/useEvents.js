@@ -1,42 +1,43 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { listEvents, getEvent, getMyEvents, getMyEventsCount, createEvent, updateEvent, deleteEvent, joinEvent, leaveEvent } from '../utils/api'
 
-// Query keys - centralized for consistency
+// Query keys - centralized for consistency.
+// Event ids are normalized to strings: route params are strings, API objects have numbers,
+// and both must hit the same cache entry.
 export const eventKeys = {
   all: ['events'],
   lists: () => [...eventKeys.all, 'list'],
   list: (params) => [...eventKeys.lists(), params],
   details: () => [...eventKeys.all, 'detail'],
-  detail: (id) => [...eventKeys.details(), id],
-  myEvents: (params) => [...eventKeys.all, 'my-events', params],
-  myEventsCount: (params) => [...eventKeys.all, 'my-events-count', params],
+  detail: (id) => [...eventKeys.details(), String(id)],
+  myEventsAll: () => [...eventKeys.all, 'my-events'],
+  myEvents: (params) => [...eventKeys.myEventsAll(), params],
+  myEventsCountAll: () => [...eventKeys.all, 'my-events-count'],
+  myEventsCount: (params) => [...eventKeys.myEventsCountAll(), params],
 }
+
+// The default list shown on /events, shared with prefetching so hovering a link warms the real cache entry
+export const DEFAULT_EVENTS_PARAMS = { status: 'upcoming' }
 
 export function useEvents(params = {}, options = {}) {
   return useQuery({
     queryKey: eventKeys.list(params),
-    queryFn: () => listEvents(params),
-    staleTime: 1000 * 60 * 5,
-    cacheTime: 1000 * 60 * 10,
-    refetchOnWindowFocus: false,
-
+    queryFn: ({ signal }) => listEvents(params, { signal }),
+    staleTime: 60 * 1000,
     ...options,
   })
 }
 
-
-// Single event query - cached for 30s
 export function useEvent(id, options = {}) {
   return useQuery({
     queryKey: eventKeys.detail(id),
     queryFn: () => getEvent(id),
-    enabled: !!id, // Only run if id exists
-    staleTime: 30 * 1000, // 30 seconds
+    enabled: !!id,
+    staleTime: 30 * 1000,
     ...options,
   })
 }
 
-// My events query
 export function useMyEvents(params = {}, options = {}) {
   return useQuery({
     queryKey: eventKeys.myEvents(params),
@@ -46,7 +47,6 @@ export function useMyEvents(params = {}, options = {}) {
   })
 }
 
-// My events count query
 export function useMyEventsCount(params = {}, options = {}) {
   return useQuery({
     queryKey: eventKeys.myEventsCount(params),
@@ -56,74 +56,85 @@ export function useMyEventsCount(params = {}, options = {}) {
   })
 }
 
+// Prefetch helpers: call on hover so the page opens instantly
+export function usePrefetchEvents() {
+  const queryClient = useQueryClient()
+  return {
+    prefetchEvent: (id) => queryClient.prefetchQuery({
+      queryKey: eventKeys.detail(id),
+      queryFn: () => getEvent(id),
+      staleTime: 30 * 1000,
+    }),
+    prefetchEventList: (params = DEFAULT_EVENTS_PARAMS) => queryClient.prefetchQuery({
+      queryKey: eventKeys.list(params),
+      queryFn: () => listEvents(params),
+      staleTime: 60 * 1000,
+    }),
+  }
+}
+
+// Patch one event everywhere it's cached (lists, my-events, detail) so the UI updates immediately
+function patchEventInCache(queryClient, eventId, patch) {
+  const apply = (event) => (String(event?.id) === String(eventId) ? { ...event, ...patch } : event)
+  queryClient.setQueriesData({ queryKey: eventKeys.lists() }, (old) => (Array.isArray(old) ? old.map(apply) : old))
+  queryClient.setQueriesData({ queryKey: eventKeys.myEventsAll() }, (old) => (Array.isArray(old) ? old.map(apply) : old))
+  queryClient.setQueryData(eventKeys.detail(eventId), (old) => (old ? apply(old) : old))
+}
+
 // Mutations
+
 export function useCreateEvent() {
   const queryClient = useQueryClient()
-  
   return useMutation({
     mutationFn: createEvent,
-    onSuccess: () => {
-      // Invalidate events lists to refetch
-      queryClient.invalidateQueries({ queryKey: eventKeys.lists() })
-      queryClient.invalidateQueries({ queryKey: eventKeys.myEvents() })
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: eventKeys.all }),
   })
 }
 
 export function useUpdateEvent() {
   const queryClient = useQueryClient()
-  
   return useMutation({
     mutationFn: ({ id, data }) => updateEvent(id, data),
     onSuccess: (data, variables) => {
-      // Update the specific event in cache
-      queryClient.setQueryData(eventKeys.detail(variables.id), data)
-      // Invalidate lists to ensure consistency
-      queryClient.invalidateQueries({ queryKey: eventKeys.lists() })
+      patchEventInCache(queryClient, variables.id, data)
+      queryClient.invalidateQueries({ queryKey: eventKeys.all })
     },
   })
 }
 
 export function useDeleteEvent() {
   const queryClient = useQueryClient()
-  
   return useMutation({
     mutationFn: deleteEvent,
     onSuccess: (_, eventId) => {
-      // Remove from cache
+      const remove = (old) => (Array.isArray(old) ? old.filter((e) => String(e.id) !== String(eventId)) : old)
+      queryClient.setQueriesData({ queryKey: eventKeys.lists() }, remove)
+      queryClient.setQueriesData({ queryKey: eventKeys.myEventsAll() }, remove)
       queryClient.removeQueries({ queryKey: eventKeys.detail(eventId) })
-      // Invalidate lists
-      queryClient.invalidateQueries({ queryKey: eventKeys.lists() })
-      queryClient.invalidateQueries({ queryKey: eventKeys.myEvents() })
+      queryClient.invalidateQueries({ queryKey: eventKeys.all })
+    },
+  })
+}
+
+function useMembershipMutation(mutationFn, isJoined) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn,
+    onSuccess: (result, eventId) => {
+      patchEventInCache(queryClient, eventId, {
+        is_joined: isJoined,
+        ...(result?.attendee_count != null && { attendee_count: result.attendee_count }),
+      })
+      // Refetch anything derived from membership: my-events, counts, attendees, chat access
+      queryClient.invalidateQueries({ queryKey: eventKeys.all })
     },
   })
 }
 
 export function useJoinEvent() {
-  const queryClient = useQueryClient()
-  
-  return useMutation({
-    mutationFn: joinEvent,
-    onSuccess: (result, eventId) => {
-      // Invalidate event detail and lists
-      queryClient.invalidateQueries({ queryKey: eventKeys.detail(eventId) })
-      queryClient.invalidateQueries({ queryKey: eventKeys.lists() })
-      queryClient.invalidateQueries({ queryKey: eventKeys.myEvents() })
-    },
-  })
+  return useMembershipMutation(joinEvent, true)
 }
 
 export function useLeaveEvent() {
-  const queryClient = useQueryClient()
-  
-  return useMutation({
-    mutationFn: leaveEvent,
-    onSuccess: (result, eventId) => {
-      // Invalidate event detail and lists
-      queryClient.invalidateQueries({ queryKey: eventKeys.detail(eventId) })
-      queryClient.invalidateQueries({ queryKey: eventKeys.lists() })
-      queryClient.invalidateQueries({ queryKey: eventKeys.myEvents() })
-    },
-  })
+  return useMembershipMutation(leaveEvent, false)
 }
-
