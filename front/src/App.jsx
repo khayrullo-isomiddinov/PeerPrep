@@ -13,6 +13,7 @@ const Profile = lazy(() => import("./pages/Profile"))
 const RegisterForm = lazy(() => import("./features/auth/RegisterForm"))
 const LoginForm = lazy(() => import("./features/auth/LoginForm"))
 const NotFound = lazy(() => import("./pages/NotFound"))
+const About = lazy(() => import("./pages/About"))
 
 export default function App() {
   const { isLoading } = useAuth()
@@ -44,6 +45,7 @@ export default function App() {
             <Route path="/profile/:userId" element={<Profile />} />
             <Route path="/register" element={<RegisterForm />} />
             <Route path="/login" element={<LoginForm />} />
+            <Route path="/about" element={<About />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

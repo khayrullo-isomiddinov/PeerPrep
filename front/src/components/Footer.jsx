@@ -44,6 +44,14 @@ export default function Footer() {
           </nav>
 
           <nav className="footer-col">
+            <h3 className="footer-title">About</h3>
+            <ul className="footer-list">
+              <li><Link to="/about">Meet the Founder</Link></li>
+              <li><Link to="/about#contribute">Contribute</Link></li>
+            </ul>
+          </nav>
+
+          <nav className="footer-col">
             <h3 className="footer-title">Account</h3>
             <ul className="footer-list">
               {isAuthenticated ? (
