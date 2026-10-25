@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { faTimes, faCalendarAlt, faMapMarkerAlt, faUsers, faSave, faExclamationTriangle, faImage, faUpload, faWandMagicSparkles } from "@fortawesome/free-solid-svg-icons"
+import { faTimes, faCalendarAlt, faSave, faExclamationTriangle, faImage, faUpload, faWandMagicSparkles } from "@fortawesome/free-solid-svg-icons"
 import { useAuth } from "../auth/AuthContext"
 import { generateCoverImage, getErrorMessage } from "../../utils/api"
 

@@ -6,7 +6,6 @@ import { usePrefetchProfile } from "../hooks/useProfile"
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
-  const [createMenuOpen, setCreateMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const { isAuthenticated, user, logout, isLoading } = useAuth()
   const loc = useLocation()
@@ -17,15 +16,11 @@ export default function Navbar() {
 
   useEffect(() => {
     setMenuOpen(false)
-    setCreateMenuOpen(false)
     setMobileMenuOpen(false)
   }, [loc.pathname])
 
   useEffect(() => {
     function handleClickOutside(event) {
-      if (createMenuRef.current && !createMenuRef.current.contains(event.target)) {
-        setCreateMenuOpen(false)
-      }
       const mobileMenu = document.querySelector('.lg\\:hidden.fixed')
       if (mobileMenuOpen && mobileMenu && !mobileMenu.contains(event.target) && !event.target.closest('button[aria-label="Menu"]')) {
         setMobileMenuOpen(false)

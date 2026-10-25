@@ -2,11 +2,10 @@ import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
-  faImage, faInfo, faMapMarkerAlt, faEye, faChevronRight,
-  faChevronLeft, faCalendarAlt, faClock, faUsers, faGraduationCap,
-  faBook, faTrash, faUpload, faCheck, faWandMagicSparkles, faTimes
+  faImage, faInfo, faMapMarkerAlt, faEye, faChevronRight, faTrash, faUpload, faCheck, faWandMagicSparkles, faTimes
 } from "@fortawesome/free-solid-svg-icons"
 import { createEvent, refineEventText, generateCoverImage, getErrorMessage } from "../../utils/api"
+import { useToast } from "../../components/ui/toastContext"
 
 const STEPS = [
   { id: 'cover', title: 'Upload cover', icon: faImage, section: 'EVENT INFORMATION' },
@@ -880,6 +879,7 @@ function GeneralInfoStep({ formData, updateFormData, fieldErrors, categories, on
 }
 
 function StudyMaterialsSection({ formData, updateFormData }) {
+  const toast = useToast()
   const [dragActive, setDragActive] = useState(false)
 
   const handleDrag = (e) => {
@@ -913,7 +913,7 @@ function StudyMaterialsSection({ formData, updateFormData }) {
 
     for (const file of files) {
       if (file.size > 10 * 1024 * 1024) {
-        alert(`${file.name} is too large. Maximum file size is 10MB.`)
+        toast.error(`${file.name} is too large. Maximum file size is 10MB.`)
         continue
       }
 
@@ -933,7 +933,7 @@ function StudyMaterialsSection({ formData, updateFormData }) {
         })
       } catch (error) {
         console.error(`Failed to process ${file.name}:`, error)
-        alert(`Failed to process ${file.name}. Please try again.`)
+        toast.error(`Failed to process ${file.name}. Please try again.`)
       }
     }
 

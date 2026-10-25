@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState, useCallback } from "react"
 import { useParams, useNavigate, Link } from "react-router-dom"
-import { createPortal } from "react-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
-  faArrowLeft, faDownload, faTrashCan, faPlus, faMinus, faExpand, faInfoCircle, faExclamationTriangle, faLock
+  faArrowLeft, faDownload, faTrashCan, faPlus, faMinus, faExpand, faLock
 } from "@fortawesome/free-solid-svg-icons"
 import { useAuth } from "../features/auth/AuthContext"
 import { useEvent } from "../hooks/useEvents"
 import { useWhiteboardSocket } from "../features/whiteboard/useWhiteboardSocket"
 import WhiteboardToolbar from "../features/whiteboard/WhiteboardToolbar"
 import { TOOLS } from "../features/whiteboard/tools"
+import ConfirmDialog from "../components/ui/ConfirmDialog"
+import { useToast } from "../components/ui/toastContext"
 import {
   PEN_COLORS, NOTE_COLORS, NOTE_SIZE, NOTE_PADDING, NOTE_TEXT_COLOR,
   newId, round, normalizeRect, getBounds, hitTest, translate,
@@ -59,7 +60,7 @@ export default function Whiteboard() {
   const [onlineUsers, setOnlineUsers] = useState([])
   const [history, setHistory] = useState({ canUndo: false, canRedo: false })
   const [zoom, setZoom] = useState(1)
-  const [notice, setNotice] = useState("")
+  const toast = useToast()
   const [confirmClear, setConfirmClear] = useState(false)
   const [spaceHeld, setSpaceHeld] = useState(false)
 
@@ -204,12 +205,6 @@ export default function Whiteboard() {
     requestRender()
   }, [selectedId, requestRender])
 
-  useEffect(() => {
-    if (!notice) return
-    const t = setTimeout(() => setNotice(""), 4000)
-    return () => clearTimeout(t)
-  }, [notice])
-
   // ---------- Applying changes ----------
 
   const syncHistory = () => setHistory({ canUndo: undoRef.current.length > 0, canRedo: redoRef.current.length > 0 })
@@ -264,7 +259,7 @@ export default function Whiteboard() {
         break
       case "clear":
         applyRemote(msg)
-        setNotice(`${usersRef.current.get(msg.user_id)?.name || "The organizer"} cleared the board`)
+        toast.info(`${usersRef.current.get(msg.user_id)?.name || "The organizer"} cleared the board`)
         break
       case "draft":
         draftsRef.current.set(msg.element.id, { element: msg.element, userId: msg.user_id })
@@ -288,7 +283,7 @@ export default function Whiteboard() {
         setOnlineUsers((prev) => prev.filter((u) => u.id !== msg.user_id))
         break
       case "error":
-        setNotice(msg.message)
+        toast.error(msg.message)
         break
     }
     requestRender()
@@ -709,7 +704,7 @@ export default function Whiteboard() {
   function exportPng() {
     const canvas = renderToImage([...elementsRef.current.values()])
     if (!canvas) {
-      setNotice("The board is empty, so there's nothing to export yet.")
+      toast.info("The board is empty, so there's nothing to export yet.")
       return
     }
     canvas.toBlob((blob) => {
@@ -893,12 +888,6 @@ export default function Whiteboard() {
           </div>
         )}
 
-        {notice && (
-          <div className="absolute top-28 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-gray-900 text-white text-sm px-4 py-2 rounded-xl shadow-lg max-w-[calc(100%-32px)]">
-            <FontAwesomeIcon icon={faInfoCircle} />
-            <span>{notice}</span>
-          </div>
-        )}
 
         {status === "connecting" && !board && (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/70">
@@ -923,41 +912,14 @@ export default function Whiteboard() {
         )}
       </div>
 
-      {confirmClear && createPortal(
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backgroundColor: "rgba(0, 0, 0, 0.5)", backdropFilter: "blur(4px)" }}
-          onClick={() => setConfirmClear(false)}
-        >
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-pink-600 rounded-xl flex items-center justify-center flex-shrink-0">
-                <FontAwesomeIcon icon={faExclamationTriangle} className="text-white text-xl" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-900">Clear Whiteboard</h3>
-                <p className="text-sm text-gray-600">This action cannot be undone</p>
-              </div>
-            </div>
-            <p className="text-gray-700 mb-6">Everything on the board will be removed for all members.</p>
-            <div className="flex gap-3">
-              <button
-                onClick={clearBoard}
-                className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-pink-600 text-white font-semibold rounded-xl hover:from-red-600 hover:to-pink-700 shadow-lg hover:shadow-xl"
-              >
-                Clear Board
-              </button>
-              <button
-                onClick={() => setConfirmClear(false)}
-                className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      <ConfirmDialog
+        open={confirmClear}
+        title="Clear Whiteboard"
+        description="Everything on the board will be removed for all members."
+        confirmLabel="Clear Board"
+        onConfirm={clearBoard}
+        onCancel={() => setConfirmClear(false)}
+      />
     </div>
   )
 }

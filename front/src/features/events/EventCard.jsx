@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo, memo } from "react"
-import { createPortal } from "react-dom"
 import { useNavigate, Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
@@ -11,6 +10,8 @@ import {
 import { getErrorMessage } from "../../utils/api"
 import { useAuth } from "../auth/AuthContext"
 import { useJoinEvent, useLeaveEvent, useDeleteEvent, usePrefetchEvents } from "../../hooks/useEvents"
+import ConfirmDialog from "../../components/ui/ConfirmDialog"
+import { useToast } from "../../components/ui/toastContext"
 
 function EventCard({ event, onEdit }) {
   const [currentTime, setCurrentTime] = useState(() => new Date())
@@ -117,27 +118,19 @@ function EventCard({ event, onEdit }) {
   const busyLeave = leaveMutation.isPending
   const busyDelete = deleteMutation.isPending
 
+  const toast = useToast()
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [err, setErr] = useState("")
-
-  useEffect(() => {
-    if (!err) return
-    const t = setTimeout(() => setErr(""), 5000)
-    return () => clearTimeout(t)
-  }, [err])
 
   const full = count >= event.capacity
 
   function onJoin() {
     if (busyJoin || busyLeave) return
-    setErr("")
-    joinMutation.mutate(event.id, { onError: (e) => setErr(getErrorMessage(e, "Join failed")) })
+    joinMutation.mutate(event.id, { onError: (e) => toast.error(getErrorMessage(e, "Join failed")) })
   }
 
   function onLeave() {
     if (busyJoin || busyLeave) return
-    setErr("")
-    leaveMutation.mutate(event.id, { onError: (e) => setErr(getErrorMessage(e, "Leave failed")) })
+    leaveMutation.mutate(event.id, { onError: (e) => toast.error(getErrorMessage(e, "Leave failed")) })
   }
 
   function handleDeleteClick() {
@@ -145,9 +138,16 @@ function EventCard({ event, onEdit }) {
   }
 
   function handleDeleteConfirm() {
-    setShowDeleteConfirm(false)
-    setErr("")
-    deleteMutation.mutate(event.id, { onError: (e) => setErr(getErrorMessage(e, "Delete failed")) })
+    deleteMutation.mutate(event.id, {
+      onSuccess: () => {
+        setShowDeleteConfirm(false)
+        toast.success(`"${event.title}" was deleted`)
+      },
+      onError: (e) => {
+        setShowDeleteConfirm(false)
+        toast.error(getErrorMessage(e, "Delete failed"))
+      },
+    })
   }
 
 
@@ -393,65 +393,15 @@ function EventCard({ event, onEdit }) {
         </div>
       </Link>
 
-      {err && (
-        <div className="fixed top-20 right-4 z-[10000] max-w-xs">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 shadow-lg">
-            <p className="text-red-600 text-sm font-medium">{err}</p>
-          </div>
-        </div>
-      )}
-
-      {showDeleteConfirm && createPortal(
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-          style={{
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            position: 'fixed',
-            width: '100vw',
-            height: '100vh',
-            minHeight: '100vh'
-          }}
-          onClick={() => setShowDeleteConfirm(false)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-xl font-bold text-gray-900">Delete Event?</h3>
-                <p className="text-gray-600 mt-1">Are you sure you want to delete <span className="font-semibold">"{event.title}"</span>?</p>
-              </div>
-            </div>
-
-
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={handleDeleteConfirm}
-                className="flex-1 px-4 py-2.5 rounded-lg font-medium text-white bg-red-500 hover:bg-red-600 shadow-md hover:shadow-lg"
-              >
-                Delete Event
-              </button>
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 px-4 py-2.5 rounded-lg font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Delete Event?"
+        description={<>Are you sure you want to delete <span className="font-semibold">"{event.title}"</span>?</>}
+        confirmLabel="Delete Event"
+        busy={busyDelete}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   )
 }

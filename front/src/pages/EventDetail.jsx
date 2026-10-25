@@ -12,6 +12,9 @@ import EventSummary from "../features/events/detail/EventSummary"
 import MembersList from "../features/events/detail/MembersList"
 import ChatPanel from "../features/events/detail/ChatPanel"
 import StudyMaterials from "../features/events/detail/StudyMaterials"
+import { useToast } from "../components/ui/toastContext"
+import Button from "../components/ui/Button"
+import Card from "../components/ui/Card"
 
 const PAGE_CLASS = "min-h-screen tap-safe premium-scrollbar bg-gradient-to-br from-gray-50 via-slate-50 to-blue-50/30 route-transition"
 
@@ -36,10 +39,10 @@ function LoadError({ error }) {
           <p className="text-gray-600 mb-6">
             {notFound ? "This event doesn't exist or has been deleted." : getErrorMessage(error, "We couldn't load this event.")}
           </p>
-          <Link to="/events" className="btn-pink-pill">
-            <FontAwesomeIcon icon={faArrowLeft} className="mr-2" />
+          <Button as={Link} to="/events">
+            <FontAwesomeIcon icon={faArrowLeft} />
             Back to Events
-          </Link>
+          </Button>
         </div>
       </div>
     </div>
@@ -54,21 +57,18 @@ function ChatLocked({ timing, canJoin, onJoin }) {
       : { title: "Join to Chat", text: canJoin ? "Join this event to participate in the group chat." : "This event is full." }
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 p-12 text-center">
+    <Card as="div" className="!p-12 text-center">
       <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
         <FontAwesomeIcon icon={timing.isPast ? faCheckCircle : faComments} className="w-10 h-10 text-gray-400" />
       </div>
       <h3 className="text-xl font-bold text-gray-800 mb-2">{title}</h3>
       <p className="text-gray-500 mb-6">{text}</p>
       {canJoin && (
-        <button
-          onClick={onJoin}
-          className="touch-target bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-600 text-white font-bold rounded-xl px-6 py-3 shadow-lg hover:shadow-xl"
-        >
+        <Button className="touch-target font-bold px-6" onClick={onJoin}>
           Join Event
-        </button>
+        </Button>
       )}
-    </div>
+    </Card>
   )
 }
 
@@ -77,7 +77,7 @@ export default function EventDetail() {
   const navigate = useNavigate()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const now = useNow()
-  const [joinError, setJoinError] = useState("")
+  const toast = useToast()
 
   const { data: event, error: eventError } = useEvent(id, { enabled: !!id && isAuthenticated })
   const { data: members = [] } = useEventAttendees(id, { enabled: !!id && isAuthenticated })
@@ -92,12 +92,6 @@ export default function EventDetail() {
     if (!authLoading && !isAuthenticated) navigate("/login")
   }, [isAuthenticated, authLoading, navigate])
 
-  useEffect(() => {
-    if (!joinError) return
-    const t = setTimeout(() => setJoinError(""), 5000)
-    return () => clearTimeout(t)
-  }, [joinError])
-
   if (authLoading || !isAuthenticated) return null
   if (eventError && !event) return <LoadError error={eventError} />
   if (!event) return null
@@ -106,9 +100,9 @@ export default function EventDetail() {
 
   function handleJoinLeave() {
     const mutation = isMember ? leaveMutation : joinMutation
-    setJoinError("")
     mutation.mutate(id, {
-      onError: (err) => setJoinError(getErrorMessage(err, isMember ? "Failed to leave event" : "Failed to join event")),
+      onSuccess: () => toast.success(isMember ? "You left the event" : "You joined the event"),
+      onError: (err) => toast.error(getErrorMessage(err, isMember ? "Failed to leave event" : "Failed to join event")),
     })
   }
 
@@ -130,10 +124,6 @@ export default function EventDetail() {
           <FontAwesomeIcon icon={faArrowLeft} />
           <span>Back to Events</span>
         </Link>
-
-        {joinError && (
-          <div role="alert" className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{joinError}</div>
-        )}
 
         <EventSummary
           event={event}

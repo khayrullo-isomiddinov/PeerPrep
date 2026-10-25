@@ -2,6 +2,7 @@ import { Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faUsers, faTrophy, faCheckCircle } from "@fortawesome/free-solid-svg-icons"
 import { usePrefetchProfile } from "../../../hooks/useProfile"
+import Card from "../../../components/ui/Card"
 
 const RANK_COLORS = ["text-yellow-500", "text-gray-400", "text-orange-400"]
 
@@ -52,7 +53,7 @@ export default function MembersList({ members, presence, currentUserId }) {
   const onlineIds = new Set(presence.filter((p) => p.is_online).map((p) => p.id))
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden flex flex-col h-[400px] lg:h-[600px]">
+    <Card as="div" padded={false} className="flex flex-col h-[400px] lg:h-[600px]">
       <div className="bg-gradient-to-r from-yellow-500 via-orange-500 to-pink-500 p-5 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
@@ -86,6 +87,6 @@ export default function MembersList({ members, presence, currentUserId }) {
           ))
         )}
       </div>
-    </div>
+    </Card>
   )
 }

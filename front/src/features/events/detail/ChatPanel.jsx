@@ -1,13 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
-import { createPortal } from "react-dom"
 import { Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
-  faComments, faPaperPlane, faTrash, faInfoCircle, faExclamationTriangle, faChalkboard, faXmark
+  faComments, faPaperPlane, faTrash, faInfoCircle, faChalkboard
 } from "@fortawesome/free-solid-svg-icons"
 import { getErrorMessage } from "../../../utils/api"
 import { formatRelativeTime } from "../../../utils/dates"
 import { useDeleteMessage } from "../../../hooks/useEventData"
+import ConfirmDialog from "../../../components/ui/ConfirmDialog"
+import { useToast } from "../../../components/ui/toastContext"
+import Card from "../../../components/ui/Card"
 
 const MAX_MESSAGE_LENGTH = 1000
 const GROUP_WINDOW_MS = 5 * 60 * 1000 // consecutive messages from one person within 5 min are grouped
@@ -155,21 +157,20 @@ function TypingIndicator({ users }) {
 }
 
 function Composer({ onSend, onTyping }) {
+  const toast = useToast()
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
-  const [error, setError] = useState("")
 
   async function submit(e) {
     e.preventDefault()
     const content = text.trim()
     if (!content || sending) return
     setSending(true)
-    setError("")
     try {
       await onSend(content)
       setText("")
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to send message"))
+      toast.error(getErrorMessage(err, "Failed to send message"))
     } finally {
       setSending(false)
     }
@@ -177,7 +178,6 @@ function Composer({ onSend, onTyping }) {
 
   return (
     <div className="p-4 bg-gradient-to-b from-white to-gray-50/50 border-t border-gray-200/60 flex-shrink-0">
-      {error && <p role="alert" className="text-xs text-red-600 mb-2 px-1">{error}</p>}
       <form onSubmit={submit}>
         <div className="flex items-center gap-2 bg-white rounded-xl border-2 border-gray-200/60 shadow-md hover:border-indigo-300/60 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 p-1">
           <input
@@ -213,51 +213,11 @@ function Composer({ onSend, onTyping }) {
   )
 }
 
-function DeleteMessageDialog({ busy, onConfirm, onCancel }) {
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(0, 0, 0, 0.5)", backdropFilter: "blur(4px)" }}
-      onClick={onCancel}
-    >
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="flex items-center gap-4 mb-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-pink-600 rounded-xl flex items-center justify-center flex-shrink-0">
-            <FontAwesomeIcon icon={faExclamationTriangle} className="text-white text-xl" />
-          </div>
-          <div>
-            <h3 className="text-xl font-bold text-gray-900">Delete Message</h3>
-            <p className="text-sm text-gray-600">This action cannot be undone</p>
-          </div>
-        </div>
-        <p className="text-gray-700 mb-6">Are you sure you want to delete this message?</p>
-        <div className="flex gap-3">
-          <button
-            onClick={onConfirm}
-            disabled={busy}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-pink-600 text-white font-semibold rounded-xl hover:from-red-600 hover:to-pink-700 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Delete Message
-          </button>
-          <button
-            onClick={onCancel}
-            disabled={busy}
-            className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  )
-}
-
 export default function ChatPanel({ eventId, currentUserId, timing, chat }) {
   const { messages, connected, typingUsers, chatError, clearChatError, sendMessage, notifyTyping } = chat
+  const toast = useToast()
   const deleteMessage = useDeleteMessage()
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
-  const [deleteError, setDeleteError] = useState("")
   const containerRef = useRef(null)
   const lastCountRef = useRef(0)
 
@@ -273,37 +233,26 @@ export default function ChatPanel({ eventId, currentUserId, timing, chat }) {
     lastCountRef.current = messages.length
   }, [messages, currentUserId])
 
-  const notice = chatError || deleteError
+  // Errors pushed by the server over the socket (e.g. "chat is read-only")
   useEffect(() => {
-    if (!notice) return
-    const t = setTimeout(() => {
-      clearChatError()
-      setDeleteError("")
-    }, 5000)
-    return () => clearTimeout(t)
-  }, [notice, clearChatError])
+    if (!chatError) return
+    toast.error(chatError)
+    clearChatError()
+  }, [chatError, clearChatError, toast])
 
   function confirmDelete() {
-    const messageId = confirmDeleteId
-    setConfirmDeleteId(null)
     deleteMessage.mutate(
-      { eventId, messageId },
-      { onError: (err) => setDeleteError(getErrorMessage(err, "Failed to delete message")) }
+      { eventId, messageId: confirmDeleteId },
+      {
+        onSettled: () => setConfirmDeleteId(null),
+        onError: (err) => toast.error(getErrorMessage(err, "Failed to delete message")),
+      }
     )
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl border border-gray-200/60 overflow-hidden flex flex-col h-[400px] lg:h-[600px]">
+    <Card as="div" padded={false} className="flex flex-col h-[400px] lg:h-[600px]">
       <ChatHeader eventId={eventId} timing={timing} connected={connected} messageCount={messages.length} />
-
-      {notice && (
-        <div role="alert" className="flex items-center gap-2 px-4 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700">
-          <span className="flex-1">{notice}</span>
-          <button onClick={() => { clearChatError(); setDeleteError("") }} aria-label="Dismiss" className="p-1 hover:text-red-900">
-            <FontAwesomeIcon icon={faXmark} />
-          </button>
-        </div>
-      )}
 
       <div
         ref={containerRef}
@@ -353,9 +302,15 @@ export default function ChatPanel({ eventId, currentUserId, timing, chat }) {
         <Composer onSend={sendMessage} onTyping={notifyTyping} />
       )}
 
-      {confirmDeleteId != null && (
-        <DeleteMessageDialog busy={deleteMessage.isPending} onConfirm={confirmDelete} onCancel={() => setConfirmDeleteId(null)} />
-      )}
-    </div>
+      <ConfirmDialog
+        open={confirmDeleteId != null}
+        title="Delete Message"
+        description="Are you sure you want to delete this message?"
+        confirmLabel="Delete Message"
+        busy={deleteMessage.isPending}
+        onConfirm={confirmDelete}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
+    </Card>
   )
 }

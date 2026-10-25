@@ -1,6 +1,7 @@
 import { useMemo } from "react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faFile, faDownload } from "@fortawesome/free-solid-svg-icons"
+import Card from "../../../components/ui/Card"
 
 function parseStudyMaterials(json) {
   if (!json) return []
@@ -45,7 +46,7 @@ export default function StudyMaterials({ json }) {
   if (materials.length === 0) return null
 
   return (
-    <section className="bg-white rounded-2xl shadow-xl border border-gray-200/60 p-6 lg:p-8">
+    <Card>
       <div className="flex items-center gap-4 mb-6">
         <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center">
           <FontAwesomeIcon icon={faFile} className="text-white text-xl" />
@@ -82,6 +83,6 @@ export default function StudyMaterials({ json }) {
           </div>
         ))}
       </div>
-    </section>
+    </Card>
   )
 }

@@ -4,13 +4,16 @@ import { useAuth } from "../features/auth/AuthContext"
 import { deleteAccount, updateProfile, getErrorMessage } from "../utils/api"
 import { useUserProfile, useUserBadge, useUpdateProfile, useAwardPastEventsXP } from "../hooks/useProfile"
 import UserBadge from "../components/UserBadge"
+import ConfirmDialog from "../components/ui/ConfirmDialog"
+import { useToast } from "../components/ui/toastContext"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { faTrophy, faMedal, faAward, faUsers, faCalendar, faCheckCircle, faStar, faGraduationCap, faBookOpen } from "@fortawesome/free-solid-svg-icons"
+import { faTrophy, faCalendar, faStar, faGraduationCap } from "@fortawesome/free-solid-svg-icons"
 
 export default function Profile() {
   const { userId } = useParams()
   const { user, isAuthenticated, isLoading, setUser, logout } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast()
   const fileRef = useRef(null)
   const [profileUser, setProfileUser] = useState(null)
   const [editing, setEditing] = useState(false)
@@ -118,9 +121,9 @@ export default function Profile() {
       }))
 
       setEditing(false)
+      toast.success("Profile saved")
     } catch (error) {
-      console.error("Failed to save profile:", error)
-      alert(getErrorMessage(error, "Failed to save your profile. Please try again."))
+      toast.error(getErrorMessage(error, "Failed to save your profile. Please try again."))
     }
   }
 
@@ -139,17 +142,17 @@ export default function Profile() {
       file.type === 'image/heic' || file.type === 'image/heif'
 
     if (isHeic) {
-      alert("HEIC/HEIF format is not supported. Please convert your image to JPG or PNG first. You can do this on your iPhone by going to Settings > Camera > Formats and selecting 'Most Compatible'.")
+      toast.error("HEIC/HEIF photos aren't supported. Please convert it to JPG or PNG first (on iPhone: Settings > Camera > Formats > Most Compatible).")
       return
     }
 
     if (!file.type.startsWith('image/')) {
-      alert("Please select an image file (JPG, PNG, GIF, or WebP)")
+      toast.error("Please select an image file (JPG, PNG, GIF, or WebP).")
       return
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert("Image size must be less than 5MB. Please compress or resize your image.")
+      toast.error("Image must be smaller than 5MB. Please compress or resize it.")
       return
     }
 
@@ -157,9 +160,8 @@ export default function Profile() {
 
     const reader = new FileReader()
     reader.onerror = () => {
-      console.error("Error reading file")
       setUploading(false)
-      alert("Failed to read image file")
+      toast.error("Couldn't read that image file.")
     }
 
     reader.onload = async () => {
@@ -184,11 +186,10 @@ export default function Profile() {
           ...prev,
           photoUrl: updatedProfile.photo_url || photoUrl
         }))
-
+        toast.success("Profile picture updated")
       } catch (error) {
-        console.error("Failed to save photo:", error)
         setForm(prev => ({ ...prev, photoUrl: previousPhotoUrl }))
-        alert(getErrorMessage(error, "Failed to save profile picture. Please try again."))
+        toast.error(getErrorMessage(error, "Failed to save profile picture. Please try again."))
       }
 
       setUploading(false)
@@ -204,25 +205,19 @@ export default function Profile() {
     return `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(form.email || "user")}`
   }
 
-  async function handleDeleteAccount() {
-    if (!window.confirm("Are you sure you want to delete your account? This action cannot be undone.")) {
-      return
-    }
+  function handleDeleteAccount() {
+    setShowDeleteConfirm(true)
+  }
 
-    const confirmText = prompt("Type 'DELETE' to confirm account deletion:")
-    if (confirmText !== "DELETE") {
-      alert("Account deletion cancelled.")
-      return
-    }
-
+  async function confirmDeleteAccount() {
     setDeleting(true)
     try {
       await deleteAccount()
+      setShowDeleteConfirm(false)
       logout()
       navigate("/", { replace: true })
     } catch (error) {
-      console.error("Failed to delete account:", error)
-      alert(getErrorMessage(error, "Failed to delete account. Please try again."))
+      toast.error(getErrorMessage(error, "Failed to delete account. Please try again."))
     } finally {
       setDeleting(false)
     }
@@ -852,6 +847,17 @@ export default function Profile() {
           </div>
         )}
       </main>
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Delete Account"
+        description="Your profile, your events and your messages will be permanently deleted."
+        confirmLabel="Delete My Account"
+        requireText="DELETE"
+        busy={deleting}
+        onConfirm={confirmDeleteAccount}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   )
 }
