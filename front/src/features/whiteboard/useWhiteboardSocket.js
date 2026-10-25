@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react"
+import { socketUrl } from "../../utils/socket"
 
 // Messages that change the board are queued while offline and replayed after reconnecting.
 // Ephemeral ones (cursor, draft) are simply dropped.
@@ -22,10 +23,7 @@ export function useWhiteboardSocket(eventId, { enabled, onMessage }) {
     let disposed = false
 
     function connect() {
-      const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
-      const wsProtocol = apiBase.startsWith("https") ? "wss" : "ws"
-      const wsHost = apiBase.replace(/^https?:\/\//, "").replace(/\/$/, "")
-      const ws = new WebSocket(`${wsProtocol}://${wsHost}/api/events/${eventId}/whiteboard/ws?token=${token}`)
+      const ws = new WebSocket(socketUrl(`/api/events/${eventId}/whiteboard/ws`, token))
       wsRef.current = ws
       readyRef.current = false
       setStatus("connecting")
