@@ -16,6 +16,9 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
 
+    # Optional regex for extra allowed origins, e.g. Vercel's per-deployment preview URLs
+    CORS_ORIGIN_REGEX: str = ""
+
     BACKEND_BASE_URL: str = "http://localhost:8000"
     FRONTEND_BASE_URL: str = "http://localhost:5173"
     SMTP_SERVER: str = "smtp.gmail.com"

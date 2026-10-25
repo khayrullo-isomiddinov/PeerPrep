@@ -20,6 +20,9 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
+      # Vercel preview/deployment URLs for this account only
+      - key: CORS_ORIGIN_REGEX
+        value: ^https://peer-prep-[a-z0-9-]+-khayrullo-isomiddinovs-projects\.vercel\.app$
       - key: BACKEND_BASE_URL
         sync: false
       - key: FRONTEND_BASE_URL
