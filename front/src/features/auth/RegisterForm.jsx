@@ -1,123 +1,98 @@
 import { useState } from "react"
+import { Link } from "react-router-dom"
 import { registerUser, getErrorMessage } from "../../utils/api"
 import AuthLayout from "./AuthLayout"
-import { Link } from "react-router-dom"
+import AuthNotice from "./AuthNotice"
+import PasswordInput from "./PasswordInput"
+import Field, { Input } from "../../components/ui/Field"
+import Button from "../../components/ui/Button"
 
 const MIN_PASSWORD_LENGTH = 8
+
+// 0–3, for the strength meter: length plus a mix of character types
+function passwordStrength(password) {
+  if (password.length < MIN_PASSWORD_LENGTH) return 0
+  const variety = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((re) => re.test(password)).length
+  return Math.min(3, 1 + (password.length >= 12 ? 1 : 0) + (variety >= 3 ? 1 : 0))
+}
+
+const STRENGTH = [
+  { label: `At least ${MIN_PASSWORD_LENGTH} characters`, bar: "" },
+  { label: "Okay", bar: "bg-warning" },
+  { label: "Good", bar: "bg-aqua" },
+  { label: "Strong", bar: "bg-success" },
+]
 
 export default function RegisterForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [show, setShow] = useState(false)
-  const [msg, setMsg] = useState("")
-  const [success, setSuccess] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [notice, setNotice] = useState(null)
   const [verifyUrl, setVerifyUrl] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [registered, setRegistered] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+
+  const strength = passwordStrength(password)
+  const passwordError = submitted && password.length < MIN_PASSWORD_LENGTH ? `Use at least ${MIN_PASSWORD_LENGTH} characters.` : ""
 
   async function submit(e) {
     e.preventDefault()
-    setMsg("")
+    setSubmitted(true)
+    setNotice(null)
     setVerifyUrl("")
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setMsg(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
-      setSuccess(false)
-      return
-    }
+    if (password.length < MIN_PASSWORD_LENGTH) return
     setLoading(true)
     try {
       const data = await registerUser({ email, password })
-      setMsg(data?.message || "Account created! Check your email to verify your account.")
+      setNotice({ tone: data?.email_sent === false ? "info" : "success", text: data?.message || "Account created! Check your email to verify your account." })
       setVerifyUrl(data?.verify_url || "")
-      setSuccess(true)
-      setEmail("")
+      setRegistered(true)
       setPassword("")
+      setSubmitted(false)
     } catch (err) {
-      setMsg(getErrorMessage(err, "Registration failed. Please try again."))
-      setSuccess(false)
+      setNotice({ tone: "error", text: getErrorMessage(err, "Registration failed. Please try again.") })
     } finally {
       setLoading(false)
     }
   }
 
-  const tooShort = password.length > 0 && password.length < MIN_PASSWORD_LENGTH
-
   return (
-    <AuthLayout title="Create Account" subtitle="Join PeerPrep today">
-      <form onSubmit={submit} className="space-y-4">
-        <div className="field-row">
-          <label className="label" htmlFor="register-email">Email</label>
-          <input
-            id="register-email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            className="auth-input"
-            placeholder="you@example.com"
-            required
-            disabled={loading}
-          />
-        </div>
-
-        <div className="field-row">
-          <label className="label" htmlFor="register-password">Password</label>
-          <div className="relative">
-            <input
-              id="register-password"
-              type={show ? "text" : "password"}
-              autoComplete="new-password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="auth-input pr-12"
-              placeholder="••••••••"
-              required
-              minLength={MIN_PASSWORD_LENGTH}
-              disabled={loading}
-            />
-            <button
-              type="button"
-              onClick={() => setShow(s => !s)}
-              className="absolute inset-y-0 right-2 my-auto px-2 rounded-s text-muted"
-              aria-label={show ? "Hide password" : "Show password"}
-            >
-              {show ? "Hide" : "Show"}
-            </button>
-          </div>
-          <div className="h-1 rounded-s bg-white/10 overflow-hidden">
-            <div
-              className="h-full premium-bg-primary"
-              style={{ width: Math.min(100, Math.max(10, password.length * 10)) + "%" }}
-            />
-          </div>
-          <p className={`text-xs mt-1 ${tooShort ? "premium-text-error" : "text-muted"}`}>
-            At least {MIN_PASSWORD_LENGTH} characters
-          </p>
-        </div>
-
-        <button
-          type="submit"
-          className="btn-pink-pill w-full premium-focus disabled:opacity-60 disabled:cursor-not-allowed"
-          disabled={loading}
-        >
-          {loading ? "Creating account..." : "Sign Up"}
-        </button>
-
-        <div className="text-center text-sm mt-2">
-          <span className="text-muted">{success ? "Already verified?" : "Already have an account?"}</span>{" "}
-          <Link to="/login" className="link-quiet">Sign in</Link>
-        </div>
-      </form>
-
-      {msg && (
-        <p role="status" className={`mt-5 text-center text-sm ${success ? "premium-text-success" : "premium-text-error"}`}>
-          {msg}
-        </p>
+    <AuthLayout
+      title={registered ? "Check your inbox" : "Create your account"}
+      subtitle={registered ? `We sent a verification link to ${email}.` : "Join study groups and start preparing together. It's free."}
+      footer={<>Already have an account? <Link to="/login" className="font-semibold text-accent-text hover:underline">Sign in</Link></>}
+    >
+      {notice && (
+        <AuthNotice tone={notice.tone}>
+          <p>{notice.text}</p>
+          {verifyUrl && <a href={verifyUrl} className="block font-semibold text-accent-text underline">Verify my email</a>}
+        </AuthNotice>
       )}
 
-      {verifyUrl && (
-        <p className="mt-3 text-center text-sm break-all">
-          <a href={verifyUrl} className="link-quiet underline">Verify my email</a>
-        </p>
+      {!registered && (
+        <form onSubmit={submit} className="space-y-5">
+          <Field label="Email">
+            <Input type="email" autoComplete="email" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@university.edu" required disabled={loading} />
+          </Field>
+          <Field label="Password" error={passwordError}>
+            <PasswordInput autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={MIN_PASSWORD_LENGTH} required disabled={loading} />
+          </Field>
+          <div className="-mt-2" aria-live="polite">
+            <div className="flex gap-1.5" aria-hidden>
+              {[1, 2, 3].map((level) => (
+                <span key={level} className={`h-1 flex-1 rounded-full transition-colors ${strength >= level ? STRENGTH[strength].bar : "bg-surface-3"}`} />
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-fg-subtle">{password ? STRENGTH[strength].label : STRENGTH[0].label}</p>
+          </div>
+          <Button type="submit" size="lg" className="w-full" loading={loading}>
+            {loading ? "Creating account…" : "Create account"}
+          </Button>
+        </form>
+      )}
+
+      {registered && (
+        <Button as={Link} to="/login" variant="secondary" size="lg" className="w-full">Go to sign in</Button>
       )}
     </AuthLayout>
   )

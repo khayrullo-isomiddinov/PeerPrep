@@ -1,275 +1,131 @@
+import { useEffect, useState } from "react"
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom"
-import { useEffect, useState, useRef } from "react"
-import { useAuth } from "../features/auth/AuthContext"
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
+import {
+  faPlus, faUser, faArrowRightFromBracket, faCircleInfo, faBars, faXmark, faChevronDown
+} from "@fortawesome/free-solid-svg-icons"
+import { useAuth } from "../features/auth/authContextValue"
 import { usePrefetchEvents } from "../hooks/useEvents"
 import { usePrefetchProfile } from "../hooks/useProfile"
+import Logo from "./Logo"
+import ThemeToggle from "./ThemeToggle"
+import Avatar from "./ui/Avatar"
+import Button from "./ui/Button"
+import { Menu, MenuItem, MenuSeparator } from "./ui/Menu"
+
+const navLinkClass = ({ isActive }) =>
+  `relative inline-flex h-9 items-center rounded-lg px-3 text-sm font-semibold transition-colors ${
+    isActive ? "text-fg bg-surface-2" : "text-fg-muted hover:text-fg"
+  }`
+
+function AccountMenu({ user, onSignOut, onPrefetchProfile }) {
+  const name = user.name || user.email.split("@")[0]
+  return (
+    <Menu
+      label="Account menu"
+      buttonClassName="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-surface-2"
+      button={
+        <>
+          <Avatar name={user.name || user.email} src={user.photo_url} id={user.id} size="sm" />
+          <span className="hidden max-w-32 truncate text-sm font-semibold text-fg lg:inline">{name}</span>
+          <FontAwesomeIcon icon={faChevronDown} className="hidden text-[0.65rem] text-fg-subtle lg:inline" />
+        </>
+      }
+    >
+      <div className="px-2.5 py-2">
+        <p className="truncate text-sm font-semibold text-fg">{name}</p>
+        <p className="truncate text-xs text-fg-subtle">{user.email}</p>
+      </div>
+      <MenuSeparator />
+      <MenuItem as={Link} to="/profile" icon={faUser} onMouseEnter={onPrefetchProfile}>Your profile</MenuItem>
+      <MenuItem as={Link} to="/about" icon={faCircleInfo}>About PeerPrep</MenuItem>
+      <MenuSeparator />
+      <MenuItem icon={faArrowRightFromBracket} onSelect={onSignOut}>Sign out</MenuItem>
+    </Menu>
+  )
+}
+
+// Phones, signed out: a compact sheet with the public links
+function GuestMobileMenu() {
+  const [open, setOpen] = useState(false)
+  const { pathname } = useLocation()
+  useEffect(() => setOpen(false), [pathname])
+
+  return (
+    <div className="md:hidden">
+      <button
+        type="button"
+        aria-label={open ? "Close menu" : "Open menu"}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-grid size-10 place-items-center rounded-lg text-fg-muted hover:bg-surface-2 hover:text-fg"
+      >
+        <FontAwesomeIcon icon={open ? faXmark : faBars} />
+      </button>
+      {open && (
+        <div className="absolute inset-x-0 top-full border-b border-line bg-surface shadow-raised animate-pop-in">
+          <nav className="page-container flex flex-col gap-1 py-3" aria-label="Main">
+            <NavLink to="/events" className={navLinkClass}>Browse events</NavLink>
+            <NavLink to="/about" className={navLinkClass}>About</NavLink>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <Button as={Link} to="/login" variant="secondary">Log in</Button>
+              <Button as={Link} to="/register">Get started</Button>
+            </div>
+          </nav>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function Navbar() {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const { isAuthenticated, user, logout, isLoading } = useAuth()
-  const loc = useLocation()
+  const { isAuthenticated, user, logout } = useAuth()
   const navigate = useNavigate()
-  const createMenuRef = useRef(null)
   const { prefetchEventList } = usePrefetchEvents()
   const prefetchProfile = usePrefetchProfile()
 
-  useEffect(() => {
-    setMenuOpen(false)
-    setMobileMenuOpen(false)
-  }, [loc.pathname])
-
-  useEffect(() => {
-    function handleClickOutside(event) {
-      const mobileMenu = document.querySelector('.lg\\:hidden.fixed')
-      if (mobileMenuOpen && mobileMenu && !mobileMenu.contains(event.target) && !event.target.closest('button[aria-label="Menu"]')) {
-        setMobileMenuOpen(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('touchstart', handleClickOutside)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('touchstart', handleClickOutside)
-    }
-  }, [mobileMenuOpen])
-
-  function handleLogout() {
+  function signOut() {
     logout()
-    setMenuOpen(false)
     navigate("/", { replace: true })
   }
 
   return (
-    <>
-      <nav className={`nav-root z-nav nav-clean ${isAuthenticated ? 'nav-authenticated' : 'nav-unauthenticated'}`}>
-        <div className="nav-shell">
-          <div className="nav-bar nav-clean-bar">
-            { }
-            <div className="nav-left">
-              <Link to="/" className="brand-new">
-                <svg className="brand-ticket" viewBox="0 0 64 48" aria-hidden>
-                  <defs>
-                    <linearGradient id="pinkGrad" x1="0" x2="1">
-                      <stop offset="0%" stopColor="#fda4af" />
-                      <stop offset="100%" stopColor="#ec4899" />
-                    </linearGradient>
-                  </defs>
-                  <path fill="url(#pinkGrad)" d="M8 10c0-2.2 1.8-4 4-4h36c1.1 0 2 .9 2 2v4a4 4 0 1 0 0 8v8a4 4 0 1 0 0 8v4c0 1.1-.9 2-2 2H12c-2.2 0-4-1.8-4-4V10z" />
-                  <path fill="#fff" opacity=".25" d="M22 10h2v28h-2zM30 10h2v28h-2zM38 10h2v28h-2z" />
-                </svg>
-                <span className="brand-text">
-                  <span className="text-neutral-800">Peer</span>
-                  <span className="text-pink-600">Prep</span>
-                </span>
-              </Link>
-              {!isAuthenticated && (
-                <div className="nav-pages">
+    <header className="sticky top-0 z-40 border-b border-line bg-canvas/85 backdrop-blur-xl supports-[backdrop-filter]:bg-canvas/70 pt-[env(safe-area-inset-top)]">
+      <div className="page-container relative flex h-14 items-center gap-2 md:h-16">
+        <Link to="/" className="mr-2 rounded-lg" aria-label="PeerPrep home">
+          <Logo />
+        </Link>
 
-                  <NavLink
-                    to="/events"
-                    className={({ isActive }) => `nav-link-clean ${isActive ? 'is-active' : ''}`}
-                    onMouseEnter={() => prefetchEventList()}
-                  >
-                    Events
-                  </NavLink>
-                </div>
-              )}
+        <nav className="hidden items-center gap-1 md:flex" aria-label="Main">
+          {isAuthenticated && <NavLink to="/" end className={navLinkClass}>Home</NavLink>}
+          <NavLink to="/events" className={navLinkClass} onMouseEnter={() => prefetchEventList()}>Events</NavLink>
+          {!isAuthenticated && <NavLink to="/about" className={navLinkClass}>About</NavLink>}
+        </nav>
+
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          {/* Phones create from the tab bar; visibility lives on a wrapper so it can't clash with the button's display */}
+          {isAuthenticated && (
+            <div className="hidden md:block">
+              <Button as={Link} to="/events/create" size="sm">
+                <FontAwesomeIcon icon={faPlus} />
+                New event
+              </Button>
             </div>
-
-            <div style={{ gridColumn: '2', justifySelf: 'center' }} className="hidden lg:block">
-              {isAuthenticated && (
-                <ul className="nav-tabs">
-                  <li>
-                    <NavLink
-                      to="/"
-                      end
-                      className={({ isActive }) => `tab-link ${isActive ? 'is-active' : ''}`}
-                      onMouseEnter={() => prefetchEventList({ limit: 100 })}
-                    >
-                      Explore
-                    </NavLink>
-                  </li>
-
-                  <li>
-                    <NavLink
-                      to="/events"
-                      className={({ isActive }) => `tab-link ${isActive ? 'is-active' : ''}`}
-                      onMouseEnter={() => prefetchEventList()}
-                    >
-                      Events
-                    </NavLink>
-                  </li>
-                </ul>
-              )}
-            </div>
-
-            {}
-            {isAuthenticated && (
-              <button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="lg:hidden nav-bell hover:bg-pink-50 hover:border-pink-200 transition-colors touch-target"
-                style={{ gridColumn: '2', justifySelf: 'center', minWidth: '44px', minHeight: '44px', padding: '0.5rem' }}
-                aria-label="Menu"
-                aria-expanded={mobileMenuOpen}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" className="text-pink-600">
-                  {mobileMenuOpen ? (
-                    <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-                  ) : (
-                    <path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
-                  )}
-                </svg>
-              </button>
-            )}
-
-            <div className="nav-right gap-2" style={{ gridColumn: '3', justifySelf: 'end' }}>
-              {isLoading ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-gray-200 animate-pulse rounded-full"></div>
-                  <span className="text-sm text-gray-500">Loading...</span>
-                </div>
-              ) : (
-                <>
-                  {!isAuthenticated && (
-                    <div className="flex items-center gap-2">
-                      <Link to="/login" className="btn-ghost-pink">Log in</Link>
-                      <Link to="/register" className="btn-pink">Sign up</Link>
-                    </div>
-                  )}
-
-                  {isAuthenticated && (
-                    <div className="relative inline-flex items-center gap-2">
-                      { }
-                      <div className="relative" ref={createMenuRef}>
-                        <button
-                          onClick={() => navigate("/events/create")}
-                          className="nav-bell hover:bg-pink-50 hover:border-pink-200 transition-colors"
-                          aria-label="Create"
-                          title="Create Event"
-                        >
-                          <svg width="18" height="18" viewBox="0 0 24 24" className="text-pink-600">
-                            <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
-                          </svg>
-                        </button>
-
-                      </div>
-                      <button
-                        onClick={() => setMenuOpen(v => !v)}
-                        className="auth-chip"
-                        aria-haspopup="menu"
-                        aria-expanded={menuOpen ? "true" : "false"}
-                      >
-                        {isLoading ? (
-                          <div className="nav-avatar bg-gray-200 animate-pulse rounded-full flex items-center justify-center">
-                            <svg width="16" height="16" viewBox="0 0 24 24" className="text-gray-400">
-                              <path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                            </svg>
-                          </div>
-                        ) : (
-                          <img
-                            key={user?.photo_url || 'default'}
-                            src={(user?.photo_url && user.photo_url.trim()) ? user.photo_url : `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(user?.email || "user")}`}
-                            alt="Profile"
-                            className="nav-avatar"
-                            onError={(e) => {
-                              e.target.src = `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(user?.email || "user")}`
-                            }}
-                          />
-                        )}
-                        <span className="hidden sm:inline text-neutral-700">
-                          {isLoading ? "Loading..." : (user?.name || user?.email)}
-                        </span>
-                        <svg width="14" height="14" viewBox="0 0 24 24" className="opacity-60">
-                          <path fill="currentColor" d="M7 10l5 5 5-5z" />
-                        </svg>
-                      </button>
-
-                      {menuOpen && (
-                        <div className="profile-dropdown">
-                          <Link
-                            to="/profile"
-                            className="profile-dropdown-item"
-                            onClick={() => setMenuOpen(false)}
-                            onMouseEnter={() => user && prefetchProfile(user.id, { own: true })}
-                          >
-                            <svg width="16" height="16" viewBox="0 0 24 24" className="mr-2">
-                              <path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                            </svg>
-                            Profile
-                          </Link>
-                          <button className="profile-dropdown-item" onClick={handleLogout}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" className="mr-2">
-                              <path fill="currentColor" d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.59L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z" />
-                            </svg>
-                            Logout
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
+          )}
+          <ThemeToggle />
+          {isAuthenticated && user ? (
+            <AccountMenu user={user} onSignOut={signOut} onPrefetchProfile={() => prefetchProfile(user.id, { own: true })} />
+          ) : (
+            <>
+              <div className="hidden items-center gap-2 md:flex">
+                <Button as={Link} to="/login" variant="ghost" size="sm">Log in</Button>
+                <Button as={Link} to="/register" size="sm">Get started</Button>
+              </div>
+              <GuestMobileMenu />
+            </>
+          )}
         </div>
-      </nav>
-
-      {}
-      {isAuthenticated && mobileMenuOpen && (
-        <div
-          className="lg:hidden fixed left-0 right-0 bg-white border-b border-gray-200 shadow-lg z-50 mobile-menu"
-          style={{
-            top: '64px',
-            maxHeight: 'calc(100vh - 64px)',
-            overflowY: 'auto',
-            WebkitOverflowScrolling: 'touch'
-          }}
-        >
-          <div className="container-page py-4">
-            <ul className="space-y-1">
-              <li>
-                <NavLink
-                  to="/"
-                  end
-                  className={({ isActive }) => `block px-4 py-4 rounded-lg font-medium transition-colors touch-target ${isActive ? 'bg-pink-50 text-pink-600' : 'text-gray-700 active:bg-gray-100'}`}
-                  onClick={() => setMobileMenuOpen(false)}
-                  style={{ minHeight: '48px', display: 'flex', alignItems: 'center' }}
-                >
-                  Explore
-                </NavLink>
-              </li>
-
-              <li>
-                <NavLink
-                  to="/events"
-                  className={({ isActive }) => `block px-4 py-4 rounded-lg font-medium transition-colors touch-target ${isActive ? 'bg-pink-50 text-pink-600' : 'text-gray-700 active:bg-gray-100'}`}
-                  onClick={() => setMobileMenuOpen(false)}
-                  style={{ minHeight: '48px', display: 'flex', alignItems: 'center' }}
-                >
-                  Upcoming Events
-                </NavLink>
-              </li>
-              <li className="border-t border-gray-200 mt-2 pt-2">
-                <Link
-                  to="/profile"
-                  className="block px-4 py-4 rounded-lg font-medium transition-colors touch-target text-gray-700 active:bg-gray-100"
-                  onClick={() => setMobileMenuOpen(false)}
-                  onMouseEnter={() => user && prefetchProfile(user.id, { own: true })}
-                  style={{ minHeight: '48px', display: 'flex', alignItems: 'center', gap: '0.75rem' }}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" className="text-gray-500">
-                    <path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                  </svg>
-                  Profile
-                </Link>
-              </li>
-            </ul>
-          </div>
-        </div>
-      )}
-      <div className="nav-spacer" />
-    </>
+      </div>
+    </header>
   )
 }

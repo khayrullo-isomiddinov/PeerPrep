@@ -1,373 +1,248 @@
-import { useEffect, useState, useMemo } from "react"
-import { useSearchParams, useLocation, Link } from "react-router-dom"
+import { useEffect, useMemo, useState } from "react"
+import { Link, useSearchParams } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import {
-  faCalendarAlt, faSearch, faChevronDown, faChevronUp
-} from "@fortawesome/free-solid-svg-icons"
-import EventList from "../features/events/EventList"
-import EditEventForm from "../features/events/EditEventForm"
-import { useAuth } from "../features/auth/AuthContext"
-import { useEvents, useMyEvents, useMyEventsCount, useUpdateEvent, eventKeys } from "../hooks/useEvents"
-import { queryClient } from "../lib/queryClient"
+import { faMagnifyingGlass, faPlus, faXmark, faCalendarDays, faFilter } from "@fortawesome/free-solid-svg-icons"
+import { useAuth } from "../features/auth/authContextValue"
+import { useEvents, useMyEvents } from "../hooks/useEvents"
+import EventList, { EventGridSkeleton } from "../features/events/EventList"
+import PageHeader from "../components/ui/PageHeader"
+import SegmentedControl from "../components/ui/SegmentedControl"
+import Button from "../components/ui/Button"
+import { EmptyState } from "../components/ui/Feedback"
+import { controlClasses } from "../components/ui/fieldStyles"
+import { parseUTCDate } from "../utils/dates"
+
+const STATUS_OPTIONS = [
+  { value: "upcoming", label: "Upcoming" },
+  { value: "ongoing", label: "Live" },
+  { value: "past", label: "Past" },
+]
+const WHEN_OPTIONS = [
+  { value: "any", label: "Any time" },
+  { value: "today", label: "Today" },
+  { value: "week", label: "Next 7 days" },
+]
+
+function withinWindow(event, when) {
+  if (when === "any") return true
+  const start = parseUTCDate(event.starts_at)
+  if (!start) return false
+  const end = new Date()
+  if (when === "today") end.setHours(23, 59, 59, 999)
+  else end.setDate(end.getDate() + 7)
+  return start <= end
+}
+
+// Keeps a text box responsive while only updating the URL (and refetching) after typing pauses
+function useDebouncedParam(value, onCommit, delay = 300) {
+  const [draft, setDraft] = useState(value)
+  useEffect(() => setDraft(value), [value])
+  useEffect(() => {
+    if (draft === value) return
+    const t = setTimeout(() => onCommit(draft), delay)
+    return () => clearTimeout(t)
+  }, [draft, value, onCommit, delay])
+  return [draft, setDraft]
+}
+
+function emptyCopy(scope, status) {
+  if (status === "past") {
+    return { title: scope === "mine" ? "No past sessions yet" : "No past events yet", description: "Sessions show up here once they've ended." }
+  }
+  if (status === "ongoing") {
+    return {
+      title: scope === "mine" ? "None of your sessions are live" : "Nothing is live right now",
+      description: "Live sessions appear here while they're happening.",
+    }
+  }
+  return scope === "mine"
+    ? { title: "You haven't joined any upcoming sessions", description: "Browse what other students are hosting, or host your own." }
+    : { title: "No upcoming events yet", description: "Be the first: host a session and invite your classmates." }
+}
 
 export default function Events() {
   const { isAuthenticated } = useAuth()
-  const [params] = useSearchParams()
-  const location = useLocation()
+  const [params, setParams] = useSearchParams()
 
-  const [statusView, setStatusView] = useState("upcoming")
+  const status = STATUS_OPTIONS.some((o) => o.value === params.get("status")) ? params.get("status") : "upcoming"
+  const scope = isAuthenticated && params.get("scope") === "mine" ? "mine" : "all"
+  const when = status === "upcoming" && WHEN_OPTIONS.some((o) => o.value === params.get("when")) ? params.get("when") : "any"
+  const q = params.get("q") || ""
+  const exam = params.get("exam") || ""
+  const location = params.get("location") || ""
 
-  const currentParams = useMemo(() => ({
-    q: params.get('q') || undefined,
-    location: params.get('location') || undefined,
-    exam: params.get('exam') || undefined,
-    status: statusView
-  }), [params, statusView])
+  const updateParam = useMemo(() => (key, value) => {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (value) next.set(key, value)
+      else next.delete(key)
+      return next
+    }, { replace: true })
+  }, [setParams])
 
-  // State declarations - must come before React Query hooks that use them
-  const [searchQuery, setSearchQuery] = useState("")
-  const [showMyEvents, setShowMyEvents] = useState(false)
-  const [timeFilter, setTimeFilter] = useState("all")
-  const [examFilter, setExamFilter] = useState("all")
-  const [editingEvent, setEditingEvent] = useState(null)
+  const commitSearch = useMemo(() => (v) => updateParam("q", v.trim()), [updateParam])
+  const commitExam = useMemo(() => (v) => updateParam("exam", v.trim()), [updateParam])
+  const [search, setSearch] = useDebouncedParam(q, commitSearch)
+  const [examDraft, setExamDraft] = useDebouncedParam(exam, commitExam)
 
-  // React Query hooks - handles caching automatically
-  // Live-ish list: refresh every minute and when the tab regains focus (past events don't change)
-  const { data: events = [], isLoading: loading } = useEvents(currentParams, {
-    refetchInterval: statusView === "past" ? false : 60 * 1000,
-    refetchOnWindowFocus: statusView !== "past",
+  const listParams = useMemo(
+    () => ({ status, q: q || undefined, exam: exam || undefined, location: location || undefined }),
+    [status, q, exam, location]
+  )
+  const allEvents = useEvents(listParams, {
+    enabled: scope === "all",
+    refetchInterval: status === "past" ? false : 60 * 1000,
+    refetchOnWindowFocus: status !== "past",
   })
-  const { data: myEvents = [], isLoading: loadingMyEvents } = useMyEvents(
-    { status: statusView },
-    { enabled: isAuthenticated && showMyEvents }
-  )
-  const { data: myEventsCount = 0, isLoading: loadingMyEventsCount } = useMyEventsCount(
-    { status: statusView },
-    { enabled: isAuthenticated }
-  )
-  const updateEventMutation = useUpdateEvent()
+  const myEvents = useMyEvents({ status }, { enabled: scope === "mine" })
+  const active = scope === "mine" ? myEvents : allEvents
 
-  const statusLabel = statusView === "past" ? "Past" : statusView === "ongoing" ? "Ongoing" : "Upcoming"
-
-  function handleStatusChange(next) {
-    if (next === statusView) return
-    setStatusView(next)
-    // React Query will automatically refetch with new params
-  }
-
-  useEffect(() => {
-    setTimeFilter("all")
-  }, [statusView])
-
-  // Handle new event creation
-  useEffect(() => {
-    if (location.state?.newEvent) {
-      // Invalidate queries to refetch
-      queryClient.invalidateQueries({ queryKey: eventKeys.all })
-      window.history.replaceState({}, document.title)
-    }
-    setSearchQuery(params.get('q') || "")
-  }, [location.state, params])
-
-
-  const parseUTCDate = (dateString) => {
-    if (!dateString) return null
-    if (dateString.includes('Z') || dateString.includes('+') || dateString.match(/-\d{2}:\d{2}$/)) {
-      return new Date(dateString)
-    }
-    return new Date(dateString + 'Z')
-  }
-
-  const filteredEvents = useMemo(() => {
-    let filtered = events
-    const now = new Date()
-    if (statusView === "upcoming" && timeFilter !== "all") {
-      if (timeFilter === "today") {
-        const todayStart = new Date(now)
-        todayStart.setHours(0, 0, 0, 0)
-        const todayEnd = new Date(now)
-        todayEnd.setHours(23, 59, 59, 999)
-
-        filtered = filtered.filter(event => {
-          const eventDate = parseUTCDate(event.starts_at)
-          if (!eventDate) return false
-          return eventDate >= todayStart && eventDate <= todayEnd
-        })
-      } else if (timeFilter === "week") {
-        const weekEnd = new Date(now)
-        weekEnd.setDate(weekEnd.getDate() + 7)
-
-        filtered = filtered.filter(event => {
-          const eventDate = parseUTCDate(event.starts_at)
-          if (!eventDate) return false
-          return eventDate > now && eventDate <= weekEnd
-        })
-      }
-    }
-
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(event =>
-        event.title.toLowerCase().includes(query) ||
-        event.description?.toLowerCase().includes(query) ||
-        event.location.toLowerCase().includes(query) ||
-        (event.exam && event.exam.toLowerCase().includes(query))
+  const events = useMemo(() => {
+    let list = active.data || []
+    if (scope === "mine") {
+      // The my-events endpoint doesn't search, so filter locally
+      const needle = q.toLowerCase()
+      const examNeedle = exam.toLowerCase()
+      list = list.filter((e) =>
+        (!needle || `${e.title} ${e.description || ""} ${e.location}`.toLowerCase().includes(needle)) &&
+        (!examNeedle || (e.exam || "").toLowerCase().includes(examNeedle))
       )
     }
+    return list.filter((e) => withinWindow(e, when))
+  }, [active.data, scope, q, exam, when])
 
-    if (examFilter !== "all" && examFilter.trim()) {
-      filtered = filtered.filter(event =>
-        event.exam && event.exam.toLowerCase().includes(examFilter.toLowerCase())
-      )
-    }
-
-    return filtered
-  }, [events, searchQuery, timeFilter, examFilter, statusView])
-
-  async function handleUpdateEvent(eventId, updatedData) {
-    const data = await updateEventMutation.mutateAsync({ id: eventId, data: updatedData })
-    setEditingEvent(null)
-    return data
+  const hasFilters = !!(q || exam || location || when !== "any")
+  function clearFilters() {
+    setParams((prev) => {
+      const next = new URLSearchParams()
+      for (const key of ["status", "scope"]) if (prev.get(key)) next.set(key, prev.get(key))
+      return next
+    }, { replace: true })
   }
 
-  if (loading && events.length === 0) {
-    return null
-  }
+  const empty = emptyCopy(scope, status)
 
   return (
-    <div className="min-h-screen tap-safe premium-scrollbar route-transition bg-gray-50 relative">
-      <div className="nav-spacer" />
+    <div className="page-container py-8 sm:py-12">
+      <PageHeader
+        title="Events"
+        description="Study sessions hosted by students. Join one, or host your own."
+      />
 
-      <section className="container-page pt-4 pb-6">
-        <div className="space-y-6">
-          <div className="flex flex-col gap-4 pb-4 border-b border-gray-200">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900 whitespace-nowrap">Events</h1>
-              <div className="inline-flex border border-gray-300 bg-white shadow-sm" style={{ borderRadius: 9999 }}>
+      <div className="mt-8 flex flex-col gap-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <label className="relative flex-1">
+            <span className="sr-only">Search events</span>
+            <FontAwesomeIcon icon={faMagnifyingGlass} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-fg-subtle" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by topic, course or place"
+              className={`${controlClasses} h-11 pl-10`}
+            />
+          </label>
+          <label className="relative lg:w-56">
+            <span className="sr-only">Filter by exam</span>
+            <FontAwesomeIcon icon={faFilter} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-fg-subtle" />
+            <input
+              value={examDraft}
+              onChange={(e) => setExamDraft(e.target.value)}
+              placeholder="Exam, e.g. MCAT"
+              className={`${controlClasses} h-11 pl-9`}
+            />
+          </label>
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <SegmentedControl
+            label="Event status"
+            options={STATUS_OPTIONS}
+            value={status}
+            onChange={(v) => updateParam("status", v === "upcoming" ? "" : v)}
+            className="w-full sm:w-auto"
+          />
+          {isAuthenticated && (
+            <SegmentedControl
+              label="Whose events"
+              options={[{ value: "all", label: "All events" }, { value: "mine", label: "My events" }]}
+              value={scope}
+              onChange={(v) => updateParam("scope", v === "mine" ? "mine" : "")}
+              className="w-full sm:w-auto"
+            />
+          )}
+          {status === "upcoming" && (
+            <div className="flex flex-wrap gap-2 sm:ml-auto" role="group" aria-label="When">
+              {WHEN_OPTIONS.map((o) => (
                 <button
-                  onClick={() => handleStatusChange("upcoming")}
-                  className={`px-4 py-1.5 text-xs font-semibold ${statusView === "upcoming" ? "bg-indigo-600 text-white" : "text-gray-600"}`}
-                  style={{ borderRadius: 9999 }}
+                  key={o.value}
+                  type="button"
+                  aria-pressed={when === o.value}
+                  onClick={() => updateParam("when", o.value === "any" ? "" : o.value)}
+                  className={`h-8 rounded-full border px-3 text-xs font-semibold transition-colors ${
+                    when === o.value ? "border-accent bg-accent-soft text-accent-text" : "border-line text-fg-muted hover:border-line-strong hover:text-fg"
+                  }`}
                 >
-                  Upcoming
+                  {o.label}
                 </button>
-                <button
-                  onClick={() => handleStatusChange("ongoing")}
-                  className={`px-4 py-1.5 text-xs font-semibold ${statusView === "ongoing" ? "bg-indigo-600 text-white" : "text-gray-600"}`}
-                  style={{ borderRadius: 9999 }}
-                >
-                  Ongoing
-                </button>
-                <button
-                  onClick={() => handleStatusChange("past")}
-                  className={`px-4 py-1.5 text-xs font-semibold ${statusView === "past" ? "bg-indigo-600 text-white" : "text-gray-600"}`}
-                  style={{ borderRadius: 9999 }}
-                >
-                  Past
-                </button>
-              </div>
-              <span className="text-xs uppercase tracking-wide text-gray-500">
-                {statusLabel} view
-              </span>
-              <div className="flex items-center gap-2 ml-auto">
-                {isAuthenticated && (
-                  <>
-                    <button
-                      onClick={() => {
-                        setShowMyEvents(!showMyEvents)
-                      }}
-                      className="flex items-center justify-between gap-2 px-4 py-2.5 bg-white border border-gray-300 hover:bg-gray-50 group shadow-sm"
-                      style={{ borderRadius: '0' }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <FontAwesomeIcon icon={faCalendarAlt} className="w-4 h-4 text-gray-600" />
-                        <span className="font-medium text-gray-900 text-sm">
-                          {statusView === "past" ? "My Past Events" : statusView === "ongoing" ? "My Ongoing Events" : "My Events"}
-                        </span>
-                        {loadingMyEventsCount ? (
-                          <span className="px-1.5 py-0.5 bg-gray-200 text-gray-400 text-xs font-semibold">
-                            ...
-                          </span>
-                        ) : myEventsCount > 0 ? (
-                          <span className="px-1.5 py-0.5 bg-indigo-600 text-white text-xs font-semibold">
-                            {myEventsCount}
-                          </span>
-                        ) : null}
-                      </div>
-                      <FontAwesomeIcon
-                        icon={showMyEvents ? faChevronUp : faChevronDown}
-                        className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600 ml-1"
-                      />
-                    </button>
-                    <Link
-                      to="/events/create"
-                      className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 font-medium text-sm shadow-sm"
-                      style={{ borderRadius: '0' }}
-                    >
-                      <FontAwesomeIcon icon={faCalendarAlt} className="w-4 h-4" />
-                      <span>Create</span>
-                    </Link>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative flex-1 min-w-[240px] max-w-xl">
-                <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                  <FontAwesomeIcon icon={faSearch} className="w-4 h-4" />
-                </div>
-                <input
-                  type="text"
-                  placeholder={`Search ${statusLabel.toLowerCase()} events...`}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900 text-sm shadow-sm"
-                  style={{ borderRadius: '0' }}
-                />
-              </div>
-
-              <div className="flex items-center gap-1 flex-wrap">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Filter by exam..."
-                    value={examFilter === "all" ? "" : examFilter}
-                    onChange={(e) => setExamFilter(e.target.value || "all")}
-                    className="px-3 py-2 text-xs border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-700 w-32"
-                    style={{ borderRadius: '0' }}
-                  />
-                </div>
-                {statusView === "upcoming" || statusView === "ongoing" ? (
-                  <>
-                    <button
-                      onClick={() => setTimeFilter("all")}
-                      className={`px-3 py-2 text-xs font-semibold ${timeFilter === "all"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-300"
-                        }`}
-                      style={{ borderRadius: '0' }}
-                    >
-                      All
-                    </button>
-                    <button
-                      onClick={() => setTimeFilter("upcoming")}
-                      className={`px-3 py-2 text-xs font-semibold transition-colors ${timeFilter === "upcoming"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-300"
-                        }`}
-                      style={{ borderRadius: '0' }}
-                    >
-                      Soon
-                    </button>
-                    <button
-                      onClick={() => setTimeFilter("today")}
-                      className={`px-3 py-2 text-xs font-semibold transition-colors ${timeFilter === "today"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-300"
-                        }`}
-                      style={{ borderRadius: '0' }}
-                    >
-                      Today
-                    </button>
-                    <button
-                      onClick={() => setTimeFilter("week")}
-                      className={`px-3 py-2 text-xs font-semibold transition-colors ${timeFilter === "week"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-300"
-                        }`}
-                      style={{ borderRadius: '0' }}
-                    >
-                      This Week
-                    </button>
-                  </>
-                ) : (
-                  <div className="px-3 py-2 text-xs bg-white border border-gray-200 text-gray-600">
-                    Completed events are archived here
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {isAuthenticated && showMyEvents && (
-            <div className="pt-2">
-              {loadingMyEvents ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {[...Array(3)].map((_, i) => (
-                    <div key={i} className="bg-white rounded-xl border border-gray-200 p-6">
-                      <div className="space-y-4">
-                        <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                        <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-                        <div className="h-3 bg-gray-200 rounded w-2/3"></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : myEvents.length > 0 ? (
-                <EventList events={myEvents} onEdit={setEditingEvent} />
-              ) : (
-                <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
-                  <p className="text-gray-600 text-sm">
-                    {statusView === "past" ? "No past events yet" : "No events yet"}
-                  </p>
-                </div>
-              )}
+              ))}
             </div>
           )}
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">{statusLabel} Events</h2>
-              {filteredEvents.length > 0 && (
-                <span className="text-sm text-gray-500">
-                  {filteredEvents.length} {filteredEvents.length === 1 ? 'event' : 'events'}
-                </span>
-              )}
-            </div>
-
-            {loading && events.length === 0 ? (
-              null
-            ) : filteredEvents.length > 0 ? (
-              <EventList events={filteredEvents} onEdit={setEditingEvent} />
-            ) : (
-              <div className="text-center py-16 bg-white rounded-xl border border-gray-200 shadow-sm">
-                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-5">
-                  <FontAwesomeIcon icon={faCalendarAlt} className="w-10 h-10 text-gray-400" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  {statusView === "past" ? "No past events yet" : "No events found"}
-                </h3>
-                <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                  {statusView === "past"
-                    ? "Events drop out of the main feed when they end. You'll see completed sessions here."
-                    : searchQuery
-                      ? "Try adjusting your search to find more events."
-                      : "No events available at the moment. Be the first to create one!"
-                  }
-                </p>
-                {isAuthenticated && (
-                  <Link
-                    to="/events/create"
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold shadow-sm hover:shadow-md"
-                  >
-                    <FontAwesomeIcon icon={faCalendarAlt} className="w-4 h-4" />
-                    Create Event
-                  </Link>
-                )}
-              </div>
-            )}
-          </div>
         </div>
-      </section>
 
-      {editingEvent && (
-        <EditEventForm
-          event={editingEvent}
-          onUpdate={handleUpdateEvent}
-          onCancel={() => setEditingEvent(null)}
-        />
-      )}
+        {location && (
+          <div>
+            <button
+              type="button"
+              onClick={() => updateParam("location", "")}
+              aria-label={`Remove location filter: ${location}`}
+              className="inline-flex h-8 items-center gap-2 rounded-full bg-accent-soft px-3 text-xs font-semibold text-accent-text"
+            >
+              Near “{location}”
+              <FontAwesomeIcon icon={faXmark} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      <section className="mt-8" aria-live="polite" aria-busy={active.isLoading}>
+        {active.isLoading ? (
+          <EventGridSkeleton />
+        ) : active.isError ? (
+          <EmptyState
+            icon={faCalendarDays}
+            title="Couldn't load events"
+            description="Check your connection and try again."
+            action={<Button variant="secondary" onClick={() => active.refetch()}>Try again</Button>}
+          />
+        ) : events.length > 0 ? (
+          <>
+            <p className="mb-4 text-sm text-fg-subtle">{events.length} {events.length === 1 ? "event" : "events"}</p>
+            <EventList events={events} />
+          </>
+        ) : hasFilters ? (
+          <EmptyState
+            icon={faMagnifyingGlass}
+            title="No events match your filters"
+            description="Try a different search, or clear the filters to see everything."
+            action={<Button variant="secondary" onClick={clearFilters}>Clear filters</Button>}
+          />
+        ) : (
+          <EmptyState
+            icon={faCalendarDays}
+            title={empty.title}
+            description={empty.description}
+            action={isAuthenticated ? (
+              <>
+                {scope === "mine" && <Button variant="secondary" onClick={() => updateParam("scope", "")}>Browse all events</Button>}
+                {status !== "past" && <Button as={Link} to="/events/create"><FontAwesomeIcon icon={faPlus} />Host an event</Button>}
+              </>
+            ) : (
+              <Button as={Link} to="/register">Create a free account</Button>
+            )}
+          />
+        )}
+      </section>
     </div>
   )
 }

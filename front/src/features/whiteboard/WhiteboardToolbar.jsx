@@ -14,8 +14,8 @@ function ToolButton({ active, disabled, onClick, title, children }) {
       onClick={onClick}
       className={`w-9 h-9 flex items-center justify-center rounded-lg text-sm transition-colors ${
         active
-          ? "bg-gradient-to-br from-pink-500 to-purple-600 text-white shadow-md"
-          : "text-gray-600 hover:bg-gray-100 disabled:opacity-35 disabled:hover:bg-transparent"
+          ? "bg-accent text-accent-fg shadow-card"
+          : "text-fg-muted hover:bg-surface-2 hover:text-fg disabled:opacity-35 disabled:hover:bg-transparent"
       }`}
     >
       {children}
@@ -32,7 +32,7 @@ export default function WhiteboardToolbar({
 
   return (
     <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-2 max-w-[calc(100%-24px)] pointer-events-none">
-      <div className="pointer-events-auto flex items-center gap-0.5 bg-white/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 p-1 overflow-x-auto max-w-full">
+      <div className="pointer-events-auto flex items-center gap-0.5 bg-surface/95 backdrop-blur rounded-xl shadow-raised border border-line p-1 overflow-x-auto max-w-full">
         {TOOLS.map((t) => (
           <ToolButton
             key={t.id}
@@ -44,7 +44,7 @@ export default function WhiteboardToolbar({
             {t.icon}
           </ToolButton>
         ))}
-        <div className="w-px h-6 bg-gray-200 mx-1 flex-shrink-0" />
+        <div className="w-px h-6 bg-line mx-1 flex-shrink-0" />
         <ToolButton title="Undo (Ctrl+Z)" disabled={!canUndo} onClick={onUndo}>
           <FontAwesomeIcon icon={faRotateLeft} />
         </ToolButton>
@@ -57,7 +57,7 @@ export default function WhiteboardToolbar({
       </div>
 
       {!readOnly && (showStrokeOptions || tool === "note") && (
-        <div className="pointer-events-auto flex items-center gap-1.5 bg-white/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 px-2 py-1.5 overflow-x-auto max-w-full">
+        <div className="pointer-events-auto flex items-center gap-1.5 bg-surface/95 backdrop-blur rounded-xl shadow-raised border border-line px-2 py-1.5 overflow-x-auto max-w-full">
           {(tool === "note" ? NOTE_COLORS : PEN_COLORS).map((c) => {
             const selected = (tool === "note" ? noteColor : color) === c
             return (
@@ -67,14 +67,14 @@ export default function WhiteboardToolbar({
                 title={c}
                 aria-label={`Color ${c}`}
                 onClick={() => (tool === "note" ? setNoteColor(c) : setColor(c))}
-                className={`w-6 h-6 rounded-full flex-shrink-0 border border-black/10 transition-transform ${selected ? "ring-2 ring-offset-2 ring-purple-500 scale-110" : "hover:scale-110"}`}
+                className={`w-6 h-6 rounded-full flex-shrink-0 border-2 border-fg-subtle/50 transition-transform ${selected ? "ring-2 ring-offset-2 ring-offset-surface ring-accent scale-110" : "hover:scale-110"}`}
                 style={{ backgroundColor: c }}
               />
             )
           })}
           {showStrokeOptions && showWidths && (
             <>
-              <div className="w-px h-5 bg-gray-200 mx-1 flex-shrink-0" />
+              <div className="w-px h-5 bg-line mx-1 flex-shrink-0" />
               {STROKE_WIDTHS.map((w) => (
                 <button
                   key={w}
@@ -82,9 +82,9 @@ export default function WhiteboardToolbar({
                   title={`Thickness ${w}`}
                   aria-label={`Thickness ${w}`}
                   onClick={() => setWidth(w)}
-                  className={`w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-lg ${width === w ? "bg-purple-100" : "hover:bg-gray-100"}`}
+                  className={`w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-lg ${width === w ? "bg-accent-soft" : "hover:bg-surface-2"}`}
                 >
-                  <span className="rounded-full bg-gray-800" style={{ width: Math.min(w + 2, 16), height: Math.min(w + 2, 16) }} />
+                  <span className="rounded-full bg-fg" style={{ width: Math.min(w + 2, 16), height: Math.min(w + 2, 16) }} />
                 </button>
               ))}
             </>

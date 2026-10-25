@@ -1,78 +1,38 @@
 import { Link } from "react-router-dom"
-import { useAuth } from "../features/auth/AuthContext"
+import Logo from "./Logo"
+
+const REPO_URL = "https://github.com/khayrullo-isomiddinov/PeerPrep"
 
 export default function Footer() {
-  const year = new Date().getFullYear()
-  const { isAuthenticated } = useAuth()
-  
   return (
-    <footer className="footer-pro">
-      <div className="footer-inner">
-        <div className="footer-grid">
-          <div className="footer-brand">
-            <div className="inline-flex items-center gap-2">
-              <svg className="brand-ticket" viewBox="0 0 64 48" aria-hidden>
-                <defs>
-                  <linearGradient id="pinkGradFooter" x1="0" x2="1">
-                    <stop offset="0%" stopColor="#fda4af"/>
-                    <stop offset="100%" stopColor="#ec4899"/>
-                  </linearGradient>
-                </defs>
-                <path fill="url(#pinkGradFooter)" d="M8 10c0-2.2 1.8-4 4-4h36c1.1 0 2 .9 2 2v4a4 4 0 1 0 0 8v8a4 4 0 1 0 0 8v4c0 1.1-.9 2-2 2H12c-2.2 0-4-1.8-4-4V10z"/>
-                <path fill="#fff" opacity=".25" d="M22 10h2v28h-2zM30 10h2v28h-2zM38 10h2v28h-2z"/>
-              </svg>
-              <div className="brand-text"><span className="text-neutral-200">Peer</span><span className="text-pink-500">Prep</span></div>
-            </div>
-            <p className="footer-note" style={{ marginTop: '1rem', maxWidth: '280px' }}>
-              Connect with peers, collaborate on study materials, and achieve your academic goals together.
-            </p>
-          </div>
-
-          <nav className="footer-col">
-            <h3 className="footer-title">Quick Links</h3>
-            <ul className="footer-list">
-              <li><Link to="/">Home</Link></li>
-              <li><Link to="/events">Events</Link></li>
-            </ul>
-          </nav>
-
-          <nav className="footer-col">
-            <h3 className="footer-title">Features</h3>
-            <ul className="footer-list">
-              <li><Link to="/events">Study Events</Link></li>
-            </ul>
-          </nav>
-
-          <nav className="footer-col">
-            <h3 className="footer-title">About</h3>
-            <ul className="footer-list">
-              <li><Link to="/about">Meet the Founder</Link></li>
-              <li><Link to="/about#contribute">Contribute</Link></li>
-            </ul>
-          </nav>
-
-          <nav className="footer-col">
-            <h3 className="footer-title">Account</h3>
-            <ul className="footer-list">
-              {isAuthenticated ? (
-                <li><Link to="/profile">My Profile</Link></li>
-              ) : (
-                <>
-                  <li><Link to="/login">Login</Link></li>
-                  <li><Link to="/register">Register</Link></li>
-                </>
-              )}
-            </ul>
-          </nav>
+    <footer className="mt-auto border-t border-line bg-surface">
+      <div className="page-container flex flex-col gap-8 py-10 sm:flex-row sm:items-start sm:justify-between">
+        <div className="max-w-xs">
+          <Logo />
+          <p className="mt-3 text-sm text-fg-muted">
+            Find a study group, plan the session together and work through it on a shared whiteboard.
+          </p>
         </div>
 
-        <div className="footer-divider" />
-
-        <div className="footer-bottom">
-          <div className="legal">
-            © {year} PeerPrep
+        <nav aria-label="Footer" className="grid grid-cols-2 gap-x-12 gap-y-2 text-sm sm:grid-cols-3">
+          <div className="flex flex-col gap-2">
+            <p className="font-semibold text-fg">Product</p>
+            <Link to="/events" className="text-fg-muted hover:text-fg">Browse events</Link>
+            <Link to="/events/create" className="text-fg-muted hover:text-fg">Host an event</Link>
           </div>
-        </div>
+          <div className="flex flex-col gap-2">
+            <p className="font-semibold text-fg">About</p>
+            <Link to="/about" className="text-fg-muted hover:text-fg">Meet the founder</Link>
+            <Link to="/about#contribute" className="text-fg-muted hover:text-fg">Contribute</Link>
+          </div>
+          <div className="flex flex-col gap-2">
+            <p className="font-semibold text-fg">Open source</p>
+            <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="text-fg-muted hover:text-fg">GitHub</a>
+          </div>
+        </nav>
+      </div>
+      <div className="border-t border-line">
+        <p className="page-container py-5 text-xs text-fg-subtle">© {new Date().getFullYear()} PeerPrep</p>
       </div>
     </footer>
   )

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react"
 import { useParams, useNavigate, Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { faArrowLeft, faCheckCircle, faComments } from "@fortawesome/free-solid-svg-icons"
+import { faChevronRight, faComments, faLock, faCalendarXmark } from "@fortawesome/free-solid-svg-icons"
 import { getErrorMessage } from "../utils/api"
 import { getEventTiming } from "../utils/dates"
-import { useAuth } from "../features/auth/AuthContext"
-import { useEvent, useJoinEvent, useLeaveEvent } from "../hooks/useEvents"
+import { useAuth } from "../features/auth/authContextValue"
+import { useEvent, useJoinEvent, useLeaveEvent, useDeleteEvent } from "../hooks/useEvents"
 import { useEventAttendees } from "../hooks/useEventData"
 import { useEventChat } from "../hooks/useEventChat"
 import EventSummary from "../features/events/detail/EventSummary"
@@ -15,10 +15,10 @@ import StudyMaterials from "../features/events/detail/StudyMaterials"
 import { useToast } from "../components/ui/toastContext"
 import Button from "../components/ui/Button"
 import Card from "../components/ui/Card"
+import ConfirmDialog from "../components/ui/ConfirmDialog"
+import { EmptyState, PageLoader } from "../components/ui/Feedback"
 
-const PAGE_CLASS = "min-h-screen tap-safe premium-scrollbar bg-gradient-to-br from-gray-50 via-slate-50 to-blue-50/30 route-transition"
-
-// Re-evaluate "upcoming / ongoing / past" every minute while the page is open
+// Re-evaluate "upcoming / live / ended" every minute while the page is open
 function useNow(intervalMs = 60 * 1000) {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -28,46 +28,20 @@ function useNow(intervalMs = 60 * 1000) {
   return now
 }
 
-function LoadError({ error }) {
-  const notFound = error?.response?.status === 404
-  return (
-    <div className={PAGE_CLASS}>
-      <div className="nav-spacer" />
-      <div className="flex items-center justify-center min-h-[60vh] px-4">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">{notFound ? "Event Not Found" : "Something Went Wrong"}</h2>
-          <p className="text-gray-600 mb-6">
-            {notFound ? "This event doesn't exist or has been deleted." : getErrorMessage(error, "We couldn't load this event.")}
-          </p>
-          <Button as={Link} to="/events">
-            <FontAwesomeIcon icon={faArrowLeft} />
-            Back to Events
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ChatLocked({ timing, canJoin, onJoin }) {
-  const { title, text } = timing.isPast
-    ? { title: "Event Ended", text: "Chat is closed for completed events." }
+function ChatLocked({ timing, canJoin, onJoin, joinBusy }) {
+  const copy = timing.isPast
+    ? { title: "This session has ended", text: "The chat is only visible to people who attended." }
     : timing.hasStarted
-      ? { title: "Members Only", text: "This event has already started, so only its members can see the chat." }
-      : { title: "Join to Chat", text: canJoin ? "Join this event to participate in the group chat." : "This event is full." }
-
+      ? { title: "Members only", text: "This session has already started, so only its members can see the chat." }
+      : { title: "Join to see the chat", text: canJoin ? "Members plan the session together here before it starts." : "This session is full." }
   return (
-    <Card as="div" className="!p-12 text-center">
-      <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-        <FontAwesomeIcon icon={timing.isPast ? faCheckCircle : faComments} className="w-10 h-10 text-gray-400" />
-      </div>
-      <h3 className="text-xl font-bold text-gray-800 mb-2">{title}</h3>
-      <p className="text-gray-500 mb-6">{text}</p>
-      {canJoin && (
-        <Button className="touch-target font-bold px-6" onClick={onJoin}>
-          Join Event
-        </Button>
-      )}
+    <Card className="flex h-full min-h-[18rem] items-center justify-center">
+      <EmptyState
+        icon={timing.isPast ? faLock : faComments}
+        title={copy.title}
+        description={copy.text}
+        action={!timing.hasStarted && canJoin && <Button onClick={onJoin} loading={joinBusy}>Join session</Button>}
+      />
     </Card>
   )
 }
@@ -78,11 +52,13 @@ export default function EventDetail() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const now = useNow()
   const toast = useToast()
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const { data: event, error: eventError } = useEvent(id, { enabled: !!id && isAuthenticated })
   const { data: members = [] } = useEventAttendees(id, { enabled: !!id && isAuthenticated })
   const joinMutation = useJoinEvent()
   const leaveMutation = useLeaveEvent()
+  const deleteMutation = useDeleteEvent()
 
   const isOwner = !!user && event?.created_by === user.id
   const isMember = isOwner || !!event?.is_joined
@@ -93,67 +69,99 @@ export default function EventDetail() {
   }, [isAuthenticated, authLoading, navigate])
 
   if (authLoading || !isAuthenticated) return null
-  if (eventError && !event) return <LoadError error={eventError} />
-  if (!event) return null
+
+  if (eventError && !event) {
+    const notFound = eventError?.response?.status === 404
+    return (
+      <div className="page-container py-16">
+        <EmptyState
+          icon={faCalendarXmark}
+          title={notFound ? "Event not found" : "Something went wrong"}
+          description={notFound ? "This event doesn't exist or has been deleted." : getErrorMessage(eventError, "We couldn't load this event.")}
+          action={<Button as={Link} to="/events" variant="secondary">Back to events</Button>}
+        />
+      </div>
+    )
+  }
+  if (!event) return <PageLoader label="Loading event" />
 
   const timing = getEventTiming(event, now)
+  const joinBusy = joinMutation.isPending || leaveMutation.isPending
 
   function handleJoinLeave() {
     const mutation = isMember ? leaveMutation : joinMutation
     mutation.mutate(id, {
-      onSuccess: () => toast.success(isMember ? "You left the event" : "You joined the event"),
-      onError: (err) => toast.error(getErrorMessage(err, isMember ? "Failed to leave event" : "Failed to join event")),
+      onSuccess: () => toast.success(isMember ? "You left the session" : "You're in! Say hi in the chat."),
+      onError: (err) => toast.error(getErrorMessage(err, isMember ? "Couldn't leave the session" : "Couldn't join the session")),
+    })
+  }
+
+  function handleDelete() {
+    deleteMutation.mutate(id, {
+      onSuccess: () => {
+        toast.success(`“${event.title}” was deleted`)
+        navigate("/events", { replace: true })
+      },
+      onError: (err) => {
+        setConfirmDelete(false)
+        toast.error(getErrorMessage(err, "Couldn't delete the event"))
+      },
     })
   }
 
   return (
-    <div className={PAGE_CLASS}>
-      <div className="nav-spacer" />
+    <div className="page-container py-6 sm:py-10">
+      <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-2 text-sm text-fg-subtle">
+        <Link to="/events" className="hover:text-fg">Events</Link>
+        <FontAwesomeIcon icon={faChevronRight} className="text-[0.6rem]" />
+        <span className="truncate text-fg-muted" aria-current="page">{event.title}</span>
+      </nav>
 
-      {event.cover_image_url && (
-        <section className="relative w-full">
-          <div className="h-48 md:h-56 relative overflow-hidden">
-            <img src={event.cover_image_url} alt={`${event.title} cover`} className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-          </div>
-        </section>
-      )}
+      <EventSummary
+        event={event}
+        memberCount={members.length}
+        isOwner={isOwner}
+        isMember={isMember}
+        timing={timing}
+        joinBusy={joinBusy}
+        onJoinLeave={handleJoinLeave}
+        onDelete={() => setConfirmDelete(true)}
+      />
 
-      <div className="container-page section space-y-6">
-        <Link to="/events" className="inline-flex items-center gap-2 text-gray-700 hover:text-pink-600">
-          <FontAwesomeIcon icon={faArrowLeft} />
-          <span>Back to Events</span>
-        </Link>
-
-        <EventSummary
-          event={event}
-          memberCount={members.length}
-          isOwner={isOwner}
-          isMember={isMember}
-          timing={timing}
-          joinBusy={joinMutation.isPending || leaveMutation.isPending}
-          onJoinLeave={handleJoinLeave}
-        />
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1">
-            <MembersList members={members} presence={chat.presence} currentUserId={user?.id} />
-          </div>
-          <div className="lg:col-span-2">
-            {isMember ? (
-              <ChatPanel eventId={id} currentUserId={user?.id} timing={timing} chat={chat} />
-            ) : (
-              <ChatLocked
-                timing={timing}
-                canJoin={!timing.hasStarted && members.length < event.capacity}
-                onJoin={handleJoinLeave}
-              />
-            )}
-          </div>
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_20rem]">
+        <div className="min-w-0">
+          {isMember ? (
+            <ChatPanel eventId={id} currentUserId={user?.id} timing={timing} chat={chat} />
+          ) : (
+            <ChatLocked
+              timing={timing}
+              canJoin={members.length < event.capacity}
+              onJoin={handleJoinLeave}
+              joinBusy={joinBusy}
+            />
+          )}
         </div>
-
-        <StudyMaterials json={event.study_materials} />
+        <aside className="space-y-6">
+          <MembersList
+            members={members}
+            presence={chat.presence}
+            currentUserId={user?.id}
+            hostId={event.created_by}
+            capacity={event.capacity}
+          />
+          <StudyMaterials json={event.study_materials} />
+        </aside>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete this event?"
+        description={<>“{event.title}” and its chat, members and whiteboard will be removed for everyone.</>}
+        confirmLabel="Delete event"
+        busy={deleteMutation.isPending}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   )
 }

@@ -1,77 +1,114 @@
+import { Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
-  faUsers, faCalendar, faMapMarkerAlt, faClock, faUserPlus, faUserMinus,
-  faCheckCircle, faFire, faStar, faGraduationCap
+  faCalendarDays, faClock, faLocationDot, faGraduationCap, faUserPlus, faUserMinus, faChalkboard, faPen, faTrash, faEllipsis,
 } from "@fortawesome/free-solid-svg-icons"
 import { formatLongDate, formatClockTime } from "../../../utils/dates"
 import Badge from "../../../components/ui/Badge"
 import Button from "../../../components/ui/Button"
 import Card from "../../../components/ui/Card"
+import { Menu, MenuItem } from "../../../components/ui/Menu"
+import EventCover from "../EventCover"
 
-function InfoItem({ icon, color, label, children }) {
+function Fact({ icon, label, children }) {
   return (
-    <div className="flex items-center gap-2 min-w-0">
-      <FontAwesomeIcon icon={icon} className={`${color} w-4 h-4`} />
+    <div className="flex items-start gap-3">
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-2 text-fg-muted">
+        <FontAwesomeIcon icon={icon} className="text-sm" />
+      </span>
       <div className="min-w-0">
-        <p className="text-xs text-gray-500">{label}</p>
-        <p className="text-sm font-semibold text-gray-900 truncate">{children}</p>
+        <dt className="text-xs font-medium text-fg-subtle">{label}</dt>
+        <dd className="text-sm font-semibold text-fg break-words">{children}</dd>
       </div>
     </div>
   )
 }
 
-function JoinLeaveButton({ isMember, isFull, busy, onClick }) {
-  const label = busy ? (isMember ? "Leaving..." : "Joining...") : isMember ? "Leave Event" : isFull ? "Event Full" : "Join Event"
-  return (
-    <Button
-      variant={isMember ? "muted" : "primary"}
-      size="lg"
-      className="w-full lg:w-auto min-w-[160px] touch-target font-bold"
-      loading={busy}
-      disabled={!isMember && isFull}
-      onClick={onClick}
-    >
-      <span className="whitespace-nowrap">{label}</span>
-      {!busy && <FontAwesomeIcon icon={isMember ? faUserMinus : faUserPlus} className="w-5 h-5" />}
-    </Button>
-  )
+function durationLabel(hours) {
+  if (hours === 8) return "All day"
+  return `${hours} hour${hours === 1 ? "" : "s"}`
 }
 
-export default function EventSummary({ event, memberCount, isOwner, isMember, timing, joinBusy, onJoinLeave }) {
+export default function EventSummary({ event, memberCount, isOwner, isMember, timing, joinBusy, onJoinLeave, onDelete }) {
   const isFull = memberCount >= event.capacity
-  const canJoinOrLeave = !isOwner && !timing.hasStarted
+  const fill = Math.min(100, Math.round((memberCount / Math.max(event.capacity, 1)) * 100))
 
   return (
-    <Card>
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-3 mb-4">
-            {timing.isPast && <Badge tone="dark" icon={faCheckCircle}>Completed</Badge>}
-            {isOwner && <Badge tone="blue" icon={faStar}>Organizer</Badge>}
-            {isMember && !isOwner && <Badge tone="green" icon={faCheckCircle}>Attending</Badge>}
-            {isFull && <Badge tone="red" icon={faFire}>Full</Badge>}
+    <Card padded={false}>
+      <EventCover event={event} eager className="h-36 w-full sm:h-52" iconClassName="text-5xl" />
+      <div className="p-5 sm:p-8">
+        <div className="flex flex-wrap items-center gap-2">
+          {timing.isOngoing && <Badge tone="success" dot>Live now</Badge>}
+          {timing.isPast && <Badge tone="neutral">Ended</Badge>}
+          {isOwner && <Badge tone="accent">You're hosting</Badge>}
+          {isMember && !isOwner && <Badge tone="aqua">You're going</Badge>}
+          {isFull && !timing.isPast && <Badge tone="warning">Full</Badge>}
+        </div>
+
+        <div className="mt-3 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-[1.75rem] font-bold leading-tight text-fg sm:text-4xl">{event.title}</h1>
+            {event.description && <p className="mt-3 max-w-2xl whitespace-pre-line text-fg-muted">{event.description}</p>}
           </div>
 
-          <h1 className="text-3xl lg:text-4xl font-extrabold text-gray-900 mb-3">{event.title}</h1>
-          {event.description && <p className="text-gray-600 text-base mb-4 max-w-3xl">{event.description}</p>}
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <InfoItem icon={faCalendar} color="text-pink-500" label="Date">{formatLongDate(event.starts_at)}</InfoItem>
-            <InfoItem icon={faClock} color="text-purple-500" label="Time">{formatClockTime(event.starts_at)}</InfoItem>
-            <InfoItem icon={faClock} color="text-teal-500" label="Duration">
-              {event.duration === 8 ? "All day" : `${event.duration} hour${event.duration === 1 ? "" : "s"}`}
-            </InfoItem>
-            <InfoItem icon={faMapMarkerAlt} color="text-indigo-500" label="Location">{event.location}</InfoItem>
-            <InfoItem icon={faUsers} color="text-orange-500" label="Capacity">{memberCount} / {event.capacity}</InfoItem>
-            {event.exam && <InfoItem icon={faGraduationCap} color="text-green-500" label="Exam">{event.exam}</InfoItem>}
+          <div className="flex shrink-0 flex-wrap gap-2">
+            {isMember && (
+              <Button as={Link} to={`/events/${event.id}/whiteboard`} variant="secondary">
+                <FontAwesomeIcon icon={faChalkboard} />
+                Whiteboard
+              </Button>
+            )}
+            {!isOwner && !timing.hasStarted && (
+              <Button
+                variant={isMember ? "secondary" : "primary"}
+                loading={joinBusy}
+                disabled={!isMember && isFull}
+                onClick={onJoinLeave}
+                className="min-w-32"
+              >
+                {!joinBusy && <FontAwesomeIcon icon={isMember ? faUserMinus : faUserPlus} />}
+                {isMember ? "Leave" : isFull ? "Event full" : "Join session"}
+              </Button>
+            )}
+            {isOwner && (
+              <>
+                {!timing.hasStarted && (
+                  <Button as={Link} to={`/events/${event.id}/edit`} variant="secondary">
+                    <FontAwesomeIcon icon={faPen} />
+                    Edit
+                  </Button>
+                )}
+                <Menu
+                  label="More actions"
+                  width="w-44"
+                  buttonClassName="inline-grid size-10 place-items-center rounded-lg border border-line-strong text-fg-muted hover:bg-surface-2 hover:text-fg"
+                  button={<FontAwesomeIcon icon={faEllipsis} />}
+                >
+                  <MenuItem icon={faTrash} danger onSelect={onDelete}>Delete event</MenuItem>
+                </Menu>
+              </>
+            )}
           </div>
         </div>
 
-        {canJoinOrLeave && (
-          <div className="flex-shrink-0">
-            <JoinLeaveButton isMember={isMember} isFull={isFull} busy={joinBusy} onClick={onJoinLeave} />
-          </div>
-        )}
+        <dl className="mt-6 grid gap-4 border-t border-line pt-6 sm:grid-cols-2 lg:grid-cols-4">
+          <Fact icon={faCalendarDays} label="Date">{formatLongDate(event.starts_at)}</Fact>
+          <Fact icon={faClock} label="Time">{formatClockTime(event.starts_at)} · {durationLabel(event.duration)}</Fact>
+          <Fact icon={faLocationDot} label="Location">{event.location}</Fact>
+          {event.exam ? (
+            <Fact icon={faGraduationCap} label="Preparing for">{event.exam}</Fact>
+          ) : (
+            <div className="flex flex-col justify-center">
+              <div className="flex items-baseline justify-between text-xs">
+                <span className="font-semibold text-fg">{memberCount} going</span>
+                <span className="text-fg-subtle">{event.capacity} spots</span>
+              </div>
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-3" aria-hidden>
+                <div className={`h-full rounded-full ${isFull ? "bg-warning" : "bg-accent"}`} style={{ width: `${fill}%` }} />
+              </div>
+            </div>
+          )}
+        </dl>
       </div>
     </Card>
   )

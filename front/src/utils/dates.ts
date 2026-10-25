@@ -63,3 +63,31 @@ export function formatRelativeTime(value: DateInput, now: Date = new Date()): st
   if (days < 7) return `${days}d ago`
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
 }
+
+// Short day label for event cards: "Today", "Tomorrow", or "Tue, Oct 28" (adds the year if it differs)
+export function formatEventDay(value: DateInput, now: Date = new Date()): string {
+  const date = parseUTCDate(value)
+  if (!date) return ""
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const days = Math.round((startOfDay(date) - startOfDay(now)) / 86_400_000)
+  if (days === 0) return "Today"
+  if (days === 1) return "Tomorrow"
+  if (days === -1) return "Yesterday"
+  return date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(date.getFullYear() !== now.getFullYear() && { year: "numeric" }),
+  })
+}
+
+// "Today · 6:00 PM"
+export function formatEventWhen(value: DateInput, now: Date = new Date()): string {
+  const day = formatEventDay(value, now)
+  return day ? `${day} · ${formatClockTime(value)}` : "Date to be announced"
+}
+
+// Soonest first (the API lists newest-created first)
+export function sortByStart<T extends { starts_at: string }>(events: T[]): T[] {
+  return [...events].sort((a, b) => (parseUTCDate(a.starts_at)?.getTime() ?? 0) - (parseUTCDate(b.starts_at)?.getTime() ?? 0))
+}

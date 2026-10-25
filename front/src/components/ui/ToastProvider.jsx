@@ -5,9 +5,9 @@ import { ToastContext } from "./toastContext"
 
 const DURATION_MS = { success: 4000, info: 5000, error: 7000 }
 const STYLES = {
-  success: { icon: faCheckCircle, accent: "text-green-500", border: "border-green-200" },
-  error: { icon: faCircleExclamation, accent: "text-red-500", border: "border-red-200" },
-  info: { icon: faInfoCircle, accent: "text-indigo-500", border: "border-indigo-200" },
+  success: { icon: faCheckCircle, accent: "text-success" },
+  error: { icon: faCircleExclamation, accent: "text-danger" },
+  info: { icon: faInfoCircle, accent: "text-accent-text" },
 }
 
 export default function ToastProvider({ children }) {
@@ -37,9 +37,10 @@ export default function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={toast}>
       {children}
+      {/* Above the mobile tab bar on phones, top-right on larger screens */}
       <div
         aria-live="polite"
-        className="fixed top-20 right-4 left-4 sm:left-auto z-[10000] flex flex-col items-end gap-2 pointer-events-none"
+        className="pointer-events-none fixed inset-x-3 bottom-[calc(var(--tabbar-h)+env(safe-area-inset-bottom)+0.75rem)] z-[200] flex flex-col items-center gap-2 sm:inset-x-auto sm:bottom-auto sm:right-5 sm:top-20 sm:items-end"
       >
         {toasts.map((t) => {
           const style = STYLES[t.type]
@@ -47,16 +48,11 @@ export default function ToastProvider({ children }) {
             <div
               key={t.id}
               role={t.type === "error" ? "alert" : "status"}
-              className={`pointer-events-auto w-full sm:w-96 flex items-start gap-3 bg-white border ${style.border} rounded-xl shadow-lg p-4`}
+              className="pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border border-line bg-surface p-3.5 shadow-overlay animate-pop-in"
             >
-              <FontAwesomeIcon icon={style.icon} className={`${style.accent} mt-0.5 flex-shrink-0`} />
-              <p className="flex-1 text-sm text-gray-800">{t.message}</p>
-              <button
-                type="button"
-                onClick={() => dismiss(t.id)}
-                aria-label="Dismiss"
-                className="text-gray-400 hover:text-gray-600 flex-shrink-0"
-              >
+              <FontAwesomeIcon icon={style.icon} className={`mt-0.5 shrink-0 ${style.accent}`} />
+              <p className="flex-1 text-sm text-fg">{t.message}</p>
+              <button type="button" onClick={() => dismiss(t.id)} aria-label="Dismiss notification" className="shrink-0 text-fg-subtle hover:text-fg">
                 <FontAwesomeIcon icon={faXmark} />
               </button>
             </div>

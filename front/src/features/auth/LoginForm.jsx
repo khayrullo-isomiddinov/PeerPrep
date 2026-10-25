@@ -1,62 +1,56 @@
 import { useEffect, useState } from "react"
 import { useLocation, useNavigate, Link } from "react-router-dom"
-import { useAuth } from "./AuthContext"
+import { useAuth } from "./authContextValue"
 import { loginUser, resendVerification, getErrorMessage, AUTH_NOTICE_KEY } from "../../utils/api"
 import AuthLayout from "./AuthLayout"
+import AuthNotice from "./AuthNotice"
+import PasswordInput from "./PasswordInput"
+import Field, { Input } from "../../components/ui/Field"
+import Button from "../../components/ui/Button"
+
+function initialNotice(search) {
+  const verified = new URLSearchParams(search).get("verified")
+  if (verified === "1") return { tone: "success", text: "Email verified! You can now sign in." }
+  if (verified === "0") return { tone: "error", text: "This verification link is invalid or has already been used. Sign in to request a new one." }
+  try {
+    const notice = sessionStorage.getItem(AUTH_NOTICE_KEY)
+    if (notice) {
+      sessionStorage.removeItem(AUTH_NOTICE_KEY)
+      return { tone: "info", text: notice }
+    }
+  } catch { /* storage unavailable (private mode) */ }
+  return null
+}
 
 export default function LoginForm() {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [msg, setMsg] = useState("")
-  const [success, setSuccess] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [show, setShow] = useState(false)
-  const [needsVerification, setNeedsVerification] = useState(false)
-  const [resending, setResending] = useState(false)
-  const [verifyUrl, setVerifyUrl] = useState("")
   const location = useLocation()
   const navigate = useNavigate()
   const auth = useAuth()
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [notice, setNotice] = useState(() => initialNotice(location.search))
+  const [loading, setLoading] = useState(false)
+  const [needsVerification, setNeedsVerification] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [verifyUrl, setVerifyUrl] = useState("")
 
   useEffect(() => {
-    if (auth.isAuthenticated) navigate("/events", { replace: true })
+    if (auth.isAuthenticated) navigate("/", { replace: true })
   }, [auth.isAuthenticated, navigate])
-
-  useEffect(() => {
-    const params = new URLSearchParams(location.search)
-    const verified = params.get("verified")
-    if (verified === "1") {
-      setMsg("Email verified! You can now sign in.")
-      setSuccess(true)
-    } else if (verified === "0") {
-      setMsg("This verification link is invalid or has already been used. Sign in to request a new one.")
-      setSuccess(false)
-    } else {
-      try {
-        const notice = sessionStorage.getItem(AUTH_NOTICE_KEY)
-        if (notice) {
-          sessionStorage.removeItem(AUTH_NOTICE_KEY)
-          setMsg(notice)
-          setSuccess(false)
-        }
-      } catch { /* storage unavailable (private mode) */ }
-    }
-  }, [location.search])
 
   async function submit(e) {
     e.preventDefault()
     setLoading(true)
-    setMsg("")
+    setNotice(null)
     setNeedsVerification(false)
     setVerifyUrl("")
     try {
       const data = await loginUser({ email, password })
       auth.login({ access_token: data.access_token, user: data.user })
-      navigate("/events", { replace: true })
+      navigate("/", { replace: true })
     } catch (err) {
       setNeedsVerification(err?.response?.status === 403)
-      setMsg(getErrorMessage(err, "Sign in failed. Please try again."))
-      setSuccess(false)
+      setNotice({ tone: "error", text: getErrorMessage(err, "Sign in failed. Please try again.") })
     } finally {
       setLoading(false)
     }
@@ -66,97 +60,45 @@ export default function LoginForm() {
     setResending(true)
     try {
       const data = await resendVerification(email)
-      setMsg(data.message)
-      setSuccess(true)
+      setNotice({ tone: data.email_sent === false ? "info" : "success", text: data.message })
       setVerifyUrl(data.verify_url || "")
       if (data.already_verified) setNeedsVerification(false)
     } catch (err) {
-      setMsg(getErrorMessage(err, "Couldn't resend the verification email."))
-      setSuccess(false)
+      setNotice({ tone: "error", text: getErrorMessage(err, "Couldn't resend the verification email.") })
     } finally {
       setResending(false)
     }
   }
 
   return (
-    <AuthLayout title="Welcome Back" subtitle="Sign in to your account">
-      <form onSubmit={submit} className="space-y-4">
-        <div className="field-row">
-          <label className="label" htmlFor="login-email">Email</label>
-          <input
-            id="login-email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            className="auth-input"
-            placeholder="you@example.com"
-            required
-          />
-        </div>
-
-        <div className="field-row">
-          <label className="label" htmlFor="login-password">Password</label>
-          <div className="relative">
-            <input
-              id="login-password"
-              type={show ? "text" : "password"}
-              autoComplete="current-password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="auth-input pr-12"
-              placeholder="••••••••"
-              required
-            />
-            <button
-              type="button"
-              onClick={() => setShow(s => !s)}
-              className="absolute inset-y-0 right-2 my-auto px-2 rounded-s text-muted"
-              aria-label={show ? "Hide password" : "Show password"}
-            >
-              {show ? "Hide" : "Show"}
+    <AuthLayout
+      title="Welcome back"
+      subtitle="Sign in to see your study sessions."
+      footer={<>New to PeerPrep? <Link to="/register" className="font-semibold text-accent-text hover:underline">Create an account</Link></>}
+    >
+      {notice && (
+        <AuthNotice tone={notice.tone}>
+          <p>{notice.text}</p>
+          {needsVerification && (
+            <button type="button" onClick={handleResend} disabled={resending || !email} className="font-semibold text-accent-text underline disabled:opacity-60">
+              {resending ? "Sending…" : "Resend verification email"}
             </button>
-          </div>
-        </div>
+          )}
+          {verifyUrl && <a href={verifyUrl} className="block font-semibold text-accent-text underline">Verify my email</a>}
+        </AuthNotice>
+      )}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="btn-pink-pill w-full premium-focus disabled:opacity-60"
-        >
-          {loading ? "Signing in..." : "Sign In"}
-        </button>
-
-        <div className="text-center text-sm">
-          <span className="text-muted">Don't have an account?</span>{" "}
-          <Link to="/register" className="link-quiet">Sign up</Link>
-        </div>
+      <form onSubmit={submit} className="space-y-5">
+        <Field label="Email">
+          <Input type="email" autoComplete="email" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@university.edu" required />
+        </Field>
+        <Field label="Password">
+          <PasswordInput autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        </Field>
+        <Button type="submit" size="lg" className="w-full" loading={loading}>
+          {loading ? "Signing in…" : "Sign in"}
+        </Button>
       </form>
-
-      {msg && (
-        <p role="status" className={`mt-5 text-center text-sm ${success ? "premium-text-success" : "premium-text-error"}`}>
-          {msg}
-        </p>
-      )}
-
-      {needsVerification && (
-        <div className="mt-3 text-center">
-          <button
-            type="button"
-            onClick={handleResend}
-            disabled={resending || !email}
-            className="text-sm font-semibold link-quiet underline disabled:opacity-60"
-          >
-            {resending ? "Sending..." : "Resend verification email"}
-          </button>
-        </div>
-      )}
-
-      {verifyUrl && (
-        <p className="mt-3 text-center text-sm break-all">
-          <a href={verifyUrl} className="link-quiet underline">Verify my email</a>
-        </p>
-      )}
     </AuthLayout>
   )
 }

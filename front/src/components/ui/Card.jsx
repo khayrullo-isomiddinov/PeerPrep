@@ -1,9 +1,18 @@
-// The white, rounded, shadowed panel used across the app. `padded={false}` for cards with their own header bands.
-export default function Card({ as = "section", padded = true, className = "", children, ...props }) {
+const TONES = {
+  default: "bg-surface border-line",
+  success: "bg-success-soft/40 border-success/35",
+  danger: "bg-surface border-danger/30",
+}
+
+// The standard surface panel. `padded={false}` for cards that manage their own inner layout.
+// Use `tone` for colored variants rather than overriding colors with className.
+export default function Card({ as = "section", padded = true, interactive = false, tone = "default", className = "", children, ...props }) {
   const Component = as
   return (
     <Component
-      className={`bg-white rounded-2xl shadow-xl border border-gray-200/60 ${padded ? "p-6 lg:p-8" : "overflow-hidden"} ${className}`}
+      className={`border rounded-2xl shadow-card ${TONES[tone]} ${padded ? "p-5 sm:p-6" : "overflow-hidden"} ${
+        interactive ? "transition-[border-color,box-shadow,transform] duration-200 hover:border-line-strong hover:shadow-raised" : ""
+      } ${className}`}
       {...props}
     >
       {children}

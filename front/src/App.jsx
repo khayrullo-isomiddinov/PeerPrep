@@ -2,13 +2,16 @@ import { Routes, Route, useLocation } from "react-router-dom"
 import { Suspense, lazy } from "react"
 import Navbar from "./components/Navbar"
 import Footer from "./components/Footer"
-import { useAuth } from "./features/auth/AuthContext"
+import MobileTabBar from "./components/MobileTabBar"
+import { PageLoader } from "./components/ui/Feedback"
+import { useAuth } from "./features/auth/authContextValue"
 
 const Home = lazy(() => import("./pages/Home"))
 const Events = lazy(() => import("./pages/Events"))
 const EventDetail = lazy(() => import("./pages/EventDetail"))
 const Whiteboard = lazy(() => import("./pages/Whiteboard"))
 const CreateEvent = lazy(() => import("./pages/CreateEvent"))
+const EditEvent = lazy(() => import("./pages/EditEvent"))
 const Profile = lazy(() => import("./pages/Profile"))
 const RegisterForm = lazy(() => import("./features/auth/RegisterForm"))
 const LoginForm = lazy(() => import("./features/auth/LoginForm"))
@@ -16,41 +19,51 @@ const NotFound = lazy(() => import("./pages/NotFound"))
 const About = lazy(() => import("./pages/About"))
 
 export default function App() {
-  const { isLoading } = useAuth()
+  const { isLoading, isAuthenticated } = useAuth()
   const { pathname } = useLocation()
   const isFullScreen = pathname.endsWith("/whiteboard")
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50">
-        <div className="text-center">
-          <div className="inline-block h-12 w-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4" />
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    )
-  }
+  const isAuthPage = pathname === "/login" || pathname === "/register"
+  const showTabBar = isAuthenticated && !isFullScreen
 
   return (
-    <div className="route-transition">
+    <div className={`flex flex-col ${isFullScreen ? "h-dvh overflow-hidden" : "min-h-dvh"}`}>
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[300] focus:rounded-lg focus:bg-accent focus:px-4 focus:py-2 focus:text-accent-fg"
+      >
+        Skip to content
+      </a>
       <Navbar />
-      <main style={{ position: "relative", minHeight: "100vh" }}>
-        <Suspense fallback={null}>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/events" element={<Events />} />
-            <Route path="/events/:id" element={<EventDetail />} />
-            <Route path="/events/:id/whiteboard" element={<Whiteboard />} />
-            <Route path="/events/create" element={<CreateEvent />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/profile/:userId" element={<Profile />} />
-            <Route path="/register" element={<RegisterForm />} />
-            <Route path="/login" element={<LoginForm />} />
-            <Route path="/about" element={<About />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
+      <main
+        id="main"
+        key={pathname}
+        className={`flex flex-1 flex-col animate-fade-in ${isFullScreen ? "min-h-0" : ""} ${
+          showTabBar ? "pb-[calc(var(--tabbar-h)+env(safe-area-inset-bottom))] md:pb-0" : ""
+        }`}
+      >
+        {isLoading ? (
+          <PageLoader />
+        ) : (
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/events" element={<Events />} />
+              <Route path="/events/create" element={<CreateEvent />} />
+              <Route path="/events/:id" element={<EventDetail />} />
+              <Route path="/events/:id/edit" element={<EditEvent />} />
+              <Route path="/events/:id/whiteboard" element={<Whiteboard />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/profile/:userId" element={<Profile />} />
+              <Route path="/register" element={<RegisterForm />} />
+              <Route path="/login" element={<LoginForm />} />
+              <Route path="/about" element={<About />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        )}
       </main>
-      {!isFullScreen && <Footer />}
+      {!isFullScreen && !isAuthPage && <Footer />}
+      {showTabBar && <MobileTabBar />}
     </div>
   )
 }

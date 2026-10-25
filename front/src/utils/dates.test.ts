@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { formatRelativeTime, getEventTiming, parseUTCDate } from "./dates"
+import { formatEventDay, formatRelativeTime, getEventTiming, parseUTCDate } from "./dates"
 
 describe("parseUTCDate", () => {
   it("treats timestamps without a timezone as UTC", () => {
@@ -51,5 +51,21 @@ describe("formatRelativeTime", () => {
     ["2026-05-08T12:00:00Z", "2d ago"],
   ])("%s → %s", (input, expected) => {
     expect(formatRelativeTime(input, now)).toBe(expected)
+  })
+})
+
+describe("formatEventDay", () => {
+  const now = new Date(2026, 4, 10, 12, 0) // local time, May 10 2026
+  const local = (d: number, h = 18) => new Date(2026, 4, d, h, 0).toISOString()
+
+  it("uses Today / Tomorrow / Yesterday around now", () => {
+    expect(formatEventDay(local(10), now)).toBe("Today")
+    expect(formatEventDay(local(11, 1), now)).toBe("Tomorrow")
+    expect(formatEventDay(local(9), now)).toBe("Yesterday")
+  })
+
+  it("falls back to a short date, with the year only when it differs", () => {
+    expect(formatEventDay(local(14), now)).toBe("Thu, May 14")
+    expect(formatEventDay(new Date(2027, 0, 5, 9).toISOString(), now)).toMatch(/2027/)
   })
 })

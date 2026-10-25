@@ -4,12 +4,15 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
   faArrowLeft, faDownload, faTrashCan, faPlus, faMinus, faExpand, faLock
 } from "@fortawesome/free-solid-svg-icons"
-import { useAuth } from "../features/auth/AuthContext"
+import { useAuth } from "../features/auth/authContextValue"
 import { useEvent } from "../hooks/useEvents"
 import { useWhiteboardSocket } from "../features/whiteboard/useWhiteboardSocket"
 import WhiteboardToolbar from "../features/whiteboard/WhiteboardToolbar"
 import { TOOLS } from "../features/whiteboard/tools"
 import ConfirmDialog from "../components/ui/ConfirmDialog"
+import Button from "../components/ui/Button"
+import { EmptyState, Spinner } from "../components/ui/Feedback"
+import { onboardingStorage } from "../features/onboarding/onboardingStorage"
 import { useToast } from "../components/ui/toastContext"
 import {
   PEN_COLORS, NOTE_COLORS, NOTE_SIZE, NOTE_PADDING, NOTE_TEXT_COLOR,
@@ -34,11 +37,11 @@ function chunk(list, size) {
 }
 
 function Avatar({ user, label }) {
-  const ring = { boxShadow: `0 0 0 2px white, 0 0 0 4px ${userColor(user.id)}` }
+  const ring = { boxShadow: `0 0 0 2px var(--surface), 0 0 0 4px ${userColor(user.id)}` }
   return user.photo_url ? (
-    <img src={user.photo_url} alt={user.name} title={label} className="w-8 h-8 rounded-full object-cover" style={ring} />
+    <img src={user.photo_url} alt={user.name} title={label} className="size-8 rounded-full object-cover" style={ring} />
   ) : (
-    <div title={label} className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ ...ring, backgroundColor: userColor(user.id) }}>
+    <div title={label} className="grid size-8 place-items-center rounded-full text-xs font-bold text-white" style={{ ...ring, backgroundColor: userColor(user.id) }}>
       {(user.name || "U")[0].toUpperCase()}
     </div>
   )
@@ -250,6 +253,7 @@ export default function Whiteboard() {
         usersRef.current = new Map([...msg.users, msg.you].map((u) => [u.id, u]))
         setOnlineUsers(msg.users.filter((u) => u.id !== msg.you.id))
         setBoard({ you: msg.you, isOwner: msg.is_owner, readOnly: msg.read_only })
+        onboardingStorage.markWhiteboardOpened(msg.you.id)
         if (msg.read_only) setTool("select")
         if (!fittedRef.current) fittedRef.current = fitToContent() || "pending"
         break
@@ -758,24 +762,25 @@ export default function Whiteboard() {
     denied: "No access",
   }[status]
 
-  return (
-    <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden">
-      <div className="nav-spacer flex-shrink-0" />
+  const chromeButton = "inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors"
+  const zoomButton = "grid size-8 place-items-center rounded-lg text-fg-muted hover:bg-surface-2 hover:text-fg"
 
-      <header className="flex items-center gap-3 px-3 sm:px-4 py-2 bg-white border-b border-gray-200 flex-shrink-0">
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-canvas">
+      <header className="flex shrink-0 items-center gap-3 border-b border-line bg-surface px-3 py-2 sm:px-4">
         <Link
           to={`/events/${id}`}
-          className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 hover:text-pink-600 flex-shrink-0"
-          title="Back to event"
+          className="grid size-9 shrink-0 place-items-center rounded-lg text-fg-muted hover:bg-surface-2 hover:text-fg"
+          aria-label="Back to event"
         >
           <FontAwesomeIcon icon={faArrowLeft} />
         </Link>
         <div className="min-w-0">
-          <h1 className="font-bold text-gray-900 truncate text-sm sm:text-base">
+          <h1 className="truncate font-sans text-sm font-semibold text-fg sm:text-base">
             {event?.title ? `${event.title} · Whiteboard` : "Whiteboard"}
           </h1>
-          <p className="text-xs text-gray-500 flex items-center gap-1.5">
-            <span className={`w-2 h-2 rounded-full ${status === "open" ? "bg-green-500" : status === "denied" ? "bg-gray-400" : "bg-amber-400"}`} />
+          <p className="flex items-center gap-1.5 text-xs text-fg-subtle">
+            <span className={`size-1.5 rounded-full ${status === "open" ? "bg-success" : status === "denied" ? "bg-fg-subtle" : "bg-warning"}`} aria-hidden />
             {connectionLabel}
             {status === "open" && ` · ${onlineUsers.length + 1} here`}
           </p>
@@ -783,32 +788,22 @@ export default function Whiteboard() {
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           {board && (
-            <div className="hidden sm:flex items-center -space-x-1 mr-2">
+            <div className="mr-2 hidden items-center -space-x-1 sm:flex">
               <Avatar user={board.you} label={`${board.you.name} (you)`} />
               {onlineUsers.slice(0, 5).map((u) => <Avatar key={u.id} user={u} label={u.name} />)}
               {onlineUsers.length > 5 && (
-                <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-600 text-xs font-bold flex items-center justify-center ring-2 ring-white">
+                <div className="grid size-8 place-items-center rounded-full bg-surface-3 text-xs font-bold text-fg-muted ring-2 ring-surface">
                   +{onlineUsers.length - 5}
                 </div>
               )}
             </div>
           )}
-          <button
-            type="button"
-            onClick={exportPng}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100"
-            title="Download the board as an image"
-          >
+          <button type="button" onClick={exportPng} className={`${chromeButton} text-fg-muted hover:bg-surface-2 hover:text-fg`} title="Download the board as an image">
             <FontAwesomeIcon icon={faDownload} />
             <span className="hidden sm:inline">Export</span>
           </button>
           {board?.isOwner && !readOnly && (
-            <button
-              type="button"
-              onClick={() => setConfirmClear(true)}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-red-600 hover:bg-red-50"
-              title="Clear the board for everyone"
-            >
+            <button type="button" onClick={() => setConfirmClear(true)} className={`${chromeButton} text-danger hover:bg-danger-soft`} title="Clear the board for everyone">
               <FontAwesomeIcon icon={faTrashCan} />
               <span className="hidden sm:inline">Clear</span>
             </button>
@@ -816,7 +811,8 @@ export default function Whiteboard() {
         </div>
       </header>
 
-      <div ref={containerRef} className="relative flex-1 min-h-0 overflow-hidden select-none">
+      {/* The board itself is white "paper" in both themes, so ink colors read the same for everyone */}
+      <div ref={containerRef} className="relative min-h-0 flex-1 select-none overflow-hidden bg-white">
         <canvas
           ref={canvasRef}
           className="absolute inset-0 touch-none"
@@ -828,6 +824,7 @@ export default function Whiteboard() {
           onPointerLeave={() => !gestureRef.current && send({ type: "cursor_leave" })}
           onDoubleClick={handleDoubleClick}
           onContextMenu={(e) => e.preventDefault()}
+          aria-label="Shared whiteboard canvas"
         />
 
         {status !== "denied" && (
@@ -861,62 +858,56 @@ export default function Whiteboard() {
             placeholder={editing.element.type === "note" ? "Write a note..." : "Type..."}
             wrap={editing.element.type === "note" ? "soft" : "off"}
             maxLength={2000}
-            className="absolute z-20 m-0 border-0 outline-none resize-none overflow-hidden bg-transparent p-0 placeholder:text-gray-400"
+            className="absolute z-20 m-0 resize-none overflow-hidden border-0 bg-transparent p-0 outline-none placeholder:text-[#646C82]"
             style={editorStyle}
           />
         )}
 
-        <div className="absolute bottom-3 right-3 z-10 flex items-center bg-white/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 p-1">
-          <button type="button" onClick={() => zoomFromCenter(1 / 1.2)} className="w-8 h-8 rounded-lg text-gray-600 hover:bg-gray-100" title="Zoom out (-)" aria-label="Zoom out">
+        <div className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-3 z-10 flex items-center rounded-xl border border-line bg-surface/95 p-1 shadow-raised backdrop-blur">
+          <button type="button" onClick={() => zoomFromCenter(1 / 1.2)} className={zoomButton} title="Zoom out (-)" aria-label="Zoom out">
             <FontAwesomeIcon icon={faMinus} />
           </button>
-          <button type="button" onClick={() => zoomFromCenter(1 / zoom)} className="min-w-[3.25rem] h-8 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-100" title="Reset zoom to 100%">
+          <button type="button" onClick={() => zoomFromCenter(1 / zoom)} className="h-8 min-w-[3.25rem] rounded-lg text-xs font-semibold tabular-nums text-fg hover:bg-surface-2" title="Reset zoom to 100%">
             {Math.round(zoom * 100)}%
           </button>
-          <button type="button" onClick={() => zoomFromCenter(1.2)} className="w-8 h-8 rounded-lg text-gray-600 hover:bg-gray-100" title="Zoom in (+)" aria-label="Zoom in">
+          <button type="button" onClick={() => zoomFromCenter(1.2)} className={zoomButton} title="Zoom in (+)" aria-label="Zoom in">
             <FontAwesomeIcon icon={faPlus} />
           </button>
-          <button type="button" onClick={fitToContent} className="w-8 h-8 rounded-lg text-gray-600 hover:bg-gray-100" title="Fit everything on screen" aria-label="Fit to content">
+          <button type="button" onClick={fitToContent} className={zoomButton} title="Fit everything on screen" aria-label="Fit to content">
             <FontAwesomeIcon icon={faExpand} />
           </button>
         </div>
 
         {readOnly && (
-          <div className="absolute bottom-3 left-3 z-10 flex items-center gap-2 bg-gray-900/85 text-white text-xs sm:text-sm px-3 py-2 rounded-xl shadow-lg max-w-[calc(100%-220px)]">
+          <div className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 z-10 flex max-w-[calc(100%-13rem)] items-center gap-2 rounded-xl bg-[#0A1124]/85 px-3 py-2 text-xs text-white shadow-raised sm:text-sm">
             <FontAwesomeIcon icon={faLock} />
-            <span>This event has ended. The whiteboard is view-only.</span>
+            <span>This session has ended. The whiteboard is view-only.</span>
           </div>
         )}
 
-
         {status === "connecting" && !board && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/70">
-            <div className="inline-block h-10 w-10 border-4 border-pink-200 border-t-pink-600 rounded-full animate-spin" />
+          <div className="absolute inset-0 z-30 grid place-items-center bg-canvas/70">
+            <Spinner className="size-9" label="Connecting to the whiteboard" />
           </div>
         )}
 
         {status === "denied" && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/90 p-4">
-            <div className="text-center max-w-sm">
-              <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                <FontAwesomeIcon icon={faLock} className="w-7 h-7 text-gray-400" />
-              </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-2">Members only</h2>
-              <p className="text-gray-600 mb-6">Join this event to draw and plan together with the group on its whiteboard.</p>
-              <Link to={`/events/${id}`} className="btn-pink-pill">
-                <FontAwesomeIcon icon={faArrowLeft} />
-                Back to event
-              </Link>
-            </div>
+          <div className="absolute inset-0 z-30 grid place-items-center bg-canvas/95 p-4">
+            <EmptyState
+              icon={faLock}
+              title="Members only"
+              description="Join this session to draw and plan together with the group on its whiteboard."
+              action={<Button as={Link} to={`/events/${id}`}><FontAwesomeIcon icon={faArrowLeft} />Back to the session</Button>}
+            />
           </div>
         )}
       </div>
 
       <ConfirmDialog
         open={confirmClear}
-        title="Clear Whiteboard"
+        title="Clear the whiteboard?"
         description="Everything on the board will be removed for all members."
-        confirmLabel="Clear Board"
+        confirmLabel="Clear board"
         onConfirm={clearBoard}
         onCancel={() => setConfirmClear(false)}
       />

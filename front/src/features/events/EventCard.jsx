@@ -1,408 +1,150 @@
-import { useEffect, useState, useMemo, memo } from "react"
-import { useNavigate, Link } from "react-router-dom"
+import { memo, useState } from "react"
+import { Link, useNavigate } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import {
-  faCalendarAlt, faMapMarkerAlt, faUsers, faClock,
-  faEdit, faTrash,
-  faGraduationCap, faBook, faMicroscope, faCode,
-  faMusic, faPalette, faDumbbell, faHeartbeat
-} from "@fortawesome/free-solid-svg-icons"
+import { faLocationDot, faEllipsis, faPen, faTrash, faGraduationCap } from "@fortawesome/free-solid-svg-icons"
 import { getErrorMessage } from "../../utils/api"
-import { useAuth } from "../auth/AuthContext"
+import { formatEventWhen, getEventTiming } from "../../utils/dates"
+import { useAuth } from "../auth/authContextValue"
 import { useJoinEvent, useLeaveEvent, useDeleteEvent, usePrefetchEvents } from "../../hooks/useEvents"
+import Badge from "../../components/ui/Badge"
+import Button from "../../components/ui/Button"
 import ConfirmDialog from "../../components/ui/ConfirmDialog"
+import { Menu, MenuItem } from "../../components/ui/Menu"
 import { useToast } from "../../components/ui/toastContext"
+import EventCover from "./EventCover"
 
-function EventCard({ event, onEdit }) {
-  const [currentTime, setCurrentTime] = useState(() => new Date())
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(new Date())
-    }, 60000)
-    return () => clearInterval(interval)
-  }, [])
+function StatusBadge({ timing, isFull, mine }) {
+  if (timing.isOngoing) return <Badge tone="success" dot>Live now</Badge>
+  if (timing.isPast) return <Badge tone="neutral">Ended</Badge>
+  if (mine) return <Badge tone="accent">Hosting</Badge>
+  if (isFull) return <Badge tone="warning">Full</Badge>
+  return null
+}
 
-  const eventStatus = useMemo(() => {
-    if (!event.starts_at) {
-      return {
-        isUpcoming: event.is_upcoming ?? false,
-        isOngoing: event.is_ongoing ?? false,
-        isPast: event.is_past ?? false
-      }
-    }
-
-    try {
-      const start = parseUTCDate(event.starts_at)
-      if (!start || isNaN(start.getTime())) {
-        return {
-          isUpcoming: event.is_upcoming ?? false,
-          isOngoing: event.is_ongoing ?? false,
-          isPast: event.is_past ?? false
-        }
-      }
-      const now = currentTime
-
-      if (isNaN(start.getTime()) || isNaN(now.getTime())) {
-        return {
-          isUpcoming: event.is_upcoming ?? false,
-          isOngoing: event.is_ongoing ?? false,
-          isPast: event.is_past ?? false
-        }
-      }
-
-      let end
-      if (event.ends_at) {
-        end = parseUTCDate(event.ends_at)
-        if (!end || isNaN(end.getTime())) {
-          const duration = event.duration || 1
-          end = new Date(start.getTime() + duration * 60 * 60 * 1000)
-        }
-      } else {
-        const duration = event.duration || 1
-        end = new Date(start.getTime() + duration * 60 * 60 * 1000)
-      }
-      if (now < start) {
-        return { isUpcoming: true, isOngoing: false, isPast: false }
-      } else if (now >= end) {
-        return { isUpcoming: false, isOngoing: false, isPast: true }
-      } else {
-        return { isUpcoming: false, isOngoing: true, isPast: false }
-      }
-    } catch {
-      return {
-        isUpcoming: event.is_upcoming ?? false,
-        isOngoing: event.is_ongoing ?? false,
-        isPast: event.is_past ?? false
-      }
-    }
-  }, [event.starts_at, event.ends_at, event.duration, event.is_upcoming, event.is_ongoing, event.is_past, currentTime])
-
-  const isUpcoming = eventStatus.isUpcoming
-  const isOngoing = eventStatus.isOngoing
-  const isPast = eventStatus.isPast
-  const hasStarted = useMemo(() => {
-    if (!event.starts_at) {
-      return isOngoing || isPast;
-    }
-    try {
-      const start = parseUTCDate(event.starts_at)
-      if (!start || isNaN(start.getTime())) {
-        return isOngoing || isPast
-      }
-      const now = currentTime
-
-      if (isNaN(start.getTime()) || isNaN(now.getTime())) {
-        return isOngoing || isPast;
-      }
-
-      const started = now.getTime() >= start.getTime();
-      return started;
-    } catch {
-      return isOngoing || isPast;
-    }
-  }, [event.starts_at, isOngoing, isPast, currentTime]);
+function EventCard({ event }) {
   const { user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast()
   const { prefetchEvent } = usePrefetchEvents()
   const joinMutation = useJoinEvent()
   const leaveMutation = useLeaveEvent()
   const deleteMutation = useDeleteEvent()
-  const currentId = useMemo(() => user ? Number(user.id ?? user?.user?.id) : null, [user])
-  const creatorId = useMemo(() => event.created_by != null ? Number(event.created_by) : null, [event.created_by])
-  const mine = useMemo(() => currentId != null && creatorId === currentId, [currentId, creatorId])
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
-  // Join state comes straight from the cached event; the mutations update that cache everywhere
-  const count = event.attendee_count ?? 0
+  const timing = getEventTiming(event)
+  const mine = !!user && event.created_by === user.id
   const joined = mine || !!event.is_joined
-  const busyJoin = joinMutation.isPending
-  const busyLeave = leaveMutation.isPending
-  const busyDelete = deleteMutation.isPending
+  const count = event.attendee_count ?? 0
+  const isFull = count >= event.capacity
+  const busy = joinMutation.isPending || leaveMutation.isPending
+  const fill = Math.min(100, Math.round((count / Math.max(event.capacity, 1)) * 100))
 
-  const toast = useToast()
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-
-  const full = count >= event.capacity
-
-  function onJoin() {
-    if (busyJoin || busyLeave) return
-    joinMutation.mutate(event.id, { onError: (e) => toast.error(getErrorMessage(e, "Join failed")) })
+  function toggleMembership() {
+    if (!isAuthenticated) {
+      navigate("/login")
+      return
+    }
+    const mutation = joined ? leaveMutation : joinMutation
+    mutation.mutate(event.id, {
+      onSuccess: () => toast.success(joined ? `You left “${event.title}”` : `You're in! See you at “${event.title}”`),
+      onError: (e) => toast.error(getErrorMessage(e, joined ? "Couldn't leave the event" : "Couldn't join the event")),
+    })
   }
 
-  function onLeave() {
-    if (busyJoin || busyLeave) return
-    leaveMutation.mutate(event.id, { onError: (e) => toast.error(getErrorMessage(e, "Leave failed")) })
-  }
-
-  function handleDeleteClick() {
-    setShowDeleteConfirm(true)
-  }
-
-  function handleDeleteConfirm() {
+  function deleteEvent() {
     deleteMutation.mutate(event.id, {
       onSuccess: () => {
-        setShowDeleteConfirm(false)
-        toast.success(`"${event.title}" was deleted`)
+        setConfirmDelete(false)
+        toast.success(`“${event.title}” was deleted`)
       },
       onError: (e) => {
-        setShowDeleteConfirm(false)
-        toast.error(getErrorMessage(e, "Delete failed"))
+        setConfirmDelete(false)
+        toast.error(getErrorMessage(e, "Couldn't delete the event"))
       },
     })
   }
 
-
-  const getCategoryIcon = (title, description) => {
-    const text = (title + " " + (description || "")).toLowerCase()
-    if (text.includes("math") || text.includes("calculus") || text.includes("algebra")) return faGraduationCap
-    if (text.includes("science") || text.includes("biology") || text.includes("chemistry") || text.includes("physics")) return faMicroscope
-    if (text.includes("tech") || text.includes("programming") || text.includes("coding") || text.includes("computer")) return faCode
-    if (text.includes("literature") || text.includes("english") || text.includes("writing") || text.includes("book")) return faBook
-    if (text.includes("art") || text.includes("design") || text.includes("creative")) return faPalette
-    if (text.includes("music") || text.includes("sound") || text.includes("audio")) return faMusic
-    if (text.includes("sport") || text.includes("fitness") || text.includes("exercise")) return faDumbbell
-    if (text.includes("health") || text.includes("medical") || text.includes("medicine")) return faHeartbeat
-    return faGraduationCap
-  }
-
-  const parseUTCDate = (dateString) => {
-    if (!dateString) return null
-    if (dateString.includes('Z') || dateString.includes('+') || dateString.match(/-\d{2}:\d{2}$/)) {
-      return new Date(dateString)
-    }
-    return new Date(dateString + 'Z')
-  }
-
-  const formatDate = (startsAt, endsAt) => {
-    const start = parseUTCDate(startsAt)
-    const end = parseUTCDate(endsAt ?? startsAt)
-    const now = new Date()
-
-    if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) {
-      return ''
-    }
-
-    if (end < now) return start.toLocaleDateString()
-
-    if (start.toDateString() === now.toDateString()) return "Today"
-
-    const tomorrow = new Date()
-    tomorrow.setDate(tomorrow.getDate() + 1)
-    if (start.toDateString() === tomorrow.toDateString()) return "Tomorrow"
-    const diffDays = Math.ceil((start - now) / (1000 * 60 * 60 * 24))
-    if (diffDays < 7) return `In ${diffDays} days`
-
-    return start.toLocaleDateString()
-  }
-
-  const formatTime = (dateString) => {
-    const date = parseUTCDate(dateString)
-    if (!date || isNaN(date.getTime())) return ''
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }
-
-  const handleCardClick = (e) => {
-    if (!isAuthenticated) {
-      e.preventDefault()
-      navigate("/login")
-      return
-    }
-  }
-
   return (
-    <div className="relative">
-      <Link
-        to={isAuthenticated ? `/events/${event.id}` : "#"}
-        onClick={handleCardClick}
-        onMouseEnter={() => isAuthenticated && prefetchEvent(event.id)}
-        className="group block bg-white rounded-xl border border-gray-200/80 overflow-hidden hover:border-gray-300 hover:shadow-lg"
-      >
-        <div className="flex">
-          <div className="w-24 h-24 flex-shrink-0 relative overflow-hidden bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
-            {event.cover_image_url ? (
-              <img
-                src={event.cover_image_url}
-                alt={event.title}
-                loading="lazy"
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center">
-                <FontAwesomeIcon icon={getCategoryIcon(event.title, event.description)} className="w-8 h-8 text-white/80" />
-              </div>
-            )}
-            {mine && (
-              <div className="absolute top-1 left-1">
-                <span className="px-1.5 py-0.5 bg-blue-500/90 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
-                  Owner
-                </span>
-              </div>
-            )}
-            {isOngoing && (
-              <div className="absolute top-1 right-1">
-                <span className="px-1.5 py-0.5 bg-green-500/90 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
-                  Ongoing
-                </span>
-              </div>
-            )}
-            {isPast && (
-              <div className="absolute top-1 right-1">
-                <span className="px-1.5 py-0.5 bg-gray-600/90 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
-                  Past
-                </span>
-              </div>
-            )}
-            {isUpcoming && !isOngoing && !isPast && (
-              <div className="absolute top-1 right-1">
-                <span className="px-1.5 py-0.5 bg-indigo-500/90 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
-                  Upcoming
-                </span>
-              </div>
-            )}
-            {full && !mine && (
-              <div className="absolute top-1 left-1">
-                <span className="px-1.5 py-0.5 bg-red-500/90 backdrop-blur-sm text-white rounded text-[10px] font-semibold">
-                  Full
-                </span>
-              </div>
-            )}
+    <article
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-card transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-raised focus-within:border-line-strong"
+      onMouseEnter={() => isAuthenticated && prefetchEvent(event.id)}
+    >
+      <div className="relative">
+        <EventCover event={event} className="aspect-[16/8] w-full" />
+        <div className="absolute left-3 top-3">
+          <StatusBadge timing={timing} isFull={isFull} mine={mine} />
+        </div>
+      </div>
+
+      <div className="flex flex-1 flex-col p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-accent-text">{formatEventWhen(event.starts_at)}</p>
+        <h3 className="mt-1.5 line-clamp-2 text-base font-semibold leading-snug text-fg">
+          {/* Stretched link: the whole card is clickable, while the buttons below stay separately focusable */}
+          <Link to={`/events/${event.id}`} className="after:absolute after:inset-0 after:content-[''] focus-visible:outline-none">
+            {event.title}
+          </Link>
+        </h3>
+        <div className="mt-2 flex flex-col gap-1 text-sm text-fg-muted">
+          <span className="flex min-w-0 items-center gap-2">
+            <FontAwesomeIcon icon={faLocationDot} className="w-3.5 shrink-0 text-fg-subtle" />
+            <span className="truncate">{event.location}</span>
+          </span>
+          {event.exam && (
+            <span className="flex min-w-0 items-center gap-2">
+              <FontAwesomeIcon icon={faGraduationCap} className="w-3.5 shrink-0 text-fg-subtle" />
+              <span className="truncate">{event.exam}</span>
+            </span>
+          )}
+        </div>
+
+        <div className="mt-auto flex items-center gap-3 pt-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline justify-between text-xs">
+              <span className="font-semibold text-fg">{count} going</span>
+              <span className="text-fg-subtle">{event.capacity} spots</span>
+            </div>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-3" aria-hidden>
+              <div className={`h-full rounded-full ${isFull ? "bg-warning" : "bg-accent"}`} style={{ width: `${fill}%` }} />
+            </div>
           </div>
 
-          <div className="flex-1 p-4 flex flex-col justify-between min-w-0">
-            <div className="flex-1 min-w-0">
-              <h3 className="text-base font-bold text-gray-900 mb-2 truncate group-hover:text-indigo-600">
-                {event.title}
-              </h3>
-
-              <div className="flex items-center gap-3 text-xs text-gray-500 mb-2">
-                <div className="flex items-center gap-1">
-                  <FontAwesomeIcon icon={faCalendarAlt} className="w-3 h-3" />
-                  <span>{formatDate(event.starts_at, event.ends_at)}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <FontAwesomeIcon icon={faClock} className="w-3 h-3" />
-                  <span>{formatTime(event.starts_at)}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1 text-xs text-gray-500 mb-2">
-                <FontAwesomeIcon icon={faMapMarkerAlt} className="w-3 h-3 flex-shrink-0" />
-                <span className="truncate">{event.location}</span>
-              </div>
-              {event.exam && (
-                <div className="flex items-center gap-1 text-xs text-indigo-600 mb-3">
-                  <FontAwesomeIcon icon={faGraduationCap} className="w-3 h-3 flex-shrink-0" />
-                  <span className="truncate font-medium">{event.exam}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between pt-2 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-1 text-xs text-gray-500">
-                <FontAwesomeIcon icon={faUsers} className="w-3 h-3" />
-                <span className="font-medium">{count}/{event.capacity}</span>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                {!mine && !hasStarted && isAuthenticated && (
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      if (joined) {
-                        onLeave()
-                      } else {
-                        onJoin()
-                      }
-                    }}
-                    disabled={(busyLeave || busyJoin) || (!joined && full)}
-                    className={`py-1.5 rounded-md text-xs font-semibold focus:outline-none focus:ring-0 ${joined
-                        ? 'bg-gray-100 text-gray-600'
-                        : 'bg-indigo-500 text-white'
-                      }`}
-                    style={{
-                      pointerEvents: (busyLeave || busyJoin) ? 'none' : 'auto',
-                      cursor: (busyLeave || busyJoin) ? 'default' : 'pointer',
-                      width: '75px',
-                      paddingLeft: '0.75rem',
-                      paddingRight: '0.75rem',
-                    }}
-                    title=""
-                  >
-                    <span className="inline-flex items-center justify-center w-full relative" style={{ minHeight: '16px' }}>
-                      <span
-                        className={`absolute inset-0 inline-flex items-center justify-center ${(busyLeave || busyJoin) ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                          }`}
-                      >
-                        <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1.5" />
-                        <span className="whitespace-nowrap">
-                          {busyLeave ? "Leaving..." : "Joining..."}
-                        </span>
-                      </span>
-                      <span
-                        className={`inline-flex items-center justify-center ${(busyLeave || busyJoin) ? 'opacity-0 pointer-events-none' : 'opacity-100'
-                          }`}
-                      >
-                        {joined ? "Leave" : "Join"}
-                      </span>
-                    </span>
-                  </button>
-                )}
-                {!mine && !hasStarted && !isAuthenticated && !full && (
-
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      navigate("/login")
-                    }}
-                    className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md text-xs font-semibold"
-                  >
-                    Join
-                  </button>
-                )}
-                {mine && (
-                  <>
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        onEdit && onEdit(event)
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md"
-                      title="Edit Event"
-                    >
-                      <FontAwesomeIcon icon={faEdit} className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        handleDeleteClick()
-                      }}
-                      disabled={busyDelete}
-                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Delete Event"
-                    >
-                      <FontAwesomeIcon icon={faTrash} className="w-3.5 h-3.5" />
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
+          <div className="relative z-10 shrink-0">
+            {mine ? (
+              <Menu
+                label={`Manage ${event.title}`}
+                width="w-44"
+                buttonClassName="inline-grid size-9 place-items-center rounded-lg border border-line text-fg-muted hover:border-line-strong hover:text-fg"
+                button={<FontAwesomeIcon icon={faEllipsis} />}
+              >
+                {!timing.hasStarted && <MenuItem as={Link} to={`/events/${event.id}/edit`} icon={faPen}>Edit</MenuItem>}
+                <MenuItem icon={faTrash} danger onSelect={() => setConfirmDelete(true)}>Delete</MenuItem>
+              </Menu>
+            ) : !timing.hasStarted ? (
+              <Button
+                size="sm"
+                variant={joined ? "secondary" : "primary"}
+                loading={busy}
+                disabled={!joined && isFull}
+                onClick={toggleMembership}
+                aria-label={`${joined ? "Leave" : "Join"} ${event.title}`}
+              >
+                {joined ? "Leave" : isFull ? "Full" : "Join"}
+              </Button>
+            ) : null}
           </div>
         </div>
-      </Link>
+      </div>
 
       <ConfirmDialog
-        open={showDeleteConfirm}
-        title="Delete Event?"
-        description={<>Are you sure you want to delete <span className="font-semibold">"{event.title}"</span>?</>}
-        confirmLabel="Delete Event"
-        busy={busyDelete}
-        onConfirm={handleDeleteConfirm}
-        onCancel={() => setShowDeleteConfirm(false)}
+        open={confirmDelete}
+        title="Delete this event?"
+        description={<>“{event.title}” and its chat, members and whiteboard will be removed for everyone.</>}
+        confirmLabel="Delete event"
+        busy={deleteMutation.isPending}
+        onConfirm={deleteEvent}
+        onCancel={() => setConfirmDelete(false)}
       />
-    </div>
+    </article>
   )
 }
 
