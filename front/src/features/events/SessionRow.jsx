@@ -9,16 +9,16 @@ export default function SessionRow({ event }) {
   return (
     <Link
       to={`/events/${event.id}`}
-      className="group flex items-center gap-4 rounded-xl p-3 transition-colors hover:bg-surface-2"
+      className="group flex items-center gap-4 rounded-md p-3 transition-colors hover:bg-surface-2"
     >
-      <div className="grid w-12 shrink-0 place-items-center rounded-xl border border-line bg-surface py-1.5 text-center">
-        <span className="text-[0.65rem] font-bold uppercase tracking-wider text-accent-text">
+      <div className="grid w-12 shrink-0 place-items-center rounded-md border border-line-strong bg-surface py-1.5 text-center">
+        <span className="label text-[0.6rem] text-fg-subtle">
           {start ? start.toLocaleDateString("en-US", { month: "short" }) : "—"}
         </span>
-        <span className="font-display text-lg font-bold leading-none text-fg">{start ? start.getDate() : ""}</span>
+        <span className="font-mono text-lg font-medium leading-none text-fg">{start ? start.getDate() : ""}</span>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate font-semibold text-fg">{event.title}</p>
+        <p className="truncate font-medium text-fg">{event.title}</p>
         <p className="mt-0.5 truncate text-sm text-fg-muted">
           {start ? start.toLocaleDateString("en-US", { weekday: "short" }) : ""} · {formatClockTime(event.starts_at)} · {event.location}
         </p>

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Header, Response
 from fastapi.responses import RedirectResponse
 from sqlmodel import Session, select, func
@@ -7,14 +8,22 @@ from app.core.db import get_session
 from app.models import User
 from app.core.security import hash_password, verify_password, create_access_token, decode_token
 from app.core.config import settings
+from app.core import rate_limit
 from app.schemas.auth import RegisterIn, LoginIn, ResendVerificationIn, ProfileUpdate
 import secrets
 from app.services.email import send_email
 from app.services.cleanup import delete_user_data
+from app.services.users import public_user
 from typing import Optional
 from datetime import datetime
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger("peerprep.auth")
+
+# Failed sign-ins allowed per account before it's locked for the rest of the window (stops password guessing
+# spread across many IPs); the per-IP limits on each route stop one client hammering many accounts.
+LOGIN_FAILURES_PER_ACCOUNT = 10
+LOGIN_FAILURE_WINDOW = 15 * 60
 
 @router.options("/register")
 @router.options("/login")
@@ -42,8 +51,8 @@ def _user_payload(user: User) -> dict:
 
 
 async def _send_verification(user: User, token: str) -> dict:
-    """Email the verification link. If email isn't configured or sending fails, return the link
-    instead so local development still works."""
+    """Email the verification link. If sending fails and VERIFY_LINK_FALLBACK is on, return the link
+    instead so sign-up still works without email (local development, or before email is set up)."""
     verify_url = f"{settings.BACKEND_BASE_URL}{settings.API_PREFIX}/auth/verify?token={token}"
     html = f"<p>Verify your email:</p><p><a href='{verify_url}'>{verify_url}</a></p>"
     try:
@@ -51,11 +60,14 @@ async def _send_verification(user: User, token: str) -> dict:
         await asyncio.to_thread(send_email, to=user.email, subject="Verify your PeerPrep account", html=html)
         return {"email_sent": True}
     except Exception as e:
-        print(f"Verification email failed for {user.email}: {e}")
+        # Log the account id, not the address: logs shouldn't collect personal data
+        logger.warning("Verification email failed for user %s: %s", user.id, type(e).__name__)
+        if not settings.VERIFY_LINK_FALLBACK:
+            raise HTTPException(status_code=503, detail="We couldn't send the verification email. Please try again later.")
         return {"email_sent": False, "verify_url": verify_url}
 
 
-@router.post("/register")
+@router.post("/register", dependencies=[Depends(rate_limit.limit_by_ip("register", 5, 600))])
 async def register(data: RegisterIn, session: Session = Depends(get_session)):
     existing = _find_user_by_email(session, data.email)
     if existing and existing.is_verified:
@@ -117,8 +129,10 @@ async def register(data: RegisterIn, session: Session = Depends(get_session)):
     return {"message": message, **result}
 
 
-@router.post("/resend-verification")
+@router.post("/resend-verification", dependencies=[Depends(rate_limit.limit_by_ip("resend", 5, 600))])
 async def resend_verification(data: ResendVerificationIn, session: Session = Depends(get_session)):
+    # Also per address, so nobody can flood someone's inbox from many IPs
+    rate_limit.hit(f"resend:email:{data.email}", 3, 600)
     user = _find_user_by_email(session, data.email)
     if not user:
         raise HTTPException(status_code=404, detail="No account found with this email.")
@@ -138,11 +152,16 @@ async def resend_verification(data: ResendVerificationIn, session: Session = Dep
     return {"message": message, **result}
 
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(rate_limit.limit_by_ip("login", 10, 60))])
 def login(data: LoginIn, session: Session = Depends(get_session)):
+    failures_key = f"login:fail:{data.email}"
+    # Checked before the password, so a locked account doesn't reveal whether a guess was right
+    rate_limit.check(failures_key, LOGIN_FAILURES_PER_ACCOUNT, LOGIN_FAILURE_WINDOW)
     user = _find_user_by_email(session, data.email)
     if not user or not verify_password(data.password, user.hashed_password):
+        rate_limit.hit(failures_key, LOGIN_FAILURES_PER_ACCOUNT, LOGIN_FAILURE_WINDOW)
         raise HTTPException(status_code=401, detail="Incorrect email or password.")
+    rate_limit.reset(failures_key)
     if not user.is_verified:
         raise HTTPException(status_code=403, detail="Please verify your email before signing in.")
     token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -220,18 +239,13 @@ def update_profile(
 
 @router.get("/user/{user_id}")
 def get_user_profile(user_id: int, session: Session = Depends(get_session)):
-    """Get user profile by ID (public endpoint)"""
+    """Someone's public profile. No email: that's only returned to its owner by /me."""
     user = session.exec(select(User).where(User.id == user_id)).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
     return {
-        "id": user.id,
-        "email": user.email,
-        "name": user.name,
+        **public_user(user),
         "bio": user.bio,
-        "photo_url": user.photo_url,
-        "is_verified": user.is_verified,
         "created_at": user.created_at.isoformat(),
         "xp": user.xp or 0,
     }
@@ -241,7 +255,6 @@ def delete_account(
     current_user: User = Depends(_get_user_from_token),
     session: Session = Depends(get_session)
 ):
-    
     if current_user.email == settings.ADMIN_EMAIL:
         raise HTTPException(
             status_code=403, 

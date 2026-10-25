@@ -17,6 +17,7 @@ import Button from "../components/ui/Button"
 import Card from "../components/ui/Card"
 import ConfirmDialog from "../components/ui/ConfirmDialog"
 import { EmptyState, PageLoader } from "../components/ui/Feedback"
+import { usePageTitle } from "../hooks/usePageTitle"
 
 // Re-evaluate "upcoming / live / ended" every minute while the page is open
 function useNow(intervalMs = 60 * 1000) {
@@ -55,6 +56,7 @@ export default function EventDetail() {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const { data: event, error: eventError } = useEvent(id, { enabled: !!id && isAuthenticated })
+  usePageTitle(event?.title || "Event")
   const { data: members = [] } = useEventAttendees(id, { enabled: !!id && isAuthenticated })
   const joinMutation = useJoinEvent()
   const leaveMutation = useLeaveEvent()

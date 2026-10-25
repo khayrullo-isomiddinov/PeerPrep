@@ -2,6 +2,7 @@ from typing import Optional
 from sqlmodel import SQLModel
 from pydantic import field_validator
 from datetime import datetime, timezone
+from app.schemas.validators import image_url, optional_text, check_study_materials
 
 MAX_CAPACITY = 1000
 MAX_DURATION_HOURS = 24
@@ -53,6 +54,10 @@ class EventCreate(EventBase):
     _location = field_validator("location")(_required_text("Location", 300))
     _capacity = field_validator("capacity")(_check_capacity)
     _duration = field_validator("duration")(_check_duration)
+    _description = field_validator("description")(optional_text("Description", 5000))
+    _exam = field_validator("exam")(optional_text("Exam", 100))
+    _cover = field_validator("cover_image_url")(image_url("Cover image"))
+    _materials = field_validator("study_materials")(check_study_materials)
 
     @field_validator("starts_at")
     @classmethod
@@ -92,3 +97,7 @@ class EventUpdate(SQLModel):
     _location = field_validator("location")(_required_text("Location", 300))
     _capacity = field_validator("capacity")(_check_capacity)
     _duration = field_validator("duration")(_check_duration)
+    _description = field_validator("description")(optional_text("Description", 5000))
+    _exam = field_validator("exam")(optional_text("Exam", 100))
+    _cover = field_validator("cover_image_url")(image_url("Cover image"))
+    _materials = field_validator("study_materials")(check_study_materials)

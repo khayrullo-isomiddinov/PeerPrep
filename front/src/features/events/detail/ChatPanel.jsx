@@ -31,7 +31,7 @@ function ConnectionStatus({ timing, connected }) {
 }
 
 function MessageBubble({ message, isOwn, isGrouped, isDeleting, onDelete }) {
-  const name = message.user.name || message.user.email || "User"
+  const name = message.user.name || "Student"
   return (
     <li className={`group flex gap-2.5 ${isOwn ? "flex-row-reverse" : ""} ${isGrouped ? "mt-1" : "mt-4"}`}>
       {!isOwn && (
@@ -145,7 +145,7 @@ function Composer({ onSend, onTyping }) {
         }}
         placeholder="Message the group…"
         maxLength={MAX_MESSAGE_LENGTH}
-        className="max-h-36 min-h-11 flex-1 resize-none rounded-xl border border-line-strong bg-surface px-3.5 py-2.5 text-[0.95rem] text-fg placeholder:text-fg-subtle focus:border-accent focus:outline-none focus:ring-4 focus:ring-accent/15"
+        className="max-h-36 min-h-11 flex-1 resize-none rounded-md border border-line-strong bg-surface px-3.5 py-2.5 text-base text-fg placeholder:text-fg-subtle focus:border-fg focus:outline-none focus:ring-[3px] focus:ring-fg/[0.07] sm:text-[0.9375rem]"
       />
       <button
         type="submit"

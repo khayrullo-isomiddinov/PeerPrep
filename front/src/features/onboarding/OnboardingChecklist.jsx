@@ -12,11 +12,11 @@ export default function OnboardingChecklist({ steps, onDismiss }) {
   return (
     <Card className="relative overflow-hidden">
       <div className="absolute inset-x-0 top-0 h-1 bg-surface-3" aria-hidden>
-        <div className="h-full transition-[width] duration-500" style={{ width: `${(completed / steps.length) * 100}%`, background: "var(--brand-gradient)" }} />
+        <div className="h-full bg-fg transition-[width] duration-500" style={{ width: `${(completed / steps.length) * 100}%` }} />
       </div>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-accent-text">Getting started · {completed}/{steps.length}</p>
+          <p className="label text-fg-subtle">Getting started · {completed}/{steps.length}</p>
           <h2 className="mt-1 text-lg font-semibold text-fg">Set up your study routine</h2>
         </div>
         <IconButton icon={faXmark} label="Hide getting started" size="sm" onClick={onDismiss} className="-mr-2 -mt-1" />
@@ -29,7 +29,7 @@ export default function OnboardingChecklist({ steps, onDismiss }) {
             <li key={step.id} className={`flex gap-3 rounded-xl p-2.5 ${isNext ? "bg-surface-2" : ""}`}>
               <span
                 className={`mt-0.5 grid size-6 shrink-0 place-items-center rounded-full text-xs font-bold ${
-                  step.done ? "bg-success text-surface" : isNext ? "bg-accent text-accent-fg" : "border border-line-strong text-fg-subtle"
+                  step.done ? "bg-highlight text-[#141413]" : isNext ? "bg-accent text-accent-fg" : "border border-line-strong text-fg-subtle"
                 }`}
                 aria-hidden
               >

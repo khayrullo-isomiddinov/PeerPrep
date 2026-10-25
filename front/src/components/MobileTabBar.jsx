@@ -16,7 +16,7 @@ export default function MobileTabBar() {
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/90 backdrop-blur-xl md:hidden pb-[env(safe-area-inset-bottom)]"
+      className="fixed inset-x-0 bottom-0 z-40 select-none border-t border-line bg-canvas/85 backdrop-blur-xl [-webkit-touch-callout:none] md:hidden pb-[env(safe-area-inset-bottom)]"
     >
       <ul className="mx-auto grid h-[var(--tabbar-h)] max-w-md grid-cols-4">
         {TABS.map((tab) => {
@@ -26,13 +26,13 @@ export default function MobileTabBar() {
               <Link
                 to={tab.to}
                 aria-current={active ? "page" : undefined}
-                className={`flex flex-1 flex-col items-center justify-center gap-1 text-[0.7rem] font-semibold transition-colors ${
-                  active ? "text-accent-text" : "text-fg-subtle hover:text-fg"
+                className={`group flex flex-1 flex-col items-center justify-center gap-1 text-[0.6875rem] font-medium transition-colors ${
+                  active ? "text-fg" : "text-fg-subtle"
                 }`}
               >
                 <span
-                  className={`grid h-7 w-12 place-items-center rounded-full transition-colors ${
-                    tab.primary ? "bg-accent text-accent-fg" : active ? "bg-accent-soft" : ""
+                  className={`grid h-7 w-12 place-items-center rounded-md transition-[background-color,transform] duration-200 group-active:scale-90 ${
+                    tab.primary ? "bg-accent text-accent-fg" : active ? "bg-surface-3" : ""
                   }`}
                 >
                   <FontAwesomeIcon icon={tab.icon} />

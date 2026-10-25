@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
-  faPlus, faUser, faArrowRightFromBracket, faCircleInfo, faBars, faXmark, faChevronDown
+  faPlus, faUser, faArrowRightFromBracket, faCircleInfo, faBars, faXmark, faChevronDown, faLifeRing, faShieldHalved
 } from "@fortawesome/free-solid-svg-icons"
 import { useAuth } from "../features/auth/authContextValue"
 import { usePrefetchEvents } from "../hooks/useEvents"
@@ -39,6 +39,8 @@ function AccountMenu({ user, onSignOut, onPrefetchProfile }) {
       <MenuSeparator />
       <MenuItem as={Link} to="/profile" icon={faUser} onMouseEnter={onPrefetchProfile}>Your profile</MenuItem>
       <MenuItem as={Link} to="/about" icon={faCircleInfo}>About PeerPrep</MenuItem>
+      <MenuItem as={Link} to="/contact" icon={faLifeRing}>Help & contact</MenuItem>
+      <MenuItem as={Link} to="/privacy" icon={faShieldHalved}>Privacy & terms</MenuItem>
       <MenuSeparator />
       <MenuItem icon={faArrowRightFromBracket} onSelect={onSignOut}>Sign out</MenuItem>
     </Menu>
@@ -67,6 +69,7 @@ function GuestMobileMenu() {
           <nav className="page-container flex flex-col gap-1 py-3" aria-label="Main">
             <NavLink to="/events" className={navLinkClass}>Browse events</NavLink>
             <NavLink to="/about" className={navLinkClass}>About</NavLink>
+            <NavLink to="/contact" className={navLinkClass}>Contact</NavLink>
             <div className="mt-2 grid grid-cols-2 gap-2">
               <Button as={Link} to="/login" variant="secondary">Log in</Button>
               <Button as={Link} to="/register">Get started</Button>

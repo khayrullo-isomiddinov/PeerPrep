@@ -4,6 +4,7 @@ import Navbar from "./components/Navbar"
 import Footer from "./components/Footer"
 import MobileTabBar from "./components/MobileTabBar"
 import { PageLoader } from "./components/ui/Feedback"
+import ErrorBoundary from "./components/ErrorBoundary"
 import { useAuth } from "./features/auth/authContextValue"
 
 const Home = lazy(() => import("./pages/Home"))
@@ -17,6 +18,9 @@ const RegisterForm = lazy(() => import("./features/auth/RegisterForm"))
 const LoginForm = lazy(() => import("./features/auth/LoginForm"))
 const NotFound = lazy(() => import("./pages/NotFound"))
 const About = lazy(() => import("./pages/About"))
+const Privacy = lazy(() => import("./pages/Privacy"))
+const Terms = lazy(() => import("./pages/Terms"))
+const Contact = lazy(() => import("./pages/Contact"))
 
 export default function App() {
   const { isLoading, isAuthenticated } = useAuth()
@@ -44,6 +48,7 @@ export default function App() {
         {isLoading ? (
           <PageLoader />
         ) : (
+          <ErrorBoundary key={pathname}>
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/" element={<Home />} />
@@ -57,12 +62,20 @@ export default function App() {
               <Route path="/register" element={<RegisterForm />} />
               <Route path="/login" element={<LoginForm />} />
               <Route path="/about" element={<About />} />
+              <Route path="/privacy" element={<Privacy />} />
+              <Route path="/terms" element={<Terms />} />
+              <Route path="/contact" element={<Contact />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
+          </ErrorBoundary>
         )}
       </main>
-      {!isFullScreen && !isAuthPage && <Footer />}
+      {!isFullScreen && !isAuthPage && (
+        <div className={`mt-auto ${showTabBar ? "hidden md:block" : ""}`}>
+          <Footer />
+        </div>
+      )}
       {showTabBar && <MobileTabBar />}
     </div>
   )

@@ -31,7 +31,7 @@ export default function MembersList({ members, presence, currentUserId, hostId, 
       ) : (
         <ul className="max-h-80 overflow-y-auto px-2 pb-3">
           {members.map((member) => {
-            const name = member.name || member.email.split("@")[0]
+            const name = member.name || "Student"
             const online = onlineIds.has(member.id)
             return (
               <li key={member.id}>

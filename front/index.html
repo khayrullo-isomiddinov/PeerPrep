@@ -5,31 +5,24 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="PeerPrep helps students find study groups, plan sessions in a live chat and work through problems together on a shared whiteboard." />
-    <meta name="theme-color" content="#F5F7FB" />
-    <title>PeerPrep — Study together, prepare better</title>
+    <meta name="theme-color" content="#F7F6F2" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="PeerPrep" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>PeerPrep — Find your study group</title>
 
-    <!-- Apply the saved (or system) theme before first paint to avoid a flash of the wrong theme -->
-    <script>
-      (function () {
-        var theme = "light"
-        try {
-          var saved = localStorage.getItem("peerprep-theme")
-          var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
-          theme = saved === "dark" || saved === "light" ? saved : prefersDark ? "dark" : "light"
-        } catch (e) {}
-        var root = document.documentElement
-        root.dataset.theme = theme
-        root.style.colorScheme = theme
-        document.querySelector('meta[name="theme-color"]').setAttribute("content", theme === "dark" ? "#060A14" : "#F5F7FB")
-      })()
-    </script>
+    <!-- Link previews (Slack, WhatsApp, iMessage, social networks) -->
+    <meta property="og:site_name" content="PeerPrep" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="PeerPrep — Find your study group" />
+    <meta property="og:description" content="Find students preparing for the same exam, plan a study session together and work through problems on a shared whiteboard." />
+    <meta property="og:url" content="https://peer-prep-gamma.vercel.app/" />
+    <meta name="twitter:card" content="summary" />
 
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Inter:wght@400..700&display=swap"
-    />
+    <!-- Applies the saved (or system) theme before first paint. A file rather than inline so the CSP can forbid inline scripts. -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

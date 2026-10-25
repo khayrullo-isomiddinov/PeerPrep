@@ -1,149 +1,114 @@
 import { useMemo } from "react"
 import { Link } from "react-router-dom"
-import { sortByStart } from "../../utils/dates"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import {
-  faArrowRight, faMagnifyingGlass, faComments, faChalkboard, faTrophy, faUserPlus, faUsers, faCalendarDays,
-} from "@fortawesome/free-solid-svg-icons"
+import { faArrowRight } from "@fortawesome/free-solid-svg-icons"
 import { useEvents } from "../../hooks/useEvents"
+import { sortByStart } from "../../utils/dates"
 import Button from "../../components/ui/Button"
-import Badge from "../../components/ui/Badge"
-import { Skeleton } from "../../components/ui/Feedback"
-import SessionRow from "../events/SessionRow"
+import EventList, { EventGridSkeleton } from "../events/EventList"
+import DoodlePad from "./DoodlePad"
 
-const FEATURES = [
+const REPO_URL = "https://github.com/khayrullo-isomiddinov/PeerPrep"
+
+const CHAPTERS = [
   {
-    icon: faMagnifyingGlass,
-    title: "Find your people",
-    text: "Search sessions by topic, exam or place. Join with one tap, or host your own in under a minute.",
+    title: "Find",
+    text: "Search by exam, course or place, see how many people are already going, and join in one tap. Or host your own in a minute.",
   },
   {
-    icon: faComments,
-    title: "Plan in the group chat",
-    text: "Every session gets a live chat with typing indicators and read receipts, so nobody shows up unprepared.",
+    title: "Plan",
+    text: "Every session gets its own group chat, so you agree on chapters and past papers before you sit down, not after.",
   },
   {
-    icon: faChalkboard,
-    title: "Think on a shared whiteboard",
-    text: "Sketch diagrams, work problems and drop sticky notes together in real time. Export it as an image afterwards.",
+    title: "Work it out",
+    text: "A shared whiteboard for the problem nobody can solve alone. Sketch, annotate, drop a sticky note, export it for later.",
   },
   {
-    icon: faTrophy,
-    title: "Build a habit",
-    text: "Earn XP for every session you attend, keep a weekly streak and level up from Beginner to Master.",
+    title: "Keep going",
+    text: "Attend, earn XP, keep your weekly streak. Five levels from Beginner to Master, counted from sessions you actually showed up to.",
   },
 ]
 
-const STEPS = [
-  { icon: faUserPlus, title: "Create a free account", text: "Just an email and a password." },
-  { icon: faUsers, title: "Join or host a session", text: "Pick an exam, a time and a place, online or in person." },
-  { icon: faCalendarDays, title: "Prepare together", text: "Chat beforehand, then work it out on the whiteboard." },
-]
-
-// A window-style frame around real upcoming sessions from the API
-function LivePreview() {
+function ThisWeek() {
   const { data, isLoading } = useEvents({ status: "upcoming", limit: 20 })
-  const events = useMemo(() => sortByStart(data || []).slice(0, 4), [data])
-  return (
-    <div className="relative rounded-2xl border border-line bg-surface shadow-overlay">
-      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-        <span className="size-2.5 rounded-full bg-danger/60" aria-hidden />
-        <span className="size-2.5 rounded-full bg-warning/60" aria-hidden />
-        <span className="size-2.5 rounded-full bg-success/60" aria-hidden />
-        <span className="ml-2 text-xs font-semibold text-fg-subtle">Upcoming sessions</span>
-        <Badge tone="success" dot className="ml-auto">Live data</Badge>
-      </div>
-      <div className="p-2">
-        {isLoading ? (
-          <div className="space-y-2 p-2">
-            {[0, 1, 2].map((i) => <Skeleton key={i} className="h-14 w-full" />)}
-          </div>
-        ) : events.length > 0 ? (
-          events.map((event) => <SessionRow key={event.id} event={event} />)
-        ) : (
-          <p className="px-4 py-10 text-center text-sm text-fg-muted">
-            No sessions are scheduled yet. Yours could be the first.
-          </p>
-        )}
-      </div>
-    </div>
-  )
+  const events = useMemo(() => sortByStart(data || []).slice(0, 3), [data])
+  if (isLoading) return <EventGridSkeleton count={3} />
+  if (events.length === 0) {
+    return (
+      <p className="border-y border-line py-10 text-center text-fg-muted">
+        Nothing scheduled yet. <Link to="/register" className="font-medium text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg">Host the first session</Link>.
+      </p>
+    )
+  }
+  return <EventList events={events} />
 }
 
 export default function Landing() {
   return (
     <div className="flex flex-col">
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-grid [mask-image:linear-gradient(to_bottom,black,transparent_85%)]" aria-hidden />
-        <div className="absolute inset-0" style={{ background: "var(--hero-glow)" }} aria-hidden />
-        <div className="page-container relative grid items-center gap-12 py-14 sm:py-20 lg:grid-cols-[1.1fr_1fr] lg:py-28">
-          <div>
-            <Badge tone="accent">Free & open source · Built by students</Badge>
-            <h1 className="mt-5 text-[2.5rem] font-bold leading-[1.05] text-fg sm:text-6xl lg:text-[4.25rem]">
-              Find your study group. <span className="text-gradient">Prep together.</span>
-            </h1>
-            <p className="mt-5 max-w-xl text-lg text-fg-muted">
-              PeerPrep connects students preparing for the same exams. Join a session, plan it in the group chat
-              and work through problems on a shared whiteboard.
-            </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button as={Link} to="/register" size="lg">
-                Get started free
-                <FontAwesomeIcon icon={faArrowRight} />
-              </Button>
-              <Button as={Link} to="/events" variant="secondary" size="lg">Browse sessions</Button>
-            </div>
+      <section className="page-container grid items-center gap-14 pb-20 pt-14 sm:pt-20 lg:grid-cols-[1.15fr_1fr] lg:gap-16 lg:pb-28 lg:pt-24">
+        <div>
+          <h1 className="text-[2.6rem] font-semibold leading-[1.02] tracking-[-0.045em] text-fg sm:text-6xl lg:text-[4.4rem]">
+            Find the people <span className="mark">studying for the same exam</span> as you.
+          </h1>
+          <p className="mt-6 max-w-lg text-lg leading-relaxed text-fg-muted">
+            PeerPrep is a quiet place to organize study sessions: find one, talk it through in the group chat,
+            then work the hard problems out together on a shared whiteboard.
+          </p>
+          <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-4">
+            <Button as={Link} to="/register" size="lg">Create a free account</Button>
+            <Link to="/events" className="group inline-flex items-center gap-2 text-[0.9375rem] font-medium text-fg">
+              Browse sessions
+              <FontAwesomeIcon icon={faArrowRight} className="text-xs transition-transform group-hover:translate-x-0.5" />
+            </Link>
           </div>
-          <LivePreview />
+          <p className="label mt-10 text-fg-subtle">Free · No ads · <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="underline-offset-4 hover:text-fg hover:underline">Open source</a></p>
+        </div>
+        <DoodlePad />
+      </section>
+
+      <section className="border-t border-line">
+        <div className="page-container py-16 sm:py-20">
+          <div className="mb-8 flex items-end justify-between gap-6">
+            <h2 className="text-3xl tracking-[-0.035em] text-fg sm:text-4xl">
+              Coming up <span className="serif text-[1.15em]">this week</span>
+            </h2>
+            <Link to="/events" className="hidden items-center gap-2 text-sm font-medium text-fg-muted hover:text-fg sm:inline-flex">
+              All sessions <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
+            </Link>
+          </div>
+          <ThisWeek />
         </div>
       </section>
 
-      <section className="border-y border-line bg-surface">
-        <div className="page-container py-16 sm:py-24">
-          <div className="max-w-2xl">
-            <p className="text-sm font-semibold uppercase tracking-wider text-accent-text">Everything a study group needs</p>
-            <h2 className="mt-3 text-3xl font-bold text-fg sm:text-4xl">From “anyone studying for this?” to exam day.</h2>
-          </div>
-          <div className="mt-12 grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2">
-            {FEATURES.map((feature) => (
-              <div key={feature.title} className="bg-surface p-6 sm:p-8">
-                <span className="grid size-11 place-items-center rounded-xl bg-accent-soft text-accent-text">
-                  <FontAwesomeIcon icon={feature.icon} />
-                </span>
-                <h3 className="mt-5 text-lg font-semibold text-fg">{feature.title}</h3>
-                <p className="mt-2 text-fg-muted">{feature.text}</p>
-              </div>
+      <section className="border-t border-line bg-surface">
+        <div className="page-container grid gap-12 py-16 sm:py-24 lg:grid-cols-[0.9fr_1.1fr] lg:gap-20">
+          <h2 className="text-[2.1rem] leading-[1.08] tracking-[-0.04em] text-fg sm:text-5xl lg:sticky lg:top-28 lg:self-start">
+            Studying alone is a habit. Studying <span className="serif text-[1.12em]">together</span> is a strategy.
+          </h2>
+          <ol className="border-t border-line">
+            {CHAPTERS.map((chapter, index) => (
+              <li key={chapter.title} className="grid grid-cols-[3rem_1fr] gap-x-4 border-b border-line py-7 sm:grid-cols-[4rem_1fr]">
+                <span className="font-mono text-sm text-fg-subtle">{String(index + 1).padStart(2, "0")}</span>
+                <div>
+                  <h3 className="text-xl tracking-[-0.02em] text-fg">{chapter.title}</h3>
+                  <p className="mt-2 max-w-md leading-relaxed text-fg-muted">{chapter.text}</p>
+                </div>
+              </li>
             ))}
-          </div>
+          </ol>
         </div>
       </section>
 
-      <section className="page-container py-16 sm:py-24">
-        <h2 className="text-3xl font-bold text-fg sm:text-4xl">How it works</h2>
-        <ol className="mt-10 grid gap-6 md:grid-cols-3">
-          {STEPS.map((step, index) => (
-            <li key={step.title} className="relative rounded-2xl border border-line bg-surface p-6">
-              <span className="font-display text-5xl font-bold text-surface-3" aria-hidden>{index + 1}</span>
-              <div className="mt-2 flex items-center gap-2.5">
-                <FontAwesomeIcon icon={step.icon} className="text-accent-text" />
-                <h3 className="text-lg font-semibold text-fg">{step.title}</h3>
-              </div>
-              <p className="mt-2 text-fg-muted">{step.text}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <section className="page-container pb-16 sm:pb-24">
-        <div className="relative overflow-hidden rounded-3xl px-6 py-12 text-center text-white sm:px-12 sm:py-16" style={{ background: "var(--brand-gradient)" }}>
-          <div className="absolute inset-0 bg-grid opacity-50 [--grid-line:rgb(255_255_255/0.08)]" aria-hidden />
-          <div className="relative">
-            <h2 className="text-3xl font-bold sm:text-4xl">Your next exam is easier with company.</h2>
-            <p className="mx-auto mt-3 max-w-lg text-white/85">Create an account in seconds and join your first session today.</p>
-            <Button as={Link} to="/register" size="lg" variant="inverse" className="mt-8">
-              Create your free account
-            </Button>
-          </div>
+      <section className="border-t border-line">
+        <div className="page-container flex flex-col items-start gap-8 py-20 sm:py-28 lg:flex-row lg:items-end lg:justify-between">
+          <h2 className="max-w-3xl text-[2.4rem] leading-[1.02] tracking-[-0.045em] text-fg sm:text-6xl">
+            Your next exam is easier <span className="serif text-[1.12em]">with company.</span>
+          </h2>
+          <Button as={Link} to="/register" size="lg" variant="highlight" className="shrink-0">
+            Start studying together
+            <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
+          </Button>
         </div>
       </section>
     </div>

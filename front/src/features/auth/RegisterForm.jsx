@@ -6,6 +6,7 @@ import AuthNotice from "./AuthNotice"
 import PasswordInput from "./PasswordInput"
 import Field, { Input } from "../../components/ui/Field"
 import Button from "../../components/ui/Button"
+import { usePageTitle } from "../../hooks/usePageTitle"
 
 const MIN_PASSWORD_LENGTH = 8
 
@@ -24,6 +25,7 @@ const STRENGTH = [
 ]
 
 export default function RegisterForm() {
+  usePageTitle("Create an account")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [notice, setNotice] = useState(null)
@@ -88,6 +90,10 @@ export default function RegisterForm() {
           <Button type="submit" size="lg" className="w-full" loading={loading}>
             {loading ? "Creating account…" : "Create account"}
           </Button>
+          <p className="text-center text-xs text-fg-subtle">
+            By creating an account you agree to the <Link to="/terms" className="underline underline-offset-2 hover:text-fg">Terms</Link> and
+            confirm you've read the <Link to="/privacy" className="underline underline-offset-2 hover:text-fg">Privacy Policy</Link>.
+          </p>
         </form>
       )}
 

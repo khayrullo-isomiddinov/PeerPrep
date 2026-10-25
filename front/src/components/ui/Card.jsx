@@ -1,6 +1,6 @@
 const TONES = {
   default: "bg-surface border-line",
-  success: "bg-success-soft/40 border-success/35",
+  success: "bg-surface border-fg",
   danger: "bg-surface border-danger/30",
 }
 
@@ -11,7 +11,7 @@ export default function Card({ as = "section", padded = true, interactive = fals
   return (
     <Component
       className={`border rounded-2xl shadow-card ${TONES[tone]} ${padded ? "p-5 sm:p-6" : "overflow-hidden"} ${
-        interactive ? "transition-[border-color,box-shadow,transform] duration-200 hover:border-line-strong hover:shadow-raised" : ""
+        interactive ? "card-hover" : ""
       } ${className}`}
       {...props}
     >

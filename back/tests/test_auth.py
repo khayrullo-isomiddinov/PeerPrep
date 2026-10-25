@@ -130,7 +130,8 @@ def test_get_user_profile(client, test_user):
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert data["id"] == test_user.id
-    assert data["email"] == test_user.email
+    # Public profiles never include the email address
+    assert "email" not in data
 
 
 def test_get_user_profile_not_found(client):

@@ -1,3 +1,4 @@
+from tests.conftest import ws_auth
 """Event listing, status filters, counts and the chat WebSocket.
 
 Written before splitting events.py, to pin down existing behaviour so the refactor can't change it.
@@ -136,7 +137,8 @@ def test_leave_updates_count(client, world):
 
 def test_attendee_details_include_owner(client, world):
     details = client.get(f"/api/events/{world['legacy'].id}/attendees/details").json()
-    assert [d["email"] for d in details] == ["owner@example.com"]
+    assert [d["id"] for d in details] == [world["owner"].id]
+    assert all("email" not in d for d in details)
     ids = client.get(f"/api/events/{world['upcoming'].id}/attendees").json()
     assert sorted(ids) == sorted([world["owner"].id, world["member"].id])
 
@@ -168,9 +170,9 @@ def test_chat_websocket_protocol(client, world):
     eid = world["upcoming"].id
     owner_token = create_access_token(str(world["owner"].id), 5)
     member_token = create_access_token(str(world["member"].id), 5)
-    with client.websocket_connect(f"/api/events/{eid}/ws?token={owner_token}") as owner_ws:
+    with client.websocket_connect(f"/api/events/{eid}/ws", subprotocols=ws_auth(owner_token)) as owner_ws:
         assert owner_ws.receive_json()["type"] == "initial_messages"
-        with client.websocket_connect(f"/api/events/{eid}/ws?token={member_token}") as member_ws:
+        with client.websocket_connect(f"/api/events/{eid}/ws", subprotocols=ws_auth(member_token)) as member_ws:
             assert member_ws.receive_json()["type"] == "initial_messages"
             joined = owner_ws.receive_json()
             assert joined["type"] == "user_joined" and joined["user_id"] == world["member"].id
@@ -195,13 +197,13 @@ def test_chat_websocket_rejects_outsiders(client, world):
     from fastapi import WebSocketDisconnect
     token = create_access_token(str(world["outsider"].id), 5)
     with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect(f"/api/events/{world['upcoming'].id}/ws?token={token}") as ws:
+        with client.websocket_connect(f"/api/events/{world['upcoming'].id}/ws", subprotocols=ws_auth(token)) as ws:
             ws.receive_json()
 
 
 def test_chat_is_read_only_after_event(client, session, world):
     token = create_access_token(str(world["member"].id), 5)
-    with client.websocket_connect(f"/api/events/{world['past'].id}/ws?token={token}") as ws:
+    with client.websocket_connect(f"/api/events/{world['past'].id}/ws", subprotocols=ws_auth(token)) as ws:
         ws.receive_json()
         ws.send_json({"type": "message", "content": "too late"})
         assert ws.receive_json()["type"] == "error"

@@ -25,17 +25,17 @@ export default function BadgeLadder({ stats }) {
           return (
             <li
               key={level.name}
-              className={`relative flex items-center gap-3 rounded-xl border p-3 sm:flex-col sm:items-center sm:text-center ${
-                current ? "border-volt bg-volt-soft" : unlocked ? "border-line bg-surface" : "border-dashed border-line bg-surface-2"
+              className={`relative flex items-center gap-3 rounded-lg border p-3 sm:flex-col sm:items-start ${
+                current ? "border-fg bg-surface" : unlocked ? "border-line bg-surface" : "border-dashed border-line-strong bg-transparent"
               }`}
             >
-              <span className={`text-3xl ${unlocked ? "" : "opacity-40 grayscale"}`} aria-hidden>{level.icon}</span>
+              <span className={`serif text-3xl leading-none ${current ? "mark" : unlocked ? "text-fg" : "text-fg-subtle/60"}`} aria-hidden>{level.numeral}</span>
               <div className="min-w-0">
                 <p className={`text-sm font-semibold ${unlocked ? "text-fg" : "text-fg-subtle"}`}>{level.name}</p>
                 <p className="text-xs text-fg-subtle">{requirementText(level)}</p>
               </div>
               <span className="ml-auto sm:absolute sm:right-2 sm:top-2 sm:ml-0" aria-label={unlocked ? "Unlocked" : "Locked"}>
-                <FontAwesomeIcon icon={unlocked ? faCheck : faLock} className={`text-xs ${current ? "text-volt" : unlocked ? "text-success" : "text-fg-subtle"}`} />
+                <FontAwesomeIcon icon={unlocked ? faCheck : faLock} className={`text-xs ${unlocked ? "text-fg" : "text-fg-subtle"}`} />
               </span>
             </li>
           )

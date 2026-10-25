@@ -14,22 +14,6 @@ def get_openai_client() -> OpenAI:
         _client = OpenAI(api_key=settings.OPENAI_API_KEY)
     return _client
 
-async def test_connection() -> bool:
-    """Test OpenAI API connection"""
-    try:
-        client = get_openai_client()
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "user", "content": "Say 'Hello' if you can read this."}
-            ],
-            max_tokens=10
-        )
-        return response.choices[0].message.content is not None
-    except Exception as e:
-        print(f"OpenAI connection test failed: {e}")
-        return False
-
 async def refine_text(
     text: str,
     context: Optional[str] = None,
@@ -155,8 +139,7 @@ Think like a creative copywriter. Return ONLY the refined text. No quotes, no ex
         return refined_text
         
     except Exception as e:
-        print(f"OpenAI API error during text refinement: {e}")
-        raise Exception(f"Failed to refine text: {str(e)}")
+        raise RuntimeError("Text refinement failed") from e
 
 async def generate_image(prompt: str) -> str:
     """
@@ -189,6 +172,5 @@ Style: professional, educational, inspiring, with good composition and colors th
         return f"data:image/png;base64,{image_b64}"
         
     except Exception as e:
-        print(f"OpenAI DALL-E API error: {e}")
-        raise Exception(f"Failed to generate image: {str(e)}")
+        raise RuntimeError("Image generation failed") from e
 

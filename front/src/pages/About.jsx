@@ -6,6 +6,7 @@ import founderPhoto from "../images/founder.jpg"
 import Card from "../components/ui/Card"
 import Badge from "../components/ui/Badge"
 import Button from "../components/ui/Button"
+import { usePageTitle } from "../hooks/usePageTitle"
 
 const WEBSITE_URL = "https://www.khayrullo.com"
 const EMAIL = "khayrullo2@outlook.com"
@@ -27,6 +28,7 @@ const WAYS_TO_HELP = [
 ]
 
 export default function About() {
+  usePageTitle("About")
   const { hash } = useLocation()
 
   // Support links like /about#contribute from the footer
@@ -41,9 +43,9 @@ export default function About() {
   return (
     <div className="page-container max-w-5xl space-y-6 py-8 sm:py-12">
       <Card padded={false}>
-        <div className="h-24 sm:h-32" style={{ background: "var(--brand-gradient)" }} aria-hidden />
+        <div className="ruled relative h-24 border-b border-line bg-surface-2 sm:h-28" aria-hidden><span className="absolute inset-y-0 left-8 w-px bg-danger/25" /></div>
         <div className="px-5 pb-8 sm:px-10">
-          <div className="-mt-14 flex flex-col gap-5 sm:-mt-16 sm:flex-row sm:items-end">
+          <div className="relative -mt-14 flex flex-col gap-5 sm:-mt-16 sm:flex-row sm:items-end">
             <img
               src={founderPhoto}
               alt="Khayrullo Isomiddinov"
@@ -52,9 +54,9 @@ export default function About() {
               className="size-28 shrink-0 rounded-2xl bg-surface-3 object-cover ring-4 ring-surface sm:size-36"
             />
             <div className="min-w-0 sm:pb-1">
-              <Badge tone="accent">Founder & developer</Badge>
-              <h1 className="mt-2 text-3xl font-bold text-fg sm:text-4xl">Khayrullo Isomiddinov</h1>
-              <p className="text-fg-muted">Call me Harry</p>
+              <p className="label text-fg-subtle">Founder & developer</p>
+              <h1 className="mt-2 text-3xl tracking-[-0.04em] text-fg sm:text-[2.6rem]">Khayrullo Isomiddinov</h1>
+              <p className="serif text-xl text-fg-muted">call me Harry</p>
             </div>
           </div>
 
@@ -81,7 +83,7 @@ export default function About() {
       </Card>
 
       <Card id="contribute" padded={false} className="scroll-mt-24 p-5 sm:p-10">
-        <h2 className="text-2xl font-bold text-fg sm:text-3xl">Open to contributors</h2>
+        <h2 className="text-3xl tracking-[-0.04em] text-fg sm:text-4xl">Open to <span className="serif text-[1.1em]">contributors</span></h2>
         <p className="mt-2 max-w-3xl text-fg-muted">
           PeerPrep is open source, and help of any size is welcome, whether it's a typo fix, a bug report or a whole new feature.
         </p>
@@ -93,14 +95,14 @@ export default function About() {
               href={way.href}
               target="_blank"
               rel="noopener noreferrer"
-              className="group flex flex-col rounded-xl border border-line bg-surface p-5 transition-[border-color,box-shadow] hover:border-accent hover:shadow-raised"
+              className="card-hover group flex flex-col rounded-lg border border-line bg-surface p-5"
             >
-              <span className="grid size-10 place-items-center rounded-xl bg-accent-soft text-accent-text"><FontAwesomeIcon icon={way.icon} /></span>
+              <FontAwesomeIcon icon={way.icon} className="text-fg-subtle" />
               <h3 className="mt-4 font-semibold text-fg">{way.title}</h3>
               <p className="mt-1 flex-1 text-sm text-fg-muted">{way.text}</p>
               <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-accent-text">
                 {way.cta}
-                <FontAwesomeIcon icon={faArrowRight} className="text-xs transition-transform group-hover:translate-x-0.5" />
+                <FontAwesomeIcon icon={faArrowRight} className="text-xs transition-transform duration-500 ease-[var(--ease-out-soft)] group-hover:translate-x-1" />
               </span>
             </a>
           ))}

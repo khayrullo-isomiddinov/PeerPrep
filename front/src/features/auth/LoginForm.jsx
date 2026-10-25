@@ -7,6 +7,7 @@ import AuthNotice from "./AuthNotice"
 import PasswordInput from "./PasswordInput"
 import Field, { Input } from "../../components/ui/Field"
 import Button from "../../components/ui/Button"
+import { usePageTitle } from "../../hooks/usePageTitle"
 
 function initialNotice(search) {
   const verified = new URLSearchParams(search).get("verified")
@@ -23,6 +24,7 @@ function initialNotice(search) {
 }
 
 export default function LoginForm() {
+  usePageTitle("Sign in")
   const location = useLocation()
   const navigate = useNavigate()
   const auth = useAuth()

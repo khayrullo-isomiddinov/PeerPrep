@@ -1,8 +1,12 @@
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { subjectIcon } from "./eventVisuals"
+// The event's cover photo, or a typographic "notebook" cover: the exam (or the session's
+// subject) set large in italic serif on faintly ruled paper.
+function coverWord(event) {
+  if (event.exam) return event.exam
+  const words = (event.title || "Study session").split(/[\s:—–-]+/).filter(Boolean)
+  return words.slice(0, 2).join(" ")
+}
 
-// The event's cover photo, or a branded tile with a subject icon when there isn't one
-export default function EventCover({ event, className = "", iconClassName = "text-3xl", eager = false }) {
+export default function EventCover({ event, className = "", size = "md", eager = false }) {
   if (event.cover_image_url) {
     return (
       <img
@@ -14,10 +18,12 @@ export default function EventCover({ event, className = "", iconClassName = "tex
       />
     )
   }
+  const text = size === "lg" ? "text-[clamp(2.75rem,8vw,5rem)]" : "text-[2.15rem]"
   return (
-    <div aria-hidden className={`relative grid place-items-center overflow-hidden ${className}`} style={{ background: "var(--brand-gradient)" }}>
-      <div className="absolute inset-0 bg-grid opacity-60 [--grid-line:rgb(255_255_255/0.09)]" />
-      <FontAwesomeIcon icon={subjectIcon(event)} className={`relative text-white/90 ${iconClassName}`} />
+    <div aria-hidden className={`ruled relative overflow-hidden bg-surface-2 ${className}`}>
+      {/* the red margin line of a notebook page */}
+      <span className="absolute inset-y-0 left-7 w-px bg-danger/25" />
+      <span className={`serif absolute bottom-3 left-11 right-4 truncate leading-[0.95] text-fg ${text}`}>{coverWord(event)}</span>
     </div>
   )
 }

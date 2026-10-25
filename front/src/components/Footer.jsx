@@ -24,15 +24,21 @@ export default function Footer() {
             <p className="font-semibold text-fg">About</p>
             <Link to="/about" className="text-fg-muted hover:text-fg">Meet the founder</Link>
             <Link to="/about#contribute" className="text-fg-muted hover:text-fg">Contribute</Link>
+            <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="text-fg-muted hover:text-fg">
+              GitHub<span className="sr-only"> (opens in a new tab)</span>
+            </a>
           </div>
           <div className="flex flex-col gap-2">
-            <p className="font-semibold text-fg">Open source</p>
-            <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="text-fg-muted hover:text-fg">GitHub</a>
+            <p className="font-semibold text-fg">Help & legal</p>
+            <Link to="/contact" className="text-fg-muted hover:text-fg">Contact & support</Link>
+            <Link to="/privacy" className="text-fg-muted hover:text-fg">Privacy Policy</Link>
+            <Link to="/terms" className="text-fg-muted hover:text-fg">Terms & Conditions</Link>
+            <Link to="/privacy#cookies" className="text-fg-muted hover:text-fg">Cookies</Link>
           </div>
         </nav>
       </div>
       <div className="border-t border-line">
-        <p className="page-container py-5 text-xs text-fg-subtle">© {new Date().getFullYear()} PeerPrep</p>
+        <p className="page-container py-5 text-xs text-fg-subtle">© {new Date().getFullYear()} PeerPrep · No ads, no tracking</p>
       </div>
     </footer>
   )

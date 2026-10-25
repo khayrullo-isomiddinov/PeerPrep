@@ -14,6 +14,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.1
+      - key: ENVIRONMENT
+        value: production
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
@@ -35,6 +37,10 @@ services:
         sync: false
       - key: EMAIL_PASS
         sync: false
+      # Until email sending works on the server, sign-up shows the verification link on screen.
+      # Set to "false" once verification emails are delivered.
+      - key: VERIFY_LINK_FALLBACK
+        value: "true"
       - key: OPENAI_API_KEY
         sync: false
 

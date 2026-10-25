@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional
 from uuid import uuid4
@@ -8,8 +9,9 @@ from sqlalchemy import func
 from sqlmodel import Session, select, delete
 
 from app.core.db import get_session
-from app.core.security import decode_token
-from app.models import Event, EventAttendee, User, WhiteboardElement
+from app.core.ws_auth import accept_authenticated
+from app.models import Event, EventAttendee, WhiteboardElement
+from app.services.users import display_name
 
 router = APIRouter(prefix="/events/{event_id}/whiteboard", tags=["whiteboard"])
 
@@ -21,16 +23,6 @@ MAX_BATCH = 500
 # event_id -> connection_id -> {"ws": WebSocket, "user": {...}}
 # Keyed by connection rather than user so the same person can have the board open in several tabs.
 board_connections: Dict[int, Dict[str, dict]] = {}
-
-
-def _authenticate(token: Optional[str], session: Session) -> Optional[User]:
-    if not token:
-        return None
-    try:
-        payload = decode_token(token)
-        return session.get(User, int(payload.get("sub")))
-    except Exception:
-        return None
 
 
 def _event_has_ended(evt: Event) -> bool:
@@ -108,11 +100,8 @@ def _upsert_elements(session: Session, event_id: int, user_id: int, elements: li
 @router.websocket("/ws")
 async def whiteboard_websocket(websocket: WebSocket, event_id: int, session: Session = Depends(get_session)):
     """Real-time shared whiteboard for an event's members (attendees and organizer)."""
-    await websocket.accept()
-
-    user = _authenticate(websocket.query_params.get("token"), session)
+    user = await accept_authenticated(websocket, session)
     if not user:
-        await websocket.close(code=1008, reason="Authentication required")
         return
 
     evt = session.get(Event, event_id)
@@ -129,7 +118,7 @@ async def whiteboard_websocket(websocket: WebSocket, event_id: int, session: Ses
         return
 
     read_only = _event_has_ended(evt)
-    me = {"id": user.id, "name": user.name or user.email.split("@")[0], "photo_url": user.photo_url}
+    me = {"id": user.id, "name": display_name(user), "photo_url": user.photo_url}
     connection_id = uuid4().hex
 
     rows = session.exec(
@@ -220,7 +209,7 @@ async def whiteboard_websocket(websocket: WebSocket, event_id: int, session: Ses
         pass
     except RuntimeError as e:
         if "disconnect" not in str(e).lower():
-            print(f"Whiteboard WebSocket error: {e}")
+            logging.getLogger("peerprep.whiteboard").warning("Whiteboard WebSocket error: %s", e)
     finally:
         conns = board_connections.get(event_id, {})
         conns.pop(connection_id, None)

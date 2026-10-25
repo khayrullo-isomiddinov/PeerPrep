@@ -1,6 +1,6 @@
 import axios, { type AxiosError } from "axios"
 import type {
-  AuthResponse, AwardXPResult, ChatMessage, EventInput, EventListParams, EventSuggestion, Member,
+  AuthResponse, AwardXPResult, PublicProfile, ChatMessage, EventInput, EventListParams, EventSuggestion, Member,
   MembershipResult, PeerEvent, PresenceEntry, ProfileUpdate, User, UserBadgeStats, VerificationResponse,
 } from "../types/api"
 
@@ -71,7 +71,7 @@ export async function resendVerification(email: string) {
 }
 
 export async function getUserProfile(userId: Id) {
-  const { data } = await api.get<User>(`auth/user/${userId}`)
+  const { data } = await api.get<PublicProfile>(`auth/user/${userId}`)
   return data
 }
 

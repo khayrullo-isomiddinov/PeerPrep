@@ -12,8 +12,10 @@ import Button from "../components/ui/Button"
 import { EmptyState, PageLoader } from "../components/ui/Feedback"
 import EventForm from "../features/events/form/EventForm"
 import { LIMITS, valuesFromEvent } from "../features/events/form/eventFormModel"
+import { usePageTitle } from "../hooks/usePageTitle"
 
 export default function EditEvent() {
+  usePageTitle("Edit event")
   const { id } = useParams()
   const { user, isAuthenticated, isLoading } = useAuth()
   const navigate = useNavigate()

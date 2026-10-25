@@ -2,6 +2,7 @@
 
 export type ISODateString = string
 
+// The signed-in user (from /auth/me). Only your own account includes the email address.
 export interface User {
   id: number
   email: string
@@ -9,6 +10,20 @@ export interface User {
   bio: string | null
   photo_url: string | null
   is_verified: boolean
+  created_at: ISODateString
+  xp: number
+}
+
+// How anyone else appears. `name` falls back to the part of the email before the @, server-side.
+export interface PublicUser {
+  id: number
+  name: string
+  photo_url: string | null
+  is_verified: boolean
+}
+
+export interface PublicProfile extends PublicUser {
+  bio: string | null
   created_at: ISODateString
   xp: number
 }
@@ -67,22 +82,11 @@ export interface EventListParams {
   offset?: number
 }
 
-export interface Member {
-  id: number
-  name: string | null
-  email: string
-  photo_url: string | null
-  is_verified: boolean
+export interface Member extends PublicUser {
   joined_at: ISODateString
 }
 
-export interface MessageAuthor {
-  id: number
-  name: string | null
-  email: string
-  photo_url: string | null
-  is_verified: boolean
-}
+export type MessageAuthor = PublicUser
 
 export interface ChatMessage {
   id: number

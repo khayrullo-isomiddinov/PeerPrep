@@ -7,6 +7,8 @@ from pydantic import field_validator
 
 class Settings(BaseSettings):
     APP_NAME: str = "PeerPrep API"
+    # "production" turns off the interactive API docs and enables HSTS
+    ENVIRONMENT: str = "development"
     API_PREFIX: str = "/api"
 
     DATABASE_URL: str = "sqlite:///./peerprep.db"
@@ -30,10 +32,15 @@ class Settings(BaseSettings):
     SECRET_KEY: str = ""
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
+    # When a verification email can't be sent, return the link in the API response so sign-up still works.
+    # That lets anyone verify an address they don't own, so turn it off once email sending works.
+    VERIFY_LINK_FALLBACK: bool = True
+
     OPENAI_API_KEY: str = ""
 
-    ADMIN_EMAIL: str = "harry@gmail.com"
-    ADMIN_PASSWORD: str = "password123"
+    # The account that owns the sample events. With no ADMIN_PASSWORD it gets a random one nobody knows.
+    ADMIN_EMAIL: str = "admin@example.com"
+    ADMIN_PASSWORD: str = ""
 
     @classmethod
     def parse_origins(cls, v: Union[str, List[str]]):
@@ -54,6 +61,10 @@ class Settings(BaseSettings):
         if v and v not in WEAK_SECRET_KEYS:
             return v
         return _load_or_create_secret_key()
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT.lower() == "production"
 
     class Config:
         env_file = ".env"
@@ -76,7 +87,7 @@ def _load_or_create_secret_key() -> str:
             return saved
     key = secrets.token_urlsafe(64)
     SECRET_KEY_FILE.write_text(key, encoding="utf-8")
-    print(f"SECRET_KEY not set in .env; generated one and saved it to {SECRET_KEY_FILE}")
+    print(f"SECRET_KEY not set; generated one and saved it to {SECRET_KEY_FILE}. Set SECRET_KEY explicitly in production.")
     return key
 
 

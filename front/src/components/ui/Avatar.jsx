@@ -2,12 +2,12 @@ import { useState } from "react"
 
 // Stable background per person, so the same user always gets the same color
 const TONES = [
-  "bg-[#2448E8] text-white",
-  "bg-[#0B7A92] text-white",
-  "bg-[#4D7C0F] text-white",
-  "bg-[#7C3AED] text-white",
-  "bg-[#B45309] text-white",
-  "bg-[#BE185D] text-white",
+  "bg-[#2B45E0] text-white",
+  "bg-[#0F6E66] text-white",
+  "bg-[#7A4E2D] text-white",
+  "bg-[#55534E] text-white",
+  "bg-[#8B3A5A] text-white",
+  "bg-[#3D5A1E] text-white",
 ]
 
 const SIZES = {

@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
+from app.schemas.validators import image_url
 
 MIN_PASSWORD_LENGTH = 8
 
@@ -49,6 +50,8 @@ class ProfileUpdate(BaseModel):
         if v is not None and len(v.strip()) > 100:
             raise ValueError("Name must be at most 100 characters")
         return v.strip() if v is not None else v
+
+    _photo = field_validator("photo_url")(image_url("Profile photo"))
 
     @field_validator("bio")
     @classmethod

@@ -1,11 +1,11 @@
 // Badge levels. Mirrors BadgeSystem.BADGES in back/app/services/gamification.py, because the API
 // returns only the user's current badge, not the full ladder. Keep the two lists in sync.
 export const BADGE_LEVELS = [
-  { name: "Beginner", minXp: 0, icon: "🌱", requirements: {} },
-  { name: "Learner", minXp: 200, icon: "📚", requirements: { events: 2, weeklyStreak: 1, engagement: 0.2 } },
-  { name: "Achiever", minXp: 500, icon: "⭐", requirements: { events: 5, weeklyStreak: 3, engagement: 0.4 } },
-  { name: "Expert", minXp: 1500, icon: "🏆", requirements: { events: 15, weeklyStreak: 8, engagement: 0.6 } },
-  { name: "Master", minXp: 4000, icon: "👑", requirements: { events: 40, weeklyStreak: 16, engagement: 0.8 } },
+  { name: "Beginner", minXp: 0, numeral: "I", requirements: {} },
+  { name: "Learner", minXp: 200, numeral: "II", requirements: { events: 2, weeklyStreak: 1, engagement: 0.2 } },
+  { name: "Achiever", minXp: 500, numeral: "III", requirements: { events: 5, weeklyStreak: 3, engagement: 0.4 } },
+  { name: "Expert", minXp: 1500, numeral: "IV", requirements: { events: 15, weeklyStreak: 8, engagement: 0.6 } },
+  { name: "Master", minXp: 4000, numeral: "V", requirements: { events: 40, weeklyStreak: 16, engagement: 0.8 } },
 ]
 
 // What's still missing for a level, as short phrases ("2 more sessions", "a 3-week streak")

@@ -36,3 +36,5 @@ def delete_user_data(session: Session, user: User) -> None:
             MessageRead.message_id.in_(message_ids),
         ))
     session.exec(delete(EventMessage).where(EventMessage.user_id == user.id))
+    # Drawings on other people's boards reference the user, so they go too (and the account row can then be deleted)
+    session.exec(delete(WhiteboardElement).where(WhiteboardElement.created_by == user.id))

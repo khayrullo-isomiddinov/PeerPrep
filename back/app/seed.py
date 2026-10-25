@@ -5,7 +5,9 @@ Seeds only:
 - Sample events WITH cover images
 """
 from datetime import datetime, timedelta, timezone
+import logging
 import random
+import secrets
 from sqlmodel import Session, select
 from app.core.security import hash_password
 from app.models import User, Event
@@ -29,9 +31,14 @@ def seed_db(session: Session):
     ).first()
 
     if not admin:
+        password = settings.ADMIN_PASSWORD
+        if len(password) < 12:
+            # Never seed a guessable password; without a strong one set, nobody can sign in as admin
+            logging.getLogger("peerprep").warning("ADMIN_PASSWORD missing or shorter than 12 characters; admin gets a random password")
+            password = secrets.token_urlsafe(32)
         admin = User(
             email=settings.ADMIN_EMAIL,
-            hashed_password=hash_password(settings.ADMIN_PASSWORD),
+            hashed_password=hash_password(password),
             name="Khayrullo Isomiddinov",
             is_verified=True,
             xp=0,

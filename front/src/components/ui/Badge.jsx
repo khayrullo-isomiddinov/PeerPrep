@@ -1,26 +1,28 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 const TONES = {
-  neutral: "bg-surface-2 text-fg-muted border-line",
-  accent: "bg-accent-soft text-accent-text border-transparent",
-  aqua: "bg-aqua-soft text-aqua border-transparent",
-  volt: "bg-volt-soft text-volt border-transparent",
-  success: "bg-success-soft text-success border-transparent",
-  warning: "bg-warning-soft text-warning border-transparent",
-  danger: "bg-danger-soft text-danger border-transparent",
+  neutral: "border-line-strong text-fg-muted",
+  accent: "border-fg text-fg",
+  // The highlighter: reserved for things that are happening now or earned
+  highlight: "border-transparent bg-highlight text-[#141413]",
+  success: "border-transparent bg-highlight text-[#141413]",
+  volt: "border-transparent bg-highlight text-[#141413]",
+  aqua: "border-aqua/40 text-aqua",
+  warning: "border-warning/40 text-warning",
+  danger: "border-danger/40 text-danger",
 }
 
-// <Badge tone="success" dot>Live</Badge>. `dot` adds a pulsing indicator (for live state).
+// Small mono label. <Badge tone="highlight" dot>Live</Badge>; `dot` adds a pulsing indicator.
 export default function Badge({ tone = "neutral", icon, dot = false, className = "", children }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full border text-xs font-semibold whitespace-nowrap ${TONES[tone]} ${className}`}>
+    <span className={`label inline-flex h-[1.375rem] items-center gap-1.5 whitespace-nowrap rounded-sm border px-2 ${TONES[tone]} ${className}`}>
       {dot && (
         <span className="relative flex size-1.5" aria-hidden>
-          <span className="absolute inset-0 rounded-full bg-current opacity-60 animate-ping" />
+          <span className="absolute inset-0 animate-ping rounded-full bg-current opacity-50" />
           <span className="relative size-1.5 rounded-full bg-current" />
         </span>
       )}
-      {icon && <FontAwesomeIcon icon={icon} className="text-[0.7rem]" />}
+      {icon && <FontAwesomeIcon icon={icon} className="text-[0.65rem]" />}
       {children}
     </span>
   )

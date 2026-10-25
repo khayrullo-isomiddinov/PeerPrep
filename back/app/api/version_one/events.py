@@ -5,24 +5,33 @@ Chat lives in event_chat.py and the whiteboard in whiteboard.py.
 from datetime import datetime, timezone
 from typing import List, Optional
 
+import logging
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel import Session, select, func
 
 from app.api.version_one.auth import _get_user_from_token, _get_optional_user_from_token
 from app.api.version_one.badges import award_xp_for_event
+from app.core import rate_limit
 from app.core.db import get_session
 from app.models import Event, EventAttendee, User
 from app.schemas.events import EventCreate, EventRead, EventUpdate
 from app.services import chat_state
 from app.services.ai import refine_text, generate_image
 from app.services.cleanup import delete_event_data
+from app.services.users import public_user
 from app.services.event_queries import (
     as_utc, finish_status_filter, has_ended, has_started, is_member, member_counts, parse_status,
     prefilter_by_status, serialize_event, serialize_events, user_event_ids_query,
 )
 
 router = APIRouter(prefix="/events", tags=["events"])
+logger = logging.getLogger("peerprep.events")
+
+# Each AI call costs money, so cap them per person
+AI_CALLS_PER_HOUR = 20
 
 
 def _get_event(session: Session, event_id: int) -> Event:
@@ -60,8 +69,8 @@ def list_events(
     q: Optional[str] = None,
     location: Optional[str] = None,
     exam: Optional[str] = None,
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     status: str = Query("upcoming"),
     current_user: Optional[User] = Depends(_get_optional_user_from_token),
 ):
@@ -121,7 +130,7 @@ def get_my_events(
 
 @router.get("/autocomplete")
 def autocomplete_events(
-    q: str = Query("", min_length=1),
+    q: str = Query("", min_length=1, max_length=200),
     limit: int = Query(8, le=20),
     session: Session = Depends(get_session),
 ):
@@ -246,14 +255,7 @@ def list_attendees_with_details(event_id: int, session: Session = Depends(get_se
 
     users = {u.id: u for u in session.exec(select(User).where(User.id.in_(list(joined_at)))).all()}
     members = [
-        {
-            "id": u.id,
-            "name": u.name,
-            "email": u.email,
-            "photo_url": u.photo_url,
-            "is_verified": u.is_verified,
-            "joined_at": joined_at[u.id].isoformat(),
-        }
+        {**public_user(u), "joined_at": joined_at[u.id].isoformat()}
         for uid in joined_at if (u := users.get(uid))
     ]
     return sorted(members, key=lambda m: m["joined_at"])
@@ -262,35 +264,42 @@ def list_attendees_with_details(event_id: int, session: Session = Depends(get_se
 # ---------- AI helpers ----------
 
 class TextRefinementRequest(BaseModel):
-    text: str
-    field_type: str = "general"
+    text: str = Field(max_length=5000)
+    field_type: Literal["title", "description", "general"] = "general"
+
+
+def _ai_unavailable(action: str, error: Exception) -> HTTPException:
+    # The provider's error text can include account details, so it stays in the server log
+    logger.warning("AI %s failed: %r", action, error.__cause__ or error)
+    if isinstance(error.__cause__ or error, ValueError):  # no API key configured
+        return HTTPException(status_code=503, detail="AI help isn't available right now.")
+    return HTTPException(status_code=502, detail=f"Couldn't {action} right now. Please try again.")
 
 
 @router.post("/refine-text")
 async def refine_event_text(request: TextRefinementRequest, current_user: User = Depends(_get_user_from_token)):
     """Polish a title or description the user wrote."""
-    if not request.text or not request.text.strip():
+    if not request.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
+    rate_limit.hit(f"ai:user:{current_user.id}", AI_CALLS_PER_HOUR, 3600)
     try:
         refined = await refine_text(text=request.text.strip(), context=None, field_type=request.field_type)
-        return {"refined_text": refined}
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=f"AI service configuration error: {e}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to refine text: {e}")
+        raise _ai_unavailable("improve the text", e)
+    return {"refined_text": refined}
 
 
 class ImageGenerationRequest(BaseModel):
-    prompt: str
+    prompt: str = Field(max_length=1000)
 
 
 @router.post("/generate-image")
 async def generate_cover_image(request: ImageGenerationRequest, current_user: User = Depends(_get_user_from_token)):
     """Generate a cover image from a prompt; returns a base64 data URL."""
-    if not request.prompt or not request.prompt.strip():
+    if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
+    rate_limit.hit(f"ai:user:{current_user.id}", AI_CALLS_PER_HOUR, 3600)
     try:
         return {"image_url": await generate_image(request.prompt.strip())}
     except Exception as e:
-        print(f"Image generation error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate image: {e}")
+        raise _ai_unavailable("generate an image", e)

@@ -1,22 +1,23 @@
-from fastapi import APIRouter, HTTPException
-from app.services.ai import test_connection
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from app.core.db import engine
 
 router = APIRouter()
 
+
 @router.get("/health")
 def health():
+    """Liveness: the process is up. Doesn't touch the database, so frequent checks don't keep it awake."""
     return {"status": "ok"}
 
-@router.get("/health/ai")
-async def test_ai_connection():
-    """Test OpenAI API connection"""
+
+@router.get("/health/ready")
+def ready():
+    """Readiness: the database answers."""
     try:
-        is_connected = await test_connection()
-        if is_connected:
-            return {"status": "ok", "ai": "connected"}
-        else:
-            return {"status": "error", "ai": "connection_failed"}
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI test failed: {str(e)}")
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse({"status": "unavailable", "database": "down"}, status_code=503)
+    return {"status": "ok", "database": "up"}

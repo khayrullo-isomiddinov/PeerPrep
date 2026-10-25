@@ -118,7 +118,8 @@ cd back && del peerprep.db   # Windows
 - 401 after login: backend must be running; token is stored in LocalStorage; hard-refresh after backend restarts.
 
 ### 7) Useful Endpoints
-- `GET /api/health` – basic health
+- `GET /api/health` – liveness (process is up)
+- `GET /api/health/ready` – readiness (database reachable; 503 if not)
 - `POST /api/auth/register` – returns message or verify URL
 - `GET /api/auth/verify?token=...` – sets user verified and redirects to `/login`
 - `POST /api/auth/login` – returns JWT and user object

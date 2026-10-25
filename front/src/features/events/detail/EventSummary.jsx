@@ -1,25 +1,20 @@
 import { Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import {
-  faCalendarDays, faClock, faLocationDot, faGraduationCap, faUserPlus, faUserMinus, faChalkboard, faPen, faTrash, faEllipsis,
-} from "@fortawesome/free-solid-svg-icons"
+import { faUserPlus, faUserMinus, faChalkboard, faPen, faTrash, faEllipsis } from "@fortawesome/free-solid-svg-icons"
 import { formatLongDate, formatClockTime } from "../../../utils/dates"
 import Badge from "../../../components/ui/Badge"
 import Button from "../../../components/ui/Button"
 import Card from "../../../components/ui/Card"
 import { Menu, MenuItem } from "../../../components/ui/Menu"
 import EventCover from "../EventCover"
+import SeatTicks from "../SeatTicks"
 
-function Fact({ icon, label, children }) {
+// One column of the timetable row under the title
+function Fact({ label, children }) {
   return (
-    <div className="flex items-start gap-3">
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-2 text-fg-muted">
-        <FontAwesomeIcon icon={icon} className="text-sm" />
-      </span>
-      <div className="min-w-0">
-        <dt className="text-xs font-medium text-fg-subtle">{label}</dt>
-        <dd className="text-sm font-semibold text-fg break-words">{children}</dd>
-      </div>
+    <div className="min-w-0 border-line py-3 sm:border-l sm:py-0 sm:pl-5 sm:first:border-l-0 sm:first:pl-0">
+      <dt className="label text-fg-subtle">{label}</dt>
+      <dd className="mt-1.5 break-words text-[0.9375rem] font-medium text-fg">{children}</dd>
     </div>
   )
 }
@@ -31,23 +26,22 @@ function durationLabel(hours) {
 
 export default function EventSummary({ event, memberCount, isOwner, isMember, timing, joinBusy, onJoinLeave, onDelete }) {
   const isFull = memberCount >= event.capacity
-  const fill = Math.min(100, Math.round((memberCount / Math.max(event.capacity, 1)) * 100))
 
   return (
     <Card padded={false}>
-      <EventCover event={event} eager className="h-36 w-full sm:h-52" iconClassName="text-5xl" />
+      <EventCover event={event} eager size="lg" className="h-40 w-full border-b border-line sm:h-56" />
       <div className="p-5 sm:p-8">
         <div className="flex flex-wrap items-center gap-2">
-          {timing.isOngoing && <Badge tone="success" dot>Live now</Badge>}
+          {timing.isOngoing && <Badge tone="highlight" dot>Live now</Badge>}
           {timing.isPast && <Badge tone="neutral">Ended</Badge>}
           {isOwner && <Badge tone="accent">You're hosting</Badge>}
-          {isMember && !isOwner && <Badge tone="aqua">You're going</Badge>}
+          {isMember && !isOwner && <Badge tone="accent">You're going</Badge>}
           {isFull && !timing.isPast && <Badge tone="warning">Full</Badge>}
         </div>
 
         <div className="mt-3 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <h1 className="text-[1.75rem] font-bold leading-tight text-fg sm:text-4xl">{event.title}</h1>
+            <h1 className="text-[1.9rem] leading-[1.08] tracking-[-0.04em] text-fg sm:text-[2.75rem]">{event.title}</h1>
             {event.description && <p className="mt-3 max-w-2xl whitespace-pre-line text-fg-muted">{event.description}</p>}
           </div>
 
@@ -91,23 +85,13 @@ export default function EventSummary({ event, memberCount, isOwner, isMember, ti
           </div>
         </div>
 
-        <dl className="mt-6 grid gap-4 border-t border-line pt-6 sm:grid-cols-2 lg:grid-cols-4">
-          <Fact icon={faCalendarDays} label="Date">{formatLongDate(event.starts_at)}</Fact>
-          <Fact icon={faClock} label="Time">{formatClockTime(event.starts_at)} · {durationLabel(event.duration)}</Fact>
-          <Fact icon={faLocationDot} label="Location">{event.location}</Fact>
-          {event.exam ? (
-            <Fact icon={faGraduationCap} label="Preparing for">{event.exam}</Fact>
-          ) : (
-            <div className="flex flex-col justify-center">
-              <div className="flex items-baseline justify-between text-xs">
-                <span className="font-semibold text-fg">{memberCount} going</span>
-                <span className="text-fg-subtle">{event.capacity} spots</span>
-              </div>
-              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-3" aria-hidden>
-                <div className={`h-full rounded-full ${isFull ? "bg-warning" : "bg-accent"}`} style={{ width: `${fill}%` }} />
-              </div>
-            </div>
-          )}
+        <dl className="mt-7 grid grid-cols-1 divide-y divide-line border-t border-line pt-4 sm:grid-cols-2 sm:gap-y-5 sm:divide-y-0 sm:pt-6 lg:grid-cols-4">
+          <Fact label="Date">{formatLongDate(event.starts_at)}</Fact>
+          <Fact label="Time">{formatClockTime(event.starts_at)} · {durationLabel(event.duration)}</Fact>
+          <Fact label="Where">{event.location}</Fact>
+          <Fact label={event.exam ? `For ${event.exam}` : "Seats"}>
+            <SeatTicks taken={memberCount} capacity={event.capacity} className="mt-1" />
+          </Fact>
         </dl>
       </div>
     </Card>

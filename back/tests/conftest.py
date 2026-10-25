@@ -1,3 +1,4 @@
+import anyio
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import SQLModel, Session, create_engine
@@ -7,6 +8,20 @@ from app.main import app
 from app.core.db import get_session
 from app.models import User, Event, EventAttendee
 from app.core.security import hash_password
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limits():
+    """Each test starts with fresh rate-limit counters."""
+    from app.core import rate_limit
+    rate_limit._hits.clear()
+    yield
+    rate_limit._hits.clear()
+
+
+def ws_auth(token):
+    """Subprotocols that sign a test WebSocket in (the token never goes in the URL)."""
+    return ["peerprep.bearer", token]
 
 
 # Use in-memory SQLite for testing
@@ -39,7 +54,12 @@ def client(session):
         yield session
     
     app.dependency_overrides[get_session] = override_get_session
-    yield TestClient(app)
+    # One event loop for every request and WebSocket in a test, like the real server; otherwise each
+    # socket gets its own loop and broadcasts between two test sockets never arrive
+    with anyio.from_thread.start_blocking_portal() as portal:
+        test_client = TestClient(app)
+        test_client.portal = portal
+        yield test_client
     app.dependency_overrides.clear()
 
 @pytest.fixture

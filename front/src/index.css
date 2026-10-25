@@ -1,44 +1,47 @@
 @import "tailwindcss";
 
 /* ==========================================================================
-   PeerPrep design system
-   Components use semantic tokens only (bg-surface, text-fg-muted, border-line,
-   bg-accent ...). Themes swap the variable values; no component needs `dark:`.
+   PeerPrep design system: "the study notebook"
+   Paper and ink, one highlighter. Components use semantic tokens only
+   (bg-surface, text-fg-muted, border-line, bg-accent …); themes swap the values.
    ========================================================================== */
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-display: "Bricolage Grotesque", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
-  --radius-sm: 0.5rem;
-  --radius-md: 0.75rem;
-  --radius-lg: 1rem;
-  --radius-xl: 1.25rem;
-  --radius-2xl: 1.5rem;
+  /* Sharper than the usual SaaS pill-and-bubble: more notebook, less app-template */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.625rem;
+  --radius-2xl: 0.75rem;
+  --radius-3xl: 1rem;
 
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 
-  --animate-fade-in: fade-in 0.35s var(--ease-out-soft) both;
-  --animate-pop-in: pop-in 0.18s var(--ease-out-soft) both;
+  --animate-fade-in: fade-in 0.4s var(--ease-out-soft) both;
+  --animate-pop-in: pop-in 0.16s var(--ease-out-soft) both;
   --animate-sheet-up: sheet-up 0.28s var(--ease-out-soft) both;
 
   @keyframes fade-in {
-    from { opacity: 0; transform: translateY(6px); }
+    from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: none; }
   }
   @keyframes pop-in {
-    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+    from { opacity: 0; transform: translateY(-3px) scale(0.985); }
     to { opacity: 1; transform: none; }
   }
   @keyframes sheet-up {
-    from { opacity: 0; transform: translateY(24px); }
+    from { opacity: 0; transform: translateY(20px); }
     to { opacity: 1; transform: none; }
   }
 }
 
-/* Map semantic variables to Tailwind utilities */
 @theme inline {
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
@@ -51,12 +54,15 @@
   --color-fg-muted: var(--fg-muted);
   --color-fg-subtle: var(--fg-subtle);
 
+  /* "accent" is ink: primary buttons, your own chat bubbles, selected states */
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-accent-fg: var(--accent-fg);
   --color-accent-soft: var(--accent-soft);
-  --color-accent-text: var(--accent-text);
+  /* links and focus keep a cobalt so they're recognisable */
+  --color-accent-text: var(--link);
 
+  --color-highlight: var(--highlight);
   --color-aqua: var(--aqua);
   --color-aqua-soft: var(--aqua-soft);
   --color-volt: var(--volt);
@@ -76,94 +82,92 @@
 }
 
 :root {
-  --canvas: #F5F7FB;
+  --canvas: #F7F6F2;
   --surface: #FFFFFF;
-  --surface-2: #F0F3F9;
-  --surface-3: #E6EAF3;
-  --line: #E1E6F0;
-  --line-strong: #C9D1E1;
+  --surface-2: #F1F0EB;
+  --surface-3: #E7E5DE;
+  --line: #E6E4DD;
+  --line-strong: #D3D0C7;
 
-  --fg: #0A1124;
-  --fg-muted: #475069;
-  --fg-subtle: #646C82;
+  --fg: #141413;
+  --fg-muted: #55534E;
+  --fg-subtle: #6E6C66;
 
-  --accent: #2448E8;
-  --accent-hover: #1C3BCC;
-  --accent-fg: #FFFFFF;
-  --accent-soft: #E8EEFF;
-  --accent-text: #1E3FD4;
+  --accent: #141413;
+  --accent-hover: #2C2B28;
+  --accent-fg: #F7F6F2;
+  --accent-soft: #F1F0EB;
+  --link: #2B45E0;
 
-  --aqua: #0B7A92;
-  --aqua-soft: #E0F6FA;
-  --volt: #4D7C0F;
-  --volt-soft: #EEF8DA;
+  --highlight: #E8F95A;
+  --aqua: #0F6E66;
+  --aqua-soft: #E2F1EE;
+  --volt: #4F5E00;
+  --volt-soft: #EEF8B8;
 
-  --success: #047857;
-  --success-soft: #E3F6EE;
-  --warning: #A35400;
-  --warning-soft: #FDF1DD;
-  --danger: #C8202B;
-  --danger-soft: #FDE8E9;
-  --danger-solid: #D42A35;
+  --success: #15803D;
+  --success-soft: #E5F4EA;
+  --warning: #9A5B00;
+  --warning-soft: #FBF0DC;
+  --danger: #B42318;
+  --danger-soft: #FBE9E7;
+  --danger-solid: #C4321F;
 
-  --brand-gradient: linear-gradient(135deg, #2448E8 0%, #0FA5C4 100%);
-  --hero-glow: radial-gradient(60rem 30rem at 50% -10%, rgb(36 72 232 / 0.14), transparent 70%);
-  --grid-line: rgb(10 17 36 / 0.045);
+  --rule: rgb(20 20 19 / 0.07);
 
-  --elevation-1: 0 1px 2px rgb(10 17 36 / 0.05), 0 1px 1px rgb(10 17 36 / 0.03);
-  --elevation-2: 0 8px 24px -8px rgb(10 17 36 / 0.14), 0 2px 6px rgb(10 17 36 / 0.05);
-  --elevation-3: 0 24px 48px -12px rgb(10 17 36 / 0.25), 0 4px 12px rgb(10 17 36 / 0.08);
+  --elevation-1: 0 0 0 0 transparent;
+  --elevation-2: 0 1px 2px rgb(20 20 19 / 0.04), 0 8px 24px -12px rgb(20 20 19 / 0.12);
+  --elevation-3: 0 2px 4px rgb(20 20 19 / 0.04), 0 24px 56px -16px rgb(20 20 19 / 0.22);
 
-  --ring: #2448E8;
-  --scrim: rgb(6 10 20 / 0.45);
+  --ring: #2B45E0;
+  --scrim: rgb(20 20 19 / 0.32);
 
-  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%237E889F' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238C8A83' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
 
-  /* Heights used for layout around the fixed mobile tab bar */
+  /* Height of the fixed mobile tab bar, used to keep content and toasts clear of it */
   --tabbar-h: 4rem;
 }
 
 [data-theme="dark"] {
-  --canvas: #060A14;
-  --surface: #0D1424;
-  --surface-2: #131C30;
-  --surface-3: #1A243B;
-  --line: #1D2740;
-  --line-strong: #2B3654;
+  --canvas: #0F0F0E;
+  --surface: #171716;
+  --surface-2: #1F1E1D;
+  --surface-3: #2A2927;
+  --line: #262523;
+  --line-strong: #383733;
 
-  --fg: #E9EDF7;
-  --fg-muted: #A1ABC2;
-  --fg-subtle: #7E889F;
+  --fg: #EEEDE8;
+  --fg-muted: #A9A69E;
+  --fg-subtle: #8C8A83;
 
-  --accent: #4664FA;
-  --accent-hover: #3D5AEC;
-  --accent-fg: #FFFFFF;
-  --accent-soft: #18234A;
-  --accent-text: #8FA5FF;
+  --accent: #EEEDE8;
+  --accent-hover: #FFFFFF;
+  --accent-fg: #141413;
+  --accent-soft: #1F1E1D;
+  --link: #8EA2FF;
 
-  --aqua: #5EE0F2;
-  --aqua-soft: #0D2A33;
-  --volt: #B6F25C;
-  --volt-soft: #1F2C11;
+  --highlight: #DDF545;
+  --aqua: #63C7B9;
+  --aqua-soft: #13302C;
+  --volt: #DDF545;
+  --volt-soft: #2A3010;
 
-  --success: #4ADE9B;
-  --success-soft: #0C2A20;
-  --warning: #F5B73B;
-  --warning-soft: #2E2210;
-  --danger: #FF7A7A;
-  --danger-soft: #331418;
+  --success: #5BD68A;
+  --success-soft: #11291A;
+  --warning: #F2B544;
+  --warning-soft: #2E2410;
+  --danger: #FF8A7A;
+  --danger-soft: #331815;
   --danger-solid: #E5484D;
 
-  --brand-gradient: linear-gradient(135deg, #4664FA 0%, #2CCBE6 100%);
-  --hero-glow: radial-gradient(60rem 30rem at 50% -10%, rgb(70 100 250 / 0.22), transparent 70%);
-  --grid-line: rgb(233 237 247 / 0.04);
+  --rule: rgb(238 237 232 / 0.06);
 
-  --elevation-1: 0 1px 2px rgb(0 0 0 / 0.4);
-  --elevation-2: 0 10px 28px -10px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.02);
-  --elevation-3: 0 28px 60px -16px rgb(0 0 0 / 0.8), 0 0 0 1px rgb(255 255 255 / 0.04);
+  --elevation-1: 0 0 0 0 transparent;
+  --elevation-2: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px -12px rgb(0 0 0 / 0.7);
+  --elevation-3: 0 2px 4px rgb(0 0 0 / 0.4), 0 28px 64px -16px rgb(0 0 0 / 0.85);
 
-  --ring: #8FA5FF;
-  --scrim: rgb(0 0 0 / 0.6);
+  --ring: #8EA2FF;
+  --scrim: rgb(0 0 0 / 0.55);
 }
 
 @layer base {
@@ -177,21 +181,27 @@
     background: var(--canvas);
     color: var(--fg);
     font-family: var(--font-sans);
-    font-feature-settings: "cv11", "ss01";
+    font-feature-settings: "ss01", "ss02";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-tap-highlight-color: transparent;
+    /* Nothing should ever scroll sideways on a phone */
+    overflow-x: clip;
   }
+
+  /* No double-tap-to-zoom delay on anything tappable */
+  a, button, [role="button"], label, summary, select { touch-action: manipulation; }
 
   h1, h2, h3, h4 {
     font-family: var(--font-display);
-    letter-spacing: -0.02em;
+    font-weight: 600;
+    letter-spacing: -0.028em;
     text-wrap: balance;
   }
 
   p { text-wrap: pretty; }
 
-  ::selection { background: color-mix(in oklab, var(--accent) 25%, transparent); }
+  ::selection { background: var(--highlight); color: #141413; }
 
   :focus-visible {
     outline: 2px solid var(--ring);
@@ -201,7 +211,6 @@
 
   input::placeholder, textarea::placeholder { color: var(--fg-subtle); opacity: 1; }
 
-  /* Native controls (date pickers, scrollbars, selects) follow the theme */
   [data-theme="dark"] { color-scheme: dark; }
   [data-theme="light"] { color-scheme: light; }
 
@@ -209,28 +218,83 @@
 }
 
 @layer components {
-  /* Page width + horizontal padding used by every page */
   .page-container {
     width: 100%;
-    max-width: 76rem;
+    max-width: 72rem;
     margin-inline: auto;
     padding-inline: max(1rem, env(safe-area-inset-left));
   }
   @media (min-width: 640px) { .page-container { padding-inline: 1.5rem; } }
 
-  /* Faint grid used behind hero sections */
-  .bg-grid {
-    background-image:
-      linear-gradient(var(--grid-line) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-    background-size: 44px 44px;
+  /* Italic serif for the one or two words in a heading that carry the feeling */
+  .serif {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: -0.01em;
   }
 
-  .text-gradient {
-    background: var(--brand-gradient);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+  /* A highlighter stroke behind text, slightly ragged like a real marker. Text stays ink in both themes. */
+  .mark {
+    color: #141413;
+    padding: 0 0.12em;
+    margin: 0 -0.06em;
+    background:
+      linear-gradient(104deg, transparent 0.25em, var(--highlight) 0.3em, var(--highlight) 94%, transparent 99%)
+      no-repeat 0 62% / 100% 78%;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
+  /* Small uppercase monospace labels: dates, counts, section names */
+  .label {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  /* Hoverable cards. With a mouse the edge firms up and a soft shadow settles in, slowly, with no movement.
+     On touch screens there is no hover, so the card gives a small press instead (but not when a button inside it is pressed). */
+  .card-hover {
+    transition:
+      border-color 0.45s var(--ease-out-soft),
+      box-shadow 0.6s var(--ease-out-soft),
+      transform 0.25s var(--ease-out-soft);
+  }
+  @media (hover: hover) {
+    .card-hover:hover { border-color: var(--line-strong); box-shadow: var(--elevation-2); }
+  }
+  @media (hover: none) {
+    .card-hover:active:not(:has(button:active)) { transform: scale(0.985); }
+  }
+  .card-hover:has(:focus-visible) { border-color: var(--fg); }
+
+  /* Long-form reading text (legal pages): a comfortable measure, calm rhythm, tables that scroll on phones */
+  .legal-prose { max-width: 44rem; color: var(--fg-muted); font-size: 0.975rem; line-height: 1.75; }
+  .legal-prose section + section { margin-top: 3rem; padding-top: 3rem; border-top: 1px solid var(--line); }
+  .legal-prose h2 { color: var(--fg); font-size: 1.375rem; line-height: 1.25; letter-spacing: -0.025em; margin-bottom: 1rem; }
+  .legal-prose h3 { color: var(--fg); font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; margin: 1.75rem 0 0.5rem; }
+  .legal-prose p + p, .legal-prose p + ul, .legal-prose ul + p, .legal-prose .table-scroll + p { margin-top: 1rem; }
+  .legal-prose ul { list-style: none; padding: 0; }
+  .legal-prose ul li { position: relative; padding-left: 1.25rem; }
+  .legal-prose ul li + li { margin-top: 0.5rem; }
+  .legal-prose ul li::before { content: ""; position: absolute; left: 0.25rem; top: 0.8em; width: 0.375rem; height: 1px; background: var(--fg-subtle); }
+  .legal-prose strong { color: var(--fg); font-weight: 600; }
+  .legal-prose a { color: var(--link); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .legal-prose a:hover { text-decoration-thickness: 2px; }
+  .legal-prose code { font-family: var(--font-mono); font-size: 0.85em; color: var(--fg); background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 0.05em 0.35em; }
+  .legal-prose .table-scroll { margin-top: 1.25rem; overflow-x: auto; border: 1px solid var(--line); border-radius: 0.625rem; }
+  .legal-prose table { width: 100%; min-width: 34rem; border-collapse: collapse; font-size: 0.875rem; line-height: 1.55; }
+  .legal-prose th { text-align: left; font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-subtle); background: var(--surface-2); }
+  .legal-prose th, .legal-prose td { padding: 0.75rem 1rem; vertical-align: top; border-bottom: 1px solid var(--line); }
+  .legal-prose tr:last-child td { border-bottom: 0; }
+  .legal-prose td:first-child { color: var(--fg); font-weight: 500; }
+
+  /* Faint ruled lines, like notebook paper */
+  .ruled {
+    background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 27px, var(--rule) 27px, var(--rule) 28px);
   }
 }
 

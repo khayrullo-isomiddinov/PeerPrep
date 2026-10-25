@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { ThemeContext, THEME_PREFERENCES, THEME_STORAGE_KEY } from "./themeContext"
 
-const META_COLORS = { light: "#F5F7FB", dark: "#060A14" }
+const META_COLORS = { light: "#F7F6F2", dark: "#0F0F0E" }
 const darkQuery = () => window.matchMedia("(prefers-color-scheme: dark)")
 
 function readPreference() {

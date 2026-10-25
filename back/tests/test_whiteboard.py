@@ -1,3 +1,4 @@
+from tests.conftest import ws_auth
 """Tests for the shared event whiteboard WebSocket"""
 import pytest
 from datetime import datetime, timezone, timedelta
@@ -29,8 +30,8 @@ def attendee(session, test_event):
     return user
 
 
-def _url(event_id, token):
-    return f"/api/events/{event_id}/whiteboard/ws?token={token}"
+def _url(event_id):
+    return f"/api/events/{event_id}/whiteboard/ws"
 
 
 STROKE = {"id": "el-1", "type": "stroke", "color": "#111827", "width": 4, "points": [[0, 0], [10, 10]]}
@@ -46,13 +47,13 @@ def test_rejects_non_member(client, session, test_event):
     _make_user(session, "outsider@example.com", "Outsider")
     token = _token(client, "outsider@example.com")
     with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect(_url(test_event.id, token)) as ws:
+        with client.websocket_connect(_url(test_event.id), subprotocols=ws_auth(token)) as ws:
             ws.receive_json()
 
 
 def test_owner_receives_initial_state(client, test_user, test_event):
     token = _token(client, test_user.email)
-    with client.websocket_connect(_url(test_event.id, token)) as ws:
+    with client.websocket_connect(_url(test_event.id), subprotocols=ws_auth(token)) as ws:
         init = ws.receive_json()
         assert init["type"] == "init"
         assert init["elements"] == []
@@ -65,9 +66,9 @@ def test_upsert_is_persisted_and_broadcast(client, session, test_user, test_even
     owner_token = _token(client, test_user.email)
     attendee_token = _token(client, attendee.email)
 
-    with client.websocket_connect(_url(test_event.id, owner_token)) as owner_ws:
+    with client.websocket_connect(_url(test_event.id), subprotocols=ws_auth(owner_token)) as owner_ws:
         owner_ws.receive_json()  # init
-        with client.websocket_connect(_url(test_event.id, attendee_token)) as attendee_ws:
+        with client.websocket_connect(_url(test_event.id), subprotocols=ws_auth(attendee_token)) as attendee_ws:
             init = attendee_ws.receive_json()
             assert init["is_owner"] is False
             assert [u["id"] for u in init["users"]] == [test_user.id]
@@ -96,7 +97,7 @@ def test_upsert_is_persisted_and_broadcast(client, session, test_user, test_even
 
 def test_invalid_elements_are_ignored(client, session, test_user, test_event):
     token = _token(client, test_user.email)
-    with client.websocket_connect(_url(test_event.id, token)) as ws:
+    with client.websocket_connect(_url(test_event.id), subprotocols=ws_auth(token)) as ws:
         ws.receive_json()
         ws.send_json({"type": "upsert", "elements": [{"id": "x", "type": "script"}, {"type": "stroke"}]})
         ws.send_json({"type": "upsert", "elements": [STROKE]})
@@ -107,7 +108,7 @@ def test_invalid_elements_are_ignored(client, session, test_user, test_event):
 
 def test_only_owner_can_clear(client, session, test_user, test_event, attendee):
     attendee_token = _token(client, attendee.email)
-    with client.websocket_connect(_url(test_event.id, attendee_token)) as ws:
+    with client.websocket_connect(_url(test_event.id), subprotocols=ws_auth(attendee_token)) as ws:
         ws.receive_json()
         ws.send_json({"type": "upsert", "elements": [STROKE]})
         ws.send_json({"type": "clear"})
@@ -116,7 +117,7 @@ def test_only_owner_can_clear(client, session, test_user, test_event, attendee):
     assert len(session.exec(select(WhiteboardElement)).all()) == 1
 
     owner_token = _token(client, test_user.email)
-    with client.websocket_connect(_url(test_event.id, owner_token)) as ws:
+    with client.websocket_connect(_url(test_event.id), subprotocols=ws_auth(owner_token)) as ws:
         assert len(ws.receive_json()["elements"]) == 1
         ws.send_json({"type": "clear"})
         ws.send_json({"type": "cursor", "x": 0, "y": 0})
@@ -134,7 +135,7 @@ def test_past_event_is_read_only(client, session, test_user):
     session.refresh(past)
 
     token = _token(client, test_user.email)
-    with client.websocket_connect(_url(past.id, token)) as ws:
+    with client.websocket_connect(_url(past.id), subprotocols=ws_auth(token)) as ws:
         assert ws.receive_json()["read_only"] is True
         ws.send_json({"type": "upsert", "elements": [STROKE]})
         assert ws.receive_json()["type"] == "error"

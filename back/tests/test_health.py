@@ -9,12 +9,13 @@ def test_health_endpoint(client):
     assert response.json() == {"status": "ok"}
 
 
-def test_health_ai_endpoint(client):
-    """Test the AI health check endpoint (may fail if OpenAI not configured)"""
-    response = client.get("/api/health/ai")
-    # Should return 200 even if AI is not connected
+def test_readiness_checks_database(client):
+    response = client.get("/api/health/ready")
     assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert "status" in data
-    assert "ai" in data
+    assert response.json() == {"status": "ok", "database": "up"}
+
+
+def test_ai_health_endpoint_is_gone(client):
+    # It made a paid OpenAI call for any anonymous visitor
+    assert client.get("/api/health/ai").status_code == status.HTTP_404_NOT_FOUND
 

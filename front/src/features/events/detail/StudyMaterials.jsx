@@ -8,7 +8,8 @@ function parseStudyMaterials(json) {
   if (!json) return []
   try {
     const parsed = JSON.parse(json)
-    return Array.isArray(parsed) ? parsed : []
+    // Only uploaded files (data: URLs) become links; anything else, like a javascript: URL, is dropped
+    return Array.isArray(parsed) ? parsed.filter((m) => typeof m?.data === "string" && m.data.startsWith("data:")) : []
   } catch {
     return []
   }

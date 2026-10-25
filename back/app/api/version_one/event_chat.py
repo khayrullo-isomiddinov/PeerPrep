@@ -1,23 +1,28 @@
 """Event chat: message history and posting over HTTP, plus the real-time WebSocket
 (messages, typing indicators, read receipts and presence)."""
 import json
+import logging
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from sqlmodel import Session, select
 
 from app.api.version_one.auth import _get_user_from_token
 from app.core.db import get_session
-from app.core.security import decode_token
+from app.core import rate_limit
+from app.core.ws_auth import accept_authenticated
 from app.models import Event, EventAttendee, EventMessage, MessageRead, User
 from app.services import chat_state
 from app.services.event_queries import as_utc, has_ended, is_member
+from app.services.users import display_name, public_user
 
 router = APIRouter(prefix="/events/{event_id}", tags=["chat"])
 
 MAX_MESSAGE_LENGTH = 1000
 INITIAL_HISTORY = 50
+# Flood protection: messages beyond this many per window are refused
+MESSAGES_PER_WINDOW = 20
+MESSAGE_WINDOW_SECONDS = 10
 READ_ONLY_MESSAGE = "This event has ended. Chat is now read-only. You can still view message history."
 
 
@@ -26,13 +31,7 @@ def _iso(dt: datetime) -> str:
 
 
 def _author(user: User) -> dict:
-    return {
-        "id": user.id,
-        "name": user.name,
-        "email": user.email,
-        "photo_url": user.photo_url,
-        "is_verified": user.is_verified,
-    }
+    return public_user(user)
 
 
 def _get_event(session: Session, event_id: int) -> Event:
@@ -137,6 +136,7 @@ async def post_event_message(
     current_user: User = Depends(_get_user_from_token),
 ):
     """Fallback for posting when the WebSocket isn't connected; also pushed live to connected members."""
+    rate_limit.hit(f"chat:user:{current_user.id}", MESSAGES_PER_WINDOW, MESSAGE_WINDOW_SECONDS)
     evt = _get_event(session, event_id)
     _require_member(session, evt, current_user, "You must be an attendee or event organizer to post messages")
     if not content.strip():
@@ -219,7 +219,7 @@ def get_typing_status(
     if not user_ids:
         return {"typing_users": []}
     users = session.exec(select(User).where(User.id.in_(user_ids))).all()
-    return {"typing_users": [{"id": u.id, "name": u.name or u.email, "photo_url": u.photo_url} for u in users]}
+    return {"typing_users": [{"id": u.id, "name": display_name(u), "photo_url": u.photo_url} for u in users]}
 
 
 @router.get("/presence")
@@ -242,7 +242,7 @@ def get_event_presence(
         last_seen = chat_state.user_presence.get(u.id)
         presence.append({
             "id": u.id,
-            "name": u.name or u.email,
+            "name": display_name(u),
             "photo_url": u.photo_url,
             "is_online": chat_state.is_online(u.id),
             "last_seen": last_seen.isoformat() if last_seen else None,
@@ -252,15 +252,6 @@ def get_event_presence(
 
 # ---------- WebSocket ----------
 
-def _authenticate(token: Optional[str], session: Session) -> Optional[User]:
-    if not token:
-        return None
-    try:
-        return session.get(User, int(decode_token(token).get("sub")))
-    except Exception:
-        return None
-
-
 @router.websocket("/ws")
 async def event_chat_websocket(websocket: WebSocket, event_id: int, session: Session = Depends(get_session)):
     """Real-time chat for an event's members.
@@ -269,11 +260,8 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int, session: Ses
     Server -> client: initial_messages, new_message, message_deleted, typing, presence_update,
                       message_read, user_joined, user_left, error
     """
-    await websocket.accept()
-
-    user = _authenticate(websocket.query_params.get("token"), session)
+    user = await accept_authenticated(websocket, session)
     if not user:
-        await websocket.close(code=1008, reason="Authentication required")
         return
     evt = session.get(Event, event_id)
     if not evt:
@@ -283,7 +271,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int, session: Ses
         await websocket.close(code=1008, reason="Access denied")
         return
 
-    display_name = user.name or user.email
+    name = display_name(user)
     chat_state.event_connections.setdefault(event_id, {})[user.id] = websocket
     chat_state.touch_presence(user.id)
 
@@ -296,7 +284,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int, session: Ses
         "messages": _serialize_messages(session, list(reversed(recent)), user.id, deleted_content=""),
     })
     await chat_state.broadcast_to_event(event_id, user.id, {
-        "type": "user_joined", "user_id": user.id, "user_name": display_name, "user_photo_url": user.photo_url,
+        "type": "user_joined", "user_id": user.id, "user_name": name, "user_photo_url": user.photo_url,
     })
 
     try:
@@ -316,6 +304,11 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int, session: Ses
                 content = str(data.get("content") or "").strip()
                 if not content or len(content) > MAX_MESSAGE_LENGTH:
                     continue
+                try:
+                    rate_limit.hit(f"chat:user:{user.id}", MESSAGES_PER_WINDOW, MESSAGE_WINDOW_SECONDS)
+                except HTTPException:
+                    await websocket.send_json({"type": "error", "message": "You're sending messages too quickly."})
+                    continue
                 message = EventMessage(event_id=event_id, user_id=user.id, content=content)
                 session.add(message)
                 session.commit()
@@ -326,7 +319,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int, session: Ses
             elif message_type == "typing":
                 chat_state.mark_typing(event_id, user.id)
                 await chat_state.broadcast_to_event(event_id, user.id, {
-                    "type": "typing", "user_id": user.id, "user_name": display_name,
+                    "type": "typing", "user_id": user.id, "user_name": name,
                 })
 
             elif message_type == "presence_ping":
@@ -346,7 +339,7 @@ async def event_chat_websocket(websocket: WebSocket, event_id: int, session: Ses
         pass
     except RuntimeError as e:
         if "disconnect" not in str(e).lower():
-            print(f"Chat WebSocket error: {e}")
+            logging.getLogger("peerprep.chat").warning("Chat WebSocket error: %s", e)
     finally:
         connections = chat_state.event_connections.get(event_id, {})
         # Only remove our own socket: the same user may have reconnected from another tab meanwhile

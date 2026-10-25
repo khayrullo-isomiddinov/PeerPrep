@@ -20,11 +20,11 @@ import EditProfileDialog from "../features/profile/EditProfileDialog"
 
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024
 
-function Stat({ icon, label, value, tone = "text-accent-text bg-accent-soft" }) {
+function Stat({ icon, label, value, tone = "text-fg-subtle" }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-4">
-      <span className={`grid size-9 place-items-center rounded-lg ${tone}`}><FontAwesomeIcon icon={icon} className="text-sm" /></span>
-      <p className="mt-3 font-display text-2xl font-bold text-fg">{value}</p>
+    <div className="rounded-lg border border-line bg-surface p-4">
+      <FontAwesomeIcon icon={icon} className={`text-sm ${tone}`} />
+      <p className="mt-3 font-mono text-2xl font-medium tracking-tight text-fg">{value}</p>
       <p className="text-xs text-fg-subtle">{label}</p>
     </div>
   )
@@ -133,9 +133,9 @@ export default function Profile() {
   return (
     <div className="page-container py-8 sm:py-12">
       <Card padded={false}>
-        <div className="h-24 sm:h-32" style={{ background: "var(--brand-gradient)" }} aria-hidden />
+        <div className="ruled relative h-24 border-b border-line bg-surface-2 sm:h-28" aria-hidden><span className="absolute inset-y-0 left-8 w-px bg-danger/25" /></div>
         <div className="px-5 pb-6 sm:px-8">
-          <div className="-mt-12 flex flex-col gap-4 sm:-mt-14 sm:flex-row sm:items-end sm:justify-between">
+          <div className="relative -mt-12 flex flex-col gap-4 sm:-mt-14 sm:flex-row sm:items-end sm:justify-between">
             <div className="relative w-fit">
               <Avatar name={name} src={profile.photo_url} id={profile.id} size="xl" className="ring-4 ring-surface" />
               {isOwn && (
@@ -163,8 +163,8 @@ export default function Profile() {
 
           <div className="mt-4">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-bold text-fg sm:text-3xl">{name}</h1>
-              {s?.badge && <Badge tone="volt">{s.badge.icon} {s.badge.name}</Badge>}
+              <h1 className="text-[1.75rem] tracking-[-0.035em] text-fg sm:text-4xl">{name}</h1>
+              {s?.badge && <Badge tone="highlight">{s.badge.name}</Badge>}
             </div>
             <p className="mt-1 text-sm text-fg-muted">
               {isOwn && <>{profile.email} · </>}
@@ -187,10 +187,10 @@ export default function Profile() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-28" />)}</div>
           ) : s ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Stat icon={faStar} label="Total XP" value={s.total_xp || 0} tone="bg-volt-soft text-volt" />
+              <Stat icon={faStar} label="Total XP" value={s.total_xp || 0} tone="text-fg" />
               <Stat icon={faCalendarCheck} label="Sessions attended" value={s.events_attended || 0} />
-              <Stat icon={faFire} label="Week streak" value={s.weekly_streak || 0} tone="bg-warning-soft text-warning" />
-              <Stat icon={faChartSimple} label="Engagement" value={`${Math.round((s.engagement_score || 0) * 100)}%`} tone="bg-aqua-soft text-aqua" />
+              <Stat icon={faFire} label="Week streak" value={s.weekly_streak || 0} tone="text-warning" />
+              <Stat icon={faChartSimple} label="Engagement" value={`${Math.round((s.engagement_score || 0) * 100)}%`} tone="text-fg-subtle" />
             </div>
           ) : null}
           {s && <BadgeLadder stats={s} />}

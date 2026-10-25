@@ -7,8 +7,10 @@ import { useToast } from "../components/ui/toastContext"
 import PageHeader from "../components/ui/PageHeader"
 import EventForm from "../features/events/form/EventForm"
 import { emptyValues } from "../features/events/form/eventFormModel"
+import { usePageTitle } from "../hooks/usePageTitle"
 
 export default function CreateEvent() {
+  usePageTitle("New event")
   const { isAuthenticated, isLoading } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()

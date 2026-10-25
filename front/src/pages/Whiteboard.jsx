@@ -14,6 +14,7 @@ import Button from "../components/ui/Button"
 import { EmptyState, Spinner } from "../components/ui/Feedback"
 import { onboardingStorage } from "../features/onboarding/onboardingStorage"
 import { useToast } from "../components/ui/toastContext"
+import { usePageTitle } from "../hooks/usePageTitle"
 import {
   PEN_COLORS, NOTE_COLORS, NOTE_SIZE, NOTE_PADDING, NOTE_TEXT_COLOR,
   newId, round, normalizeRect, getBounds, hitTest, translate,
@@ -52,6 +53,7 @@ export default function Whiteboard() {
   const navigate = useNavigate()
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const { data: event } = useEvent(id, { enabled: !!id && isAuthenticated })
+  usePageTitle(event ? `Whiteboard · ${event.title}` : "Whiteboard")
 
   const [tool, setTool] = useState("pen")
   const [color, setColor] = useState(PEN_COLORS[0])

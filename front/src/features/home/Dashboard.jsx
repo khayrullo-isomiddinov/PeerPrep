@@ -32,7 +32,7 @@ function LiveNow({ events }) {
         <Card key={event.id} tone="success">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
-              <Badge tone="success" dot>Live now</Badge>
+              <Badge tone="highlight" dot>Live now</Badge>
               <p className="mt-2 line-clamp-2 text-lg font-semibold leading-snug text-fg">{event.title}</p>
               <p className="truncate text-sm text-fg-muted">{event.location}</p>
             </div>
@@ -100,11 +100,11 @@ export default function Dashboard() {
     <div className="page-container py-8 sm:py-12">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-fg-subtle">
+          <p className="label text-fg-subtle">
             {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
           </p>
-          <h1 className="mt-1 text-3xl font-bold text-fg sm:text-4xl">
-            {greeting()}{firstName ? `, ${firstName}` : ""}
+          <h1 className="mt-2 text-[2rem] leading-tight tracking-[-0.04em] text-fg sm:text-[2.75rem]">
+            {greeting()}{firstName ? <>, <span className="serif text-[1.12em]">{firstName}</span></> : ""}
           </h1>
         </div>
       </header>
@@ -150,7 +150,7 @@ export default function Dashboard() {
       <section className="mt-12">
         <div className="mb-4 flex items-end justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-fg">Discover sessions</h2>
+            <h2 className="text-2xl tracking-[-0.035em] text-fg">Discover <span className="serif text-[1.12em]">sessions</span></h2>
             <p className="mt-1 text-sm text-fg-muted">Coming up soon, hosted by other students.</p>
           </div>
           <Link to="/events" className="hidden items-center gap-1.5 text-sm font-semibold text-accent-text hover:underline sm:inline-flex">

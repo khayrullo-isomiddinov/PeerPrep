@@ -11,6 +11,7 @@ import Button from "../components/ui/Button"
 import { EmptyState } from "../components/ui/Feedback"
 import { controlClasses } from "../components/ui/fieldStyles"
 import { parseUTCDate } from "../utils/dates"
+import { usePageTitle } from "../hooks/usePageTitle"
 
 const STATUS_OPTIONS = [
   { value: "upcoming", label: "Upcoming" },
@@ -61,6 +62,7 @@ function emptyCopy(scope, status) {
 }
 
 export default function Events() {
+  usePageTitle("Events")
   const { isAuthenticated } = useAuth()
   const [params, setParams] = useSearchParams()
 

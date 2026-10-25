@@ -20,19 +20,19 @@ export default function LevelCard({ stats, loading, linkToProfile = false }) {
   return (
     <Card>
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wider text-fg-subtle">Your level</p>
+        <p className="label text-fg-subtle">Your level</p>
         {linkToProfile && <Link to="/profile" className="text-xs font-semibold text-accent-text hover:underline">View profile</Link>}
       </div>
       <div className="mt-3 flex items-center gap-3">
-        <span className="grid size-12 place-items-center rounded-2xl bg-volt-soft text-2xl" aria-hidden>{current.icon}</span>
+        <span className="serif grid size-12 place-items-center rounded-md bg-highlight text-[1.6rem] text-[#141413]" aria-hidden>{current.numeral}</span>
         <div>
-          <p className="font-display text-xl font-bold text-fg">{current.name}</p>
-          <p className="text-sm text-fg-muted"><span className="font-semibold text-volt">{xp} XP</span> · {stats.weekly_streak || 0}-week streak</p>
+          <p className="text-xl font-semibold tracking-[-0.02em] text-fg">{current.name}</p>
+          <p className="text-sm text-fg-muted"><span className="font-mono text-fg">{xp} XP</span> · {stats.weekly_streak || 0}-week streak</p>
         </div>
       </div>
       <div className="mt-4">
-        <div className="h-2 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)} aria-label="Progress to next level">
-          <div className="h-full rounded-full bg-volt transition-[width] duration-700" style={{ width: `${percent}%` }} />
+        <div className="h-1.5 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)} aria-label="Progress to next level">
+          <div className="h-full rounded-full bg-fg transition-[width] duration-700" style={{ width: `${percent}%` }} />
         </div>
         <p className="mt-2 text-xs text-fg-subtle">
           {!next

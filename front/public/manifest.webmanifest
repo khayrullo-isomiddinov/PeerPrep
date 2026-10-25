@@ -1,0 +1,12 @@
+{
+  "name": "PeerPrep",
+  "short_name": "PeerPrep",
+  "description": "Find your study group, plan sessions and prepare together.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F7F6F2",
+  "theme_color": "#F7F6F2",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { markEventMessageRead, postEventMessage, setEventTypingStatus } from "../utils/api"
-import { socketUrl } from "../utils/socket"
+import { openSocket } from "../utils/socket"
 import { useEventMessages, useEventPresence, eventDataKeys } from "./useEventData"
 
 const PRESENCE_PING_MS = 30 * 1000
@@ -96,7 +96,7 @@ export function useEventChat(eventId, { enabled, userId }) {
     let pingTimer = null
 
     function connect() {
-      const ws = new WebSocket(socketUrl(`/api/events/${eventId}/ws`, token))
+      const ws = openSocket(`/api/events/${eventId}/ws`, token)
       wsRef.current = ws
 
       ws.onopen = () => {

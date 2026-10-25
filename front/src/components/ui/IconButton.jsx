@@ -6,7 +6,7 @@ const VARIANTS = {
   danger: "text-fg-subtle hover:text-danger hover:bg-danger-soft",
 }
 
-const SIZES = { sm: "size-8 text-sm", md: "size-10 text-base" }
+const SIZES = { sm: "size-8 pointer-coarse:size-10 text-sm", md: "size-10 pointer-coarse:size-11 text-base" }
 
 // Icon-only button; `label` is required because it is the button's accessible name
 export default function IconButton({ icon, label, variant = "ghost", size = "md", className = "", ...props }) {
