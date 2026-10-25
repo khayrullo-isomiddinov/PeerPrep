@@ -69,7 +69,7 @@ curl http://localhost:8000/api/health
 ```
 
 Notes:
-- The SQLite DB file `peerprep.db` is created automatically.
+- The SQLite DB file `peerprep.db` is created automatically, and database migrations run on every startup.
 - If SMTP details are blank, registration still works; the API returns a verify URL in the response for manual copy.
 
 ### 4) Frontend (React + Vite)
@@ -80,12 +80,28 @@ npm install
 npm run dev
 ```
 
-The app runs on `http://localhost:5173` (HashRouter). It calls the backend at `http://localhost:8000/api` (see `src/utils/api.js`).
+The app runs on `http://localhost:5173`. It calls the backend at `http://localhost:8000/api` by default; set `VITE_API_BASE_URL` (see `front/.env.example`) to point it elsewhere.
 
 ### 5) Common Tasks
 - Build frontend for production:
 ```bash
 cd front && npm run build && npm run preview
+```
+
+- Run the checks:
+```bash
+cd back && python -m pytest          # backend tests
+cd front && npm test                 # frontend tests
+cd front && npm run typecheck        # TypeScript
+cd front && npm run lint
+```
+
+- Change the database schema: edit a model in `back/app/models/`, then generate and review a migration.
+  It is applied automatically on the next startup (locally and on Render).
+```bash
+cd back
+alembic revision --autogenerate -m "add phone to user"
+alembic upgrade head                 # optional: apply now instead of on startup
 ```
 
 - Reset database (delete local DB):
@@ -104,13 +120,19 @@ cd back && del peerprep.db   # Windows
 ### 7) Useful Endpoints
 - `GET /api/health` – basic health
 - `POST /api/auth/register` – returns message or verify URL
-- `GET /api/auth/verify?token=...` – sets user verified and redirects to `#/login`
+- `GET /api/auth/verify?token=...` – sets user verified and redirects to `/login`
 - `POST /api/auth/login` – returns JWT and user object
 - `GET /api/events` – list events
 - `POST /api/events` – create event (requires Bearer token)
 
 ### 8) Project Structure (high level)
 - `back/` – FastAPI app (SQLModel, JWT auth, email verification)
-- `front/` – React + Vite app (Auth, Events, Groups UI)
+  - `app/api/version_one/` – routes: `auth`, `events`, `event_chat` (chat + WebSocket), `whiteboard`, `badges`
+  - `app/services/` – shared logic (`event_queries`, `chat_state`, `cleanup`, gamification, AI, email)
+  - `alembic/` – database migrations
+- `front/` – React + Vite app
+  - `src/pages/` – one file per route; `src/features/` – feature components; `src/hooks/` – React Query data hooks
+  - `src/components/ui/` – shared UI (Button, Card, Badge, ConfirmDialog, toasts)
+  - `src/utils/api.ts`, `src/types/api.ts` – typed API client
 
 That’s it! Open two terminals, run backend and frontend, and you’re ready to develop.

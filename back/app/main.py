@@ -3,7 +3,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.core.config import settings
-from app.core.db import init_db, engine
+from app.core.db import engine
+from app.core.migrations import run_migrations
 from app.seed import seed_db
 from sqlmodel import Session
 from app.api.version_one import health as health_router
@@ -15,7 +16,7 @@ from app.api.version_one import whiteboard as whiteboard_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
+    run_migrations()
     try:
         with Session(engine) as session:
             seed_db(session)
