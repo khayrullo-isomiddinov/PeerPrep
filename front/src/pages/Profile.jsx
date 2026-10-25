@@ -36,8 +36,9 @@ export default function Profile() {
     { enabled: !!targetUserId }
   )
   
-  const awardXPMutation = useAwardPastEventsXP()
-  
+  const { mutate: awardPastXP } = useAwardPastEventsXP()
+  const awardedForUserRef = useRef(null)
+
   // Compute display user after profile data is loaded
   const displayUser = isViewingOwnProfile ? user : profileUser
 
@@ -61,12 +62,14 @@ export default function Profile() {
       setUserStats(userStatsData)
     }
   }, [userStatsData])
-  // Award past events XP when viewing own profile
+  // Award past events XP once per visit to your own profile. `mutate` is stable; depending on the
+  // whole mutation object (a new object every render) re-fired this request in an endless loop.
   useEffect(() => {
-    if (isViewingOwnProfile && targetUserId) {
-      awardXPMutation.mutate()
+    if (isViewingOwnProfile && targetUserId && awardedForUserRef.current !== targetUserId) {
+      awardedForUserRef.current = targetUserId
+      awardPastXP()
     }
-  }, [isViewingOwnProfile, targetUserId, awardXPMutation])
+  }, [isViewingOwnProfile, targetUserId, awardPastXP])
 
 
   useEffect(() => {

@@ -15,7 +15,8 @@ def send_email(to: str, subject: str, html: str):
     msg["To"] = to
 
     try:
-        with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT) as server:
+        # Short timeout: some hosts block outgoing SMTP, and without one a sign-up can hang for minutes
+        with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT, timeout=10) as server:
             server.starttls()
             server.login(settings.EMAIL_USER, settings.EMAIL_PASS)
             server.sendmail(settings.EMAIL_USER, [to], msg.as_string())

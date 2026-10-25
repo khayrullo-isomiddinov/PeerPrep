@@ -61,9 +61,11 @@ export function useAwardPastEventsXP() {
   
   return useMutation({
     mutationFn: awardPastEventsXP,
-    onSuccess: () => {
-      // Invalidate badge to show updated XP
-      queryClient.invalidateQueries({ queryKey: profileKeys.badge() })
+    onSuccess: (data) => {
+      // Refresh badges to show updated XP (only if any was actually awarded)
+      if (data?.total_xp_awarded) {
+        queryClient.invalidateQueries({ queryKey: profileKeys.all })
+      }
     },
   })
 }
