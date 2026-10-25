@@ -1,5 +1,16 @@
+import type { PeerEvent } from "../types/api"
+
+type DateInput = string | null | undefined
+
+export interface EventTiming {
+  hasStarted: boolean
+  isOngoing: boolean
+  isPast: boolean
+  isUpcoming: boolean
+}
+
 // The API returns UTC timestamps, sometimes without a "Z"; treat those as UTC too.
-export function parseUTCDate(value) {
+export function parseUTCDate(value: DateInput): Date | null {
   if (!value) return null
   const text = String(value)
   const hasZone = text.includes("Z") || text.includes("+") || /-\d{2}:\d{2}$/.test(text)
@@ -8,7 +19,10 @@ export function parseUTCDate(value) {
 }
 
 // Where an event is in its lifecycle right now
-export function getEventTiming(event, now = new Date()) {
+export function getEventTiming(
+  event: Pick<PeerEvent, "starts_at" | "duration"> & Partial<Pick<PeerEvent, "ends_at" | "is_ongoing" | "is_past" | "is_upcoming">>,
+  now: Date = new Date()
+): EventTiming {
   const start = parseUTCDate(event?.starts_at)
   if (!start) {
     return {
@@ -24,18 +38,18 @@ export function getEventTiming(event, now = new Date()) {
   return { hasStarted, isPast, isOngoing: hasStarted && !isPast, isUpcoming: !hasStarted }
 }
 
-export function formatLongDate(value) {
+export function formatLongDate(value: DateInput): string {
   const date = parseUTCDate(value)
   return date ? date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "Not set"
 }
 
-export function formatClockTime(value) {
+export function formatClockTime(value: DateInput): string {
   const date = parseUTCDate(value)
   return date ? date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) : "Not set"
 }
 
 // "Just now", "5m ago", "3h ago", "2d ago", then a short date
-export function formatRelativeTime(value, now = new Date()) {
+export function formatRelativeTime(value: DateInput, now: Date = new Date()): string {
   const date = parseUTCDate(value)
   if (!date) return "Just now"
   const seconds = Math.floor((now.getTime() - date.getTime()) / 1000)

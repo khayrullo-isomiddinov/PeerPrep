@@ -1,11 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getProfile, getUserProfile, updateProfile, getUserBadge, awardPastEventsXP } from '../utils/api'
+import { getUserProfile, updateProfile, getUserBadge, awardPastEventsXP } from '../utils/api'
 
 // Query keys
 export const profileKeys = {
   all: ['profile'],
   detail: (userId) => [...profileKeys.all, userId],
-  me: () => [...profileKeys.all, 'me'],
   badge: (userId) => [...profileKeys.all, userId, 'badge'],
 }
 
@@ -16,16 +15,6 @@ export function useUserProfile(userId, options = {}) {
     queryFn: () => getUserProfile(userId),
     enabled: !!userId,
     staleTime: 5 * 60 * 1000, // 5 minutes
-    ...options,
-  })
-}
-
-// Current user profile query
-export function useMyProfile(options = {}) {
-  return useQuery({
-    queryKey: profileKeys.me(),
-    queryFn: getProfile,
-    staleTime: 5 * 60 * 1000,
     ...options,
   })
 }
@@ -69,8 +58,6 @@ export function useUpdateProfile() {
   return useMutation({
     mutationFn: updateProfile,
     onSuccess: (data) => {
-      // Update my profile in cache
-      queryClient.setQueryData(profileKeys.me(), data)
       // Invalidate badge in case XP changed
       queryClient.invalidateQueries({ queryKey: profileKeys.badge(data.id) })
     },

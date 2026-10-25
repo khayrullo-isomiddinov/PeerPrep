@@ -4,7 +4,8 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
   faImage, faInfo, faMapMarkerAlt, faEye, faChevronRight, faTrash, faUpload, faCheck, faWandMagicSparkles, faTimes
 } from "@fortawesome/free-solid-svg-icons"
-import { createEvent, refineEventText, generateCoverImage, getErrorMessage } from "../../utils/api"
+import { refineEventText, generateCoverImage, getErrorMessage } from "../../utils/api"
+import { useCreateEvent } from "../../hooks/useEvents"
 import { useToast } from "../../components/ui/toastContext"
 
 const STEPS = [
@@ -15,6 +16,7 @@ const STEPS = [
 ]
 
 export default function CreateEventForm({ onCreated }) {
+  const createEventMutation = useCreateEvent()
   const [currentStep, setCurrentStep] = useState(0)
   const [formData, setFormData] = useState({
     title: "",
@@ -279,7 +281,7 @@ export default function CreateEventForm({ onCreated }) {
         exam: formData.exam.trim() || null
       }
       
-      const evt = await createEvent(payload)
+      const evt = await createEventMutation.mutateAsync(payload)
       
       setLoading(false)
       

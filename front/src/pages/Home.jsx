@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom"
 import { useEffect, useRef, useState, useMemo } from "react"
-import { searchLocations, autocompleteEvents } from "../utils/api"
+import { autocompleteEvents } from "../utils/api"
 import { useAuth } from "../features/auth/AuthContext"
 import { useEvents } from "../hooks/useEvents"
 
@@ -10,7 +10,6 @@ export default function Home() {
 
   const [query, setQuery] = useState("")
   const [location, setLocation] = useState("")
-  const [locOptions, setLocOptions] = useState([])
   const [eventOptions, setEventOptions] = useState([])
   const [showLocMenu, setShowLocMenu] = useState(false)
   const [showQueryMenu, setShowQueryMenu] = useState(false)
@@ -18,25 +17,7 @@ export default function Home() {
   const [userCity, setUserCity] = useState("NYC")
   const [detectingCity, setDetectingCity] = useState(true)
 
-  const locDebounce = useRef(null)
   const queryDebounce = useRef(null)
-
-  useEffect(() => {
-    if (locDebounce.current) clearTimeout(locDebounce.current)
-    locDebounce.current = setTimeout(async () => {
-      if (!location || location.length < 2) {
-        setLocOptions([])
-        return
-      }
-      try {
-        const data = await searchLocations(location)
-        setLocOptions(data)
-      } catch {
-        setLocOptions([])
-      }
-    }, 200)
-    return () => locDebounce.current && clearTimeout(locDebounce.current)
-  }, [location])
 
   useEffect(() => {
     if (queryDebounce.current) clearTimeout(queryDebounce.current)
@@ -123,6 +104,20 @@ export default function Home() {
 
   // Use React Query for events - cached automatically
   const { data: allEvents = [], isLoading: loadingEvents } = useEvents({ limit: 100 })
+
+  // Location suggestions come from the events already loaded (there is no separate places API)
+  const locOptions = useMemo(() => {
+    const q = location.trim().toLowerCase()
+    if (q.length < 2) return []
+    const counts = new Map()
+    for (const e of allEvents) {
+      if (e.location?.toLowerCase().includes(q)) counts.set(e.location, (counts.get(e.location) || 0) + 1)
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([name, n]) => ({ name, full: name, country: `${n} event${n === 1 ? "" : "s"}` }))
+  }, [allEvents, location])
 
   const parseUTCDate = (dateString) => {
     if (!dateString) return null
