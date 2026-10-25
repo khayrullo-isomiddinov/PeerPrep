@@ -2,9 +2,11 @@
 # Values marked "sync: false" are secrets/URLs you enter in the Render dashboard when applying it.
 services:
   - type: web
-    name: peerprep-api
+    name: peerprep-api-eu
     runtime: python
     plan: free
+    # Same region as the Neon database (aws-eu-central-1), so queries don't cross the Atlantic
+    region: frankfurt
     rootDir: back
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
