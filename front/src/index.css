@@ -299,6 +299,20 @@
   .legal-prose tr:last-child td { border-bottom: 0; }
   .legal-prose td:first-child { color: var(--fg); font-weight: 500; }
 
+  /* Scroll reveal (features/home/Reveal.jsx): hidden until it scrolls into view, then lifts into place */
+  .reveal {
+    opacity: 0;
+    transform: translateY(28px) scale(0.985);
+    transition: opacity 0.7s var(--ease-out-soft), transform 0.9s var(--ease-out-soft);
+  }
+  .reveal.is-shown { opacity: 1; transform: none; }
+  /* Bigger entrance for the phone teaser: it rises, swings upright and settles at a slight tilt */
+  .reveal.reveal-pop {
+    transform: translateY(120px) rotate(-12deg) scale(0.88);
+    transition: opacity 0.6s var(--ease-out-soft), transform 1.2s cubic-bezier(0.34, 1.4, 0.64, 1);
+  }
+  .reveal.reveal-pop.is-shown { transform: rotate(-3deg); }
+
   /* Faint ruled lines, like notebook paper */
   .ruled {
     background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 27px, var(--rule) 27px, var(--rule) 28px);

@@ -7,6 +7,10 @@ import { sortByStart } from "../../utils/dates"
 import Button from "../../components/ui/Button"
 import EventList, { EventGridSkeleton } from "../events/EventList"
 import DoodlePad from "./DoodlePad"
+import Reveal from "./Reveal"
+import MobileTeaser from "./MobileTeaser"
+import { FloatingPhotos, PhotoStrip } from "./HeroPhotos"
+import { useParallax } from "./motion"
 
 const REPO_URL = "https://github.com/khayrullo-isomiddinov/PeerPrep"
 
@@ -33,8 +37,34 @@ const CHAPTERS = [
   },
 ]
 
+// One request feeds both the hero's live count and "Coming up this week"
+const UPCOMING_PARAMS = { status: "upcoming", sort: "soonest", limit: 50 }
+
+// A real number from the API, never a made-up one. Until it loads (or if there's nothing), the plain promise.
+function HeroPill() {
+  const { data } = useEvents(UPCOMING_PARAMS)
+  const count = data?.length || 0
+  return (
+    <p className="inline-flex h-8 items-center gap-2 rounded-full border border-line bg-surface/80 px-3.5 text-xs font-semibold text-fg backdrop-blur-sm">
+      {count > 0 ? (
+        <>
+          <span className="relative flex size-2" aria-hidden>
+            <span className="absolute inset-0 animate-ping rounded-full bg-success opacity-60" />
+            <span className="relative size-2 rounded-full bg-success" />
+          </span>
+          <Link to="/events" className="hover:underline hover:underline-offset-4">
+            {count >= UPCOMING_PARAMS.limit ? `${count}+` : count} study {count === 1 ? "session" : "sessions"} coming up
+          </Link>
+        </>
+      ) : (
+        <span className="label text-fg-subtle">Free · No ads · Open source</span>
+      )}
+    </p>
+  )
+}
+
 function ThisWeek() {
-  const { data, isLoading } = useEvents({ status: "upcoming", sort: "soonest", limit: 6 })
+  const { data, isLoading } = useEvents(UPCOMING_PARAMS)
   const events = useMemo(() => sortByStart(data || []).slice(0, 3), [data])
   if (isLoading) return <EventGridSkeleton count={3} />
   if (events.length === 0) {
@@ -47,77 +77,119 @@ function ThisWeek() {
   return <EventList events={events} />
 }
 
+function Hero() {
+  // The notebook lines behind the hero drift slower than the page, for a little depth
+  const linesRef = useParallax(-0.12)
+  return (
+    <section className="relative overflow-hidden">
+      <div className="pointer-events-none absolute inset-0" aria-hidden>
+        <div ref={linesRef} className="ruled absolute -inset-y-24 inset-x-0 [mask-image:linear-gradient(to_bottom,black,transparent_85%)]" />
+      </div>
+      <FloatingPhotos />
+
+      <div className="page-container relative flex flex-col items-center pb-10 pt-14 text-center sm:pt-20 xl:min-h-[44rem] xl:justify-center xl:pb-24 xl:pt-16">
+        <Reveal><HeroPill /></Reveal>
+        <Reveal delay={80}>
+          <h1 className="mx-auto mt-7 max-w-[15ch] text-[2.6rem] font-semibold leading-[1.02] tracking-[-0.045em] text-fg sm:text-6xl lg:text-[4.6rem] xl:max-w-[12.5ch]">
+            Find the people <span className="mark">studying for the same exam</span> as you.
+          </h1>
+        </Reveal>
+        <Reveal delay={160}>
+          <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-fg-muted">
+            Join a study session, plan it in the group chat, work the hard problems out on a shared whiteboard, and
+            stay on task with a focus timer. Free, with no ads and no tracking.
+          </p>
+        </Reveal>
+        <Reveal delay={240} className="mt-9 flex flex-wrap items-center justify-center gap-x-6 gap-y-4">
+          <Button as={Link} to="/register" size="lg">Create a free account</Button>
+          <Link to="/events" className="group inline-flex items-center gap-2 text-[0.9375rem] font-medium text-fg">
+            Browse sessions
+            <FontAwesomeIcon icon={faArrowRight} className="text-xs transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        </Reveal>
+        <Reveal delay={300}>
+          <Link to="/focus" className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-fg-muted hover:text-fg">
+            Or try the focus timer, no account needed
+            <FontAwesomeIcon icon={faArrowRight} className="text-[0.65rem]" />
+          </Link>
+        </Reveal>
+        <PhotoStrip />
+      </div>
+    </section>
+  )
+}
+
 export default function Landing() {
   return (
     <div className="flex flex-col">
-      <section className="page-container grid items-center gap-14 pb-20 pt-14 sm:pt-20 lg:grid-cols-[1.15fr_1fr] lg:gap-16 lg:pb-28 lg:pt-24">
-        <div>
-          <h1 className="text-[2.6rem] font-semibold leading-[1.02] tracking-[-0.045em] text-fg sm:text-6xl lg:text-[4.4rem]">
-            Find the people <span className="mark">studying for the same exam</span> as you.
-          </h1>
-          <p className="mt-6 max-w-lg text-lg leading-relaxed text-fg-muted">
-            PeerPrep is a quiet place to organize study sessions: find one, talk it through in the group chat,
-            work the hard problems out together on a shared whiteboard, and stay focused with a built-in timer.
-          </p>
-          <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-4">
-            <Button as={Link} to="/register" size="lg">Create a free account</Button>
-            <Link to="/events" className="group inline-flex items-center gap-2 text-[0.9375rem] font-medium text-fg">
-              Browse sessions
-              <FontAwesomeIcon icon={faArrowRight} className="text-xs transition-transform group-hover:translate-x-0.5" />
-            </Link>
-            <Link to="/focus" className="group inline-flex items-center gap-2 text-[0.9375rem] font-medium text-fg-muted hover:text-fg">
-              Try the focus timer
-              <FontAwesomeIcon icon={faArrowRight} className="text-xs transition-transform group-hover:translate-x-0.5" />
-            </Link>
-          </div>
-          <p className="label mt-10 text-fg-subtle">Free · No ads · <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="underline-offset-4 hover:text-fg hover:underline">Open source</a></p>
-        </div>
-        <DoodlePad />
-      </section>
+      <Hero />
 
       <section className="border-t border-line">
         <div className="page-container py-16 sm:py-20">
-          <div className="mb-8 flex items-end justify-between gap-6">
+          <Reveal className="mb-8 flex items-end justify-between gap-6">
             <h2 className="text-3xl tracking-[-0.035em] text-fg sm:text-4xl">
               Coming up <span className="serif text-[1.15em]">this week</span>
             </h2>
             <Link to="/events" className="hidden items-center gap-2 text-sm font-medium text-fg-muted hover:text-fg sm:inline-flex">
               All sessions <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
             </Link>
-          </div>
-          <ThisWeek />
+          </Reveal>
+          <Reveal delay={100}><ThisWeek /></Reveal>
         </div>
       </section>
 
       <section className="border-t border-line bg-surface">
         <div className="page-container grid gap-12 py-16 sm:py-24 lg:grid-cols-[0.9fr_1.1fr] lg:gap-20">
-          <h2 className="text-[2.1rem] leading-[1.08] tracking-[-0.04em] text-fg sm:text-5xl lg:sticky lg:top-28 lg:self-start">
+          <Reveal as="h2" className="text-[2.1rem] leading-[1.08] tracking-[-0.04em] text-fg sm:text-5xl lg:sticky lg:top-28 lg:self-start">
             Studying alone is a habit. Studying <span className="serif text-[1.12em]">together</span> is a strategy.
-          </h2>
+          </Reveal>
           <ol className="border-t border-line">
             {CHAPTERS.map((chapter, index) => (
-              <li key={chapter.title} className="grid grid-cols-[3rem_1fr] gap-x-4 border-b border-line py-7 sm:grid-cols-[4rem_1fr]">
+              <Reveal as="li" key={chapter.title} delay={index * 60} className="grid grid-cols-[3rem_1fr] gap-x-4 border-b border-line py-7 sm:grid-cols-[4rem_1fr]">
                 <span className="font-mono text-sm text-fg-subtle">{String(index + 1).padStart(2, "0")}</span>
                 <div>
                   <h3 className="text-xl tracking-[-0.02em] text-fg">{chapter.title}</h3>
                   <p className="mt-2 max-w-md leading-relaxed text-fg-muted">{chapter.text}</p>
                 </div>
-              </li>
+              </Reveal>
             ))}
           </ol>
         </div>
       </section>
 
       <section className="border-t border-line">
-        <div className="page-container flex flex-col items-start gap-8 py-20 sm:py-28 lg:flex-row lg:items-end lg:justify-between">
+        <div className="page-container grid items-center gap-12 py-16 sm:py-24 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
+          <Reveal>
+            <p className="label text-fg-subtle">Try it here</p>
+            <h2 className="mt-3 text-[2.1rem] leading-[1.08] tracking-[-0.04em] text-fg sm:text-5xl">
+              A whiteboard for the <span className="serif text-[1.12em]">hard part.</span>
+            </h2>
+            <p className="mt-4 max-w-md leading-relaxed text-fg-muted">
+              Every session gets a shared board that updates live for everyone in it. This one is just for you:
+              draw something. Nothing here is saved or sent.
+            </p>
+          </Reveal>
+          <Reveal delay={120}><DoodlePad /></Reveal>
+        </div>
+      </section>
+
+      <MobileTeaser />
+
+      <section className="border-t border-line">
+        <Reveal className="page-container flex flex-col items-start gap-8 py-20 sm:py-28 lg:flex-row lg:items-end lg:justify-between">
           <h2 className="max-w-3xl text-[2.4rem] leading-[1.02] tracking-[-0.045em] text-fg sm:text-6xl">
             Your next exam is easier <span className="serif text-[1.12em]">with company.</span>
           </h2>
-          <Button as={Link} to="/register" size="lg" variant="highlight" className="shrink-0">
-            Start studying together
-            <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
-          </Button>
-        </div>
+          <div className="flex shrink-0 flex-col items-start gap-3">
+            <Button as={Link} to="/register" size="lg" variant="highlight">
+              Start studying together
+              <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
+            </Button>
+            <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="label text-fg-subtle hover:text-fg">
+              Open source on GitHub<span className="sr-only"> (opens in a new tab)</span>
+            </a>
+          </div>
+        </Reveal>
       </section>
     </div>
   )
