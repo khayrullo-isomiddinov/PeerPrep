@@ -1,4 +1,8 @@
+import { useEffect } from "react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
+import { useServerStatus } from "../../hooks/useServerStatus"
+import { registerInlineLoader } from "../../lib/serverStatus"
+import WakeUpPanel from "./WakeUpPanel"
 
 export function Spinner({ className = "size-5", label = "Loading" }) {
   return (
@@ -11,8 +15,18 @@ export function Skeleton({ className = "" }) {
   return <div aria-hidden className={`rounded-lg bg-surface-3/70 animate-pulse ${className}`} />
 }
 
-// Full-area loading state for pages
-export function PageLoader({ label = "Loading" }) {
+// Full-area loading state for pages. If the API is slowly waking from sleep, it explains the wait instead
+// (and keeps the floating notice hidden, so the message isn't shown twice).
+export function PageLoader({ label = "Loading", focusLink = true }) {
+  const { waking, since } = useServerStatus()
+  useEffect(() => registerInlineLoader(), [])
+  if (waking) {
+    return (
+      <div className="flex flex-1 items-center justify-center px-4 py-12 sm:py-20">
+        <WakeUpPanel since={since} focusLink={focusLink} />
+      </div>
+    )
+  }
   return (
     <div className="flex flex-1 items-center justify-center py-24">
       <Spinner className="size-8" label={label} />

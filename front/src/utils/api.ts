@@ -1,4 +1,5 @@
 import axios, { type AxiosError } from "axios"
+import { requestFailed, requestSent, responseReceived } from "../lib/serverStatus"
 import type {
   AuthResponse, AwardXPResult, PublicProfile, ChatMessage, EventInput, EventListParams, EventSuggestion, Member,
   MembershipResult, PeerEvent, PresenceEntry, ProfileUpdate, User, UserBadgeStats, VerificationResponse,
@@ -10,6 +11,13 @@ type Id = number | string
 const base = `${(import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "")}/api`
 
 export const api = axios.create({ baseURL: base })
+
+declare module "axios" {
+  interface AxiosRequestConfig {
+    // Wakes the server without showing the "waking up" notice (see lib/serverStatus.js)
+    background?: boolean
+  }
+}
 
 export function setAuthHeader(token: string | null) {
   if (token) {
@@ -32,6 +40,7 @@ api.interceptors.request.use((config) => {
   } else {
     delete config.headers.Authorization
   }
+  requestSent({ background: config.background })
   return config
 })
 
@@ -41,8 +50,14 @@ export const SESSION_EXPIRED_EVENT = "auth:session-expired"
 export const AUTH_NOTICE_KEY = "auth_notice"
 
 api.interceptors.response.use(
-  (r) => r,
+  (r) => {
+    responseReceived()
+    return r
+  },
   (err: AxiosError) => {
+    // Any HTTP status means the server is up; a cancelled request says nothing either way
+    if (err.response) responseReceived()
+    else if (!axios.isCancel(err)) requestFailed()
     const isAuthCall = /auth\/(login|register|resend-verification)/.test(err.config?.url || "")
     if (err.response?.status === 401 && !isAuthCall && localStorage.getItem("access_token")) {
       window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT))
@@ -52,6 +67,12 @@ api.interceptors.response.use(
 )
 
 export { getErrorMessage } from "./errors"
+
+// Called once at startup: starts waking the (free, sleeping) API and its database while the page renders,
+// so the first real request waits less. Failures are ignored; real requests report their own errors.
+export function warmUpServer() {
+  api.get("health/ready", { background: true }).catch(() => {})
+}
 
 // ---------- Auth & profile ----------
 

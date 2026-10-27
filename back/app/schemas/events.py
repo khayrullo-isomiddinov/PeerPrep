@@ -80,6 +80,8 @@ class EventRead(EventBase):
 
     attendee_count: Optional[int] = None
     is_joined: Optional[bool] = None
+    # Only on single-event responses; study_materials itself is only sent to members
+    materials_count: Optional[int] = None
 
 
 class EventUpdate(SQLModel):

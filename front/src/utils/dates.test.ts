@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { formatEventDay, formatRelativeTime, getEventTiming, parseUTCDate } from "./dates"
+import { describeEventTiming, formatEventDay, formatRelativeTime, getEventTiming, parseUTCDate } from "./dates"
 
 describe("parseUTCDate", () => {
   it("treats timestamps without a timezone as UTC", () => {
@@ -67,5 +67,22 @@ describe("formatEventDay", () => {
   it("falls back to a short date, with the year only when it differs", () => {
     expect(formatEventDay(local(14), now)).toBe("Thu, May 14")
     expect(formatEventDay(new Date(2027, 0, 5, 9).toISOString(), now)).toMatch(/2027/)
+  })
+})
+
+describe("describeEventTiming", () => {
+  const now = new Date("2026-10-25T12:00:00Z")
+  const at = (minutesFromNow: number) => new Date(now.getTime() + minutesFromNow * 60_000).toISOString()
+
+  it("counts down to the start, then to the end", () => {
+    expect(describeEventTiming({ starts_at: at(200), duration: 2 }, now)).toBe("Starts in 3h 20m")
+    expect(describeEventTiming({ starts_at: at(30), duration: 2 }, now)).toBe("Starts in 30m")
+    expect(describeEventTiming({ starts_at: at(-80), duration: 2 }, now)).toBe("Ends in 40m")
+  })
+
+  it("leaves far-off events to the date and describes ended ones", () => {
+    expect(describeEventTiming({ starts_at: at(60 * 24 * 10), duration: 2 }, now)).toBeNull()
+    expect(describeEventTiming({ starts_at: at(60 * 24 * 3), duration: 2 }, now)).toBe("Starts in 3 days")
+    expect(describeEventTiming({ starts_at: at(-60 * 5), duration: 2 }, now)).toBe("Ended 3h ago")
   })
 })

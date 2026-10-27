@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { faCamera, faPen, faUserSlash, faStar, faCalendarCheck, faFire, faChartSimple } from "@fortawesome/free-solid-svg-icons"
+import { faCamera, faPen, faUserSlash, faStar, faCalendarCheck, faFire, faChartSimple, faClockRotateLeft } from "@fortawesome/free-solid-svg-icons"
 import { useAuth } from "../features/auth/authContextValue"
 import { deleteAccount, getErrorMessage } from "../utils/api"
 import { readAsDataUrl } from "../utils/files"
 import { useUserProfile, useUserBadge, useUpdateProfile, useAwardPastEventsXP } from "../hooks/useProfile"
+import { useMyEvents } from "../hooks/useEvents"
+import SessionRow from "../features/events/SessionRow"
+import { clearFocusData } from "../features/focus/focusStore"
+import { focusScope } from "../features/focus/useFocus"
 import { useToast } from "../components/ui/toastContext"
 import Card from "../components/ui/Card"
 import Button from "../components/ui/Button"
@@ -27,6 +31,34 @@ function Stat({ icon, label, value, tone = "text-fg-subtle" }) {
       <p className="mt-3 font-mono text-2xl font-medium tracking-tight text-fg">{value}</p>
       <p className="text-xs text-fg-subtle">{label}</p>
     </div>
+  )
+}
+
+// Your own attendance history (other people's is not public)
+function PastSessions() {
+  const past = useMyEvents({ status: "past", limit: 5 })
+  return (
+    <Card padded={false}>
+      <div className="flex items-center justify-between px-5 pb-2 pt-5 sm:px-6">
+        <h2 className="text-lg font-semibold text-fg">Recent sessions</h2>
+        <Link to="/events?scope=mine&status=past" className="text-sm font-semibold text-accent-text hover:underline">See all</Link>
+      </div>
+      <div className="px-2 pb-3 sm:px-3">
+        {past.isLoading ? (
+          <div className="space-y-2 p-3">{[0, 1].map((i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
+        ) : (past.data || []).length > 0 ? (
+          past.data.map((event) => <SessionRow key={event.id} event={event} />)
+        ) : (
+          <EmptyState
+            icon={faClockRotateLeft}
+            title="No finished sessions yet"
+            description="Sessions you attend show up here once they've ended, and earn you XP."
+            action={<Button as={Link} to="/events" size="sm" variant="secondary">Find a session</Button>}
+            className="!py-8"
+          />
+        )}
+      </div>
+    </Card>
   )
 }
 
@@ -120,6 +152,7 @@ export default function Profile() {
     setDeleting(true)
     try {
       await deleteAccount()
+      clearFocusData(focusScope(user))
       setConfirmDelete(false)
       logout()
       navigate("/", { replace: true })
@@ -193,7 +226,14 @@ export default function Profile() {
               <Stat icon={faChartSimple} label="Engagement" value={`${Math.round((s.engagement_score || 0) * 100)}%`} tone="text-fg-subtle" />
             </div>
           ) : null}
+          {s && (
+            <p className="-mt-3 text-xs text-fg-subtle">
+              Sessions count once they've ended. The streak is consecutive weeks with at least one session.
+              Engagement blends how recently, how often and how regularly you attend.
+            </p>
+          )}
           {s && <BadgeLadder stats={s} />}
+          {isOwn && <PastSessions />}
         </div>
 
         <aside className="space-y-6">

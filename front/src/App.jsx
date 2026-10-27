@@ -5,6 +5,8 @@ import Footer from "./components/Footer"
 import MobileTabBar from "./components/MobileTabBar"
 import { PageLoader } from "./components/ui/Feedback"
 import ErrorBoundary from "./components/ErrorBoundary"
+import FocusWatcher from "./features/focus/FocusWatcher"
+import ServerWakeNotice from "./components/ServerWakeNotice"
 import { useAuth } from "./features/auth/authContextValue"
 
 const Home = lazy(() => import("./pages/Home"))
@@ -21,6 +23,7 @@ const About = lazy(() => import("./pages/About"))
 const Privacy = lazy(() => import("./pages/Privacy"))
 const Terms = lazy(() => import("./pages/Terms"))
 const Contact = lazy(() => import("./pages/Contact"))
+const Focus = lazy(() => import("./pages/Focus"))
 
 export default function App() {
   const { isLoading, isAuthenticated } = useAuth()
@@ -46,7 +49,8 @@ export default function App() {
         }`}
       >
         {isLoading ? (
-          <PageLoader />
+          // Routes aren't rendered yet, so the wake-up screen can't link anywhere
+          <PageLoader focusLink={false} />
         ) : (
           <ErrorBoundary key={pathname}>
           <Suspense fallback={<PageLoader />}>
@@ -57,6 +61,7 @@ export default function App() {
               <Route path="/events/:id" element={<EventDetail />} />
               <Route path="/events/:id/edit" element={<EditEvent />} />
               <Route path="/events/:id/whiteboard" element={<Whiteboard />} />
+              <Route path="/focus" element={<Focus />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/profile/:userId" element={<Profile />} />
               <Route path="/register" element={<RegisterForm />} />
@@ -77,6 +82,8 @@ export default function App() {
         </div>
       )}
       {showTabBar && <MobileTabBar />}
+      {!isLoading && <FocusWatcher />}
+      <ServerWakeNotice />
     </div>
   )
 }

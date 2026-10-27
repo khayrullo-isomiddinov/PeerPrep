@@ -19,6 +19,7 @@ export default function Footer() {
             <p className="font-semibold text-fg">Product</p>
             <Link to="/events" className="text-fg-muted hover:text-fg">Browse events</Link>
             <Link to="/events/create" className="text-fg-muted hover:text-fg">Host an event</Link>
+            <Link to="/focus" className="text-fg-muted hover:text-fg">Focus timer</Link>
           </div>
           <div className="flex flex-col gap-2">
             <p className="font-semibold text-fg">About</p>

@@ -17,7 +17,7 @@ export const eventKeys = {
 }
 
 // The default list shown on /events, shared with prefetching so hovering a link warms the real cache entry
-export const DEFAULT_EVENTS_PARAMS = { status: 'upcoming' }
+export const DEFAULT_EVENTS_PARAMS = { status: 'upcoming', sort: 'soonest' }
 
 export function useEvents(params = {}, options = {}) {
   return useQuery({

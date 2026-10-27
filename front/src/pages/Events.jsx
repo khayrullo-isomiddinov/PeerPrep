@@ -10,6 +10,7 @@ import SegmentedControl from "../components/ui/SegmentedControl"
 import Button from "../components/ui/Button"
 import { EmptyState } from "../components/ui/Feedback"
 import { controlClasses } from "../components/ui/fieldStyles"
+import { Select } from "../components/ui/Field"
 import { parseUTCDate } from "../utils/dates"
 import { usePageTitle } from "../hooks/usePageTitle"
 
@@ -72,6 +73,8 @@ export default function Events() {
   const q = params.get("q") || ""
   const exam = params.get("exam") || ""
   const location = params.get("location") || ""
+  // Soonest first is what you want when looking for a session; "new" shows what was just posted
+  const sort = status !== "past" && params.get("sort") === "new" ? "newest" : "soonest"
 
   const updateParam = useMemo(() => (key, value) => {
     setParams((prev) => {
@@ -88,8 +91,8 @@ export default function Events() {
   const [examDraft, setExamDraft] = useDebouncedParam(exam, commitExam)
 
   const listParams = useMemo(
-    () => ({ status, q: q || undefined, exam: exam || undefined, location: location || undefined }),
-    [status, q, exam, location]
+    () => ({ status, q: q || undefined, exam: exam || undefined, location: location || undefined, sort: status === "past" ? undefined : sort }),
+    [status, q, exam, location, sort]
   )
   const allEvents = useEvents(listParams, {
     enabled: scope === "all",
@@ -109,15 +112,16 @@ export default function Events() {
         (!needle || `${e.title} ${e.description || ""} ${e.location}`.toLowerCase().includes(needle)) &&
         (!examNeedle || (e.exam || "").toLowerCase().includes(examNeedle))
       )
+      if (sort === "newest") list = [...list].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
     }
     return list.filter((e) => withinWindow(e, when))
-  }, [active.data, scope, q, exam, when])
+  }, [active.data, scope, q, exam, when, sort])
 
   const hasFilters = !!(q || exam || location || when !== "any")
   function clearFilters() {
     setParams((prev) => {
       const next = new URLSearchParams()
-      for (const key of ["status", "scope"]) if (prev.get(key)) next.set(key, prev.get(key))
+      for (const key of ["status", "scope", "sort"]) if (prev.get(key)) next.set(key, prev.get(key))
       return next
     }, { replace: true })
   }
@@ -172,6 +176,19 @@ export default function Events() {
               onChange={(v) => updateParam("scope", v === "mine" ? "mine" : "")}
               className="w-full sm:w-auto"
             />
+          )}
+          {status !== "past" && (
+            <label className="flex items-center gap-2 text-sm text-fg-muted sm:order-last">
+              <span className="shrink-0">Sort</span>
+              <Select
+                value={sort}
+                onChange={(e) => updateParam("sort", e.target.value === "newest" ? "new" : "")}
+                className="w-auto min-w-44"
+              >
+                <option value="soonest">Starting soonest</option>
+                <option value="newest">Newly posted</option>
+              </Select>
+            </label>
           )}
           {status === "upcoming" && (
             <div className="flex flex-wrap gap-2 sm:ml-auto" role="group" aria-label="When">

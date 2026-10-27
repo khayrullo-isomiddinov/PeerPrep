@@ -12,7 +12,7 @@ function ToolButton({ active, disabled, onClick, title, children }) {
       aria-pressed={active}
       disabled={disabled}
       onClick={onClick}
-      className={`w-9 h-9 flex items-center justify-center rounded-lg text-sm transition-colors ${
+      className={`w-9 h-9 pointer-coarse:w-10 pointer-coarse:h-10 shrink-0 flex items-center justify-center rounded-lg text-sm transition-colors ${
         active
           ? "bg-accent text-accent-fg shadow-card"
           : "text-fg-muted hover:bg-surface-2 hover:text-fg disabled:opacity-35 disabled:hover:bg-transparent"

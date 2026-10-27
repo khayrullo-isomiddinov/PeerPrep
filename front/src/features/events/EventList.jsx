@@ -1,4 +1,6 @@
+import { useMemo } from "react"
 import EventCard from "./EventCard"
+import { useNow } from "../../hooks/useNow"
 import { Skeleton } from "../../components/ui/Feedback"
 
 export function EventGrid({ children }) {
@@ -24,9 +26,11 @@ export function EventGridSkeleton({ count = 6 }) {
 }
 
 export default function EventList({ events }) {
+  const now = useNow()
+  const date = useMemo(() => new Date(now), [now])
   return (
     <EventGrid>
-      {events.map((event) => <EventCard key={event.id} event={event} />)}
+      {events.map((event) => <EventCard key={event.id} event={event} now={date} />)}
     </EventGrid>
   )
 }

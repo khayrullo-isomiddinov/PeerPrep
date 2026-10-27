@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { faPlus, faComments, faChalkboard, faCalendarDays, faCompass, faArrowRight } from "@fortawesome/free-solid-svg-icons"
+import { faPlus, faComments, faChalkboard, faCalendarDays, faCompass, faArrowRight, faLocationDot } from "@fortawesome/free-solid-svg-icons"
 import { useAuth } from "../auth/authContextValue"
-import { sortByStart } from "../../utils/dates"
+import { describeEventTiming, formatEventWhen, sortByStart } from "../../utils/dates"
+import { useNow } from "../../hooks/useNow"
 import { useEvents, useMyEvents, useMyEventsCount } from "../../hooks/useEvents"
 import { useUserBadge } from "../../hooks/useProfile"
 import Card from "../../components/ui/Card"
@@ -15,6 +16,8 @@ import SessionRow from "../events/SessionRow"
 import LevelCard from "../profile/LevelCard"
 import OnboardingChecklist from "../onboarding/OnboardingChecklist"
 import { onboardingStorage } from "../onboarding/onboardingStorage"
+import { FocusTimerCompact } from "../focus/FocusTimer"
+import { useFocus } from "../focus/useFocus"
 
 function greeting(now = new Date()) {
   const hour = now.getHours()
@@ -47,13 +50,36 @@ function LiveNow({ events }) {
   )
 }
 
+// The one session to prepare for next, with a countdown
+function NextUp({ event }) {
+  const now = useNow()
+  const countdown = describeEventTiming(event, new Date(now))
+  return (
+    <Card>
+      <p className="label text-fg-subtle">Next up{countdown ? ` · ${countdown}` : ""}</p>
+      <h2 className="mt-2 line-clamp-2 break-words text-xl font-semibold leading-snug tracking-[-0.02em] text-fg sm:text-2xl">
+        <Link to={`/events/${event.id}`} className="hover:underline hover:decoration-line-strong hover:underline-offset-4">{event.title}</Link>
+      </h2>
+      <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
+        <span>{formatEventWhen(event.starts_at)}</span>
+        <span className="inline-flex min-w-0 items-center gap-1.5"><FontAwesomeIcon icon={faLocationDot} className="text-xs text-fg-subtle" /><span className="truncate">{event.location}</span></span>
+      </p>
+      <div className="mt-5 flex flex-wrap gap-2">
+        <Button as={Link} to={`/events/${event.id}`} size="sm"><FontAwesomeIcon icon={faComments} />Plan in the chat</Button>
+        <Button as={Link} to="/focus" variant="secondary" size="sm">Prepare in the focus room</Button>
+      </div>
+    </Card>
+  )
+}
+
 export default function Dashboard() {
   const { user } = useAuth()
   const upcoming = useMyEvents({ status: "upcoming" })
   const live = useMyEvents({ status: "ongoing" })
   const totalMine = useMyEventsCount({ status: "all" })
-  const discover = useEvents({ status: "upcoming", limit: 12 })
+  const discover = useEvents({ status: "upcoming", sort: "soonest", limit: 12 })
   const badge = useUserBadge(user.id)
+  const focus = useFocus()
   const [dismissed, setDismissed] = useState(() => onboardingStorage.isDismissed(user.id))
 
   const discoverEvents = useMemo(
@@ -61,7 +87,11 @@ export default function Dashboard() {
     [discover.data, user.id]
   )
 
-  const firstEvent = upcoming.data?.[0] || live.data?.[0]
+  const upcomingSorted = useMemo(() => sortByStart(upcoming.data || []), [upcoming.data])
+  const liveEvents = live.data || []
+  const nextUp = liveEvents.length === 0 ? upcomingSorted[0] : null
+  const laterSessions = nextUp ? upcomingSorted.slice(1, 5) : upcomingSorted.slice(0, 4)
+  const firstEvent = upcomingSorted[0] || liveEvents[0]
   const steps = [
     {
       id: "profile",
@@ -76,6 +106,13 @@ export default function Dashboard() {
       description: "Find a session for your exam, or create one in a minute.",
       done: (totalMine.data || 0) > 0,
       action: { to: "/events", label: "Browse sessions" },
+    },
+    {
+      id: "focus",
+      title: "Finish one focus block",
+      description: "Plan a task, start the timer and work until it rings.",
+      done: focus.log.length > 0,
+      action: { to: "/focus", label: "Open the focus room" },
     },
     {
       id: "whiteboard",
@@ -111,18 +148,21 @@ export default function Dashboard() {
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_22rem]">
         <div className="min-w-0 space-y-6">
-          <LiveNow events={live.data || []} />
+          <LiveNow events={liveEvents} />
+          {nextUp && <NextUp event={nextUp} />}
 
           <Card padded={false}>
             <div className="flex items-center justify-between px-5 pb-2 pt-5 sm:px-6">
-              <h2 className="text-lg font-semibold text-fg">Your upcoming sessions</h2>
+              <h2 className="text-lg font-semibold text-fg">{nextUp ? "Later" : "Your upcoming sessions"}</h2>
               <Link to="/events?scope=mine" className="text-sm font-semibold text-accent-text hover:underline">See all</Link>
             </div>
             <div className="px-2 pb-3 sm:px-3">
               {upcoming.isLoading ? (
                 <div className="space-y-2 p-3">{[0, 1].map((i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
-              ) : (upcoming.data || []).length > 0 ? (
-                upcoming.data.slice(0, 4).map((event) => <SessionRow key={event.id} event={event} />)
+              ) : laterSessions.length > 0 ? (
+                laterSessions.map((event) => <SessionRow key={event.id} event={event} />)
+              ) : nextUp ? (
+                <p className="px-3 pb-3 pt-1 text-sm text-fg-muted">Nothing else planned yet. <Link to="/events" className="font-semibold text-accent-text hover:underline">Find another session</Link></p>
               ) : (
                 <EmptyState
                   icon={faCalendarDays}
@@ -138,6 +178,7 @@ export default function Dashboard() {
 
         <aside className="space-y-6">
           {showOnboarding && <OnboardingChecklist steps={steps} onDismiss={() => setOnboardingDismissed(true)} />}
+          <FocusTimerCompact />
           <LevelCard stats={badge.data} loading={badge.isLoading} linkToProfile />
           {dismissed && !onboardingDone && (
             <button type="button" onClick={() => setOnboardingDismissed(false)} className="text-sm font-semibold text-accent-text hover:underline">

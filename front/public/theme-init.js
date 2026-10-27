@@ -5,7 +5,7 @@
     var saved = localStorage.getItem("peerprep-theme")
     var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
     theme = saved === "dark" || saved === "light" ? saved : prefersDark ? "dark" : "light"
-  } catch (e) {}
+  } catch { /* storage or matchMedia unavailable: keep light */ }
   var root = document.documentElement
   root.dataset.theme = theme
   root.style.colorScheme = theme

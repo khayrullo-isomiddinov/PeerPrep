@@ -13,6 +13,10 @@ from typing import Optional, Dict
 from sqlmodel import Session, select, func
 
 from app.models import User, Event, EventAttendee
+from sqlalchemy.orm import defer
+
+# Stats only need event times; skip the large base64 columns
+_LIGHT_EVENT = (defer(Event.study_materials), defer(Event.cover_image_url))
 from app.core.config import settings
 
 def _to_utc(dt: datetime) -> datetime:
@@ -241,7 +245,7 @@ def award_xp_for_all_past_events(user_id: int, session: Session) -> Dict[str, in
     
     
     creator_events = session.exec(
-        select(Event)
+        select(Event).options(*_LIGHT_EVENT)
         .where(
             Event.created_by == user_id,
             Event.starts_at <= now  
@@ -355,14 +359,14 @@ class BadgeSystem:
         
         
         attendee_events = session.exec(
-            select(Event)
+            select(Event).options(*_LIGHT_EVENT)
             .join(EventAttendee, Event.id == EventAttendee.event_id)
             .where(EventAttendee.user_id == user_id)
         ).all()
         
         
         created_events = session.exec(
-            select(Event)
+            select(Event).options(*_LIGHT_EVENT)
             .where(Event.created_by == user_id)
         ).all()
         

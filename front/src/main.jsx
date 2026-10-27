@@ -14,9 +14,11 @@ import ToastProvider from "./components/ui/ToastProvider"
 import ThemeProvider from "./theme/ThemeProvider"
 import { queryClient } from "./lib/queryClient"
 import { installErrorReporting } from "./lib/monitoring"
+import { warmUpServer } from "./utils/api"
 import ErrorBoundary from "./components/ErrorBoundary"
 
 installErrorReporting()
+warmUpServer()
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

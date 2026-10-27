@@ -3,12 +3,14 @@
 Every endpoint that returns events goes through `serialize_events`, so status fields and
 counts are computed one way everywhere.
 """
+import json
 from collections import Counter
 from datetime import datetime, timezone, timedelta
 from typing import Iterable, Optional
 
 from fastapi import HTTPException
 from sqlalchemy import or_
+from sqlalchemy.orm import defer
 from sqlmodel import Session, select
 
 from app.models import Event, EventAttendee, User
@@ -101,16 +103,39 @@ def joined_event_ids(session: Session, events: list[Event], user: User) -> set[i
     return joined | {e.id for e in events if e.created_by == user.id}
 
 
-def serialize_events(session: Session, events: list[Event], user: Optional[User] = None) -> list[dict]:
-    """API representation of events, with status fields, member counts and (if signed in) is_joined."""
+def without_materials(query):
+    """Skip loading study materials (base64 files, up to ~30 MB per event) for list queries."""
+    return query.options(defer(Event.study_materials))
+
+
+def materials_count(raw: Optional[str]) -> int:
+    try:
+        parsed = json.loads(raw) if raw else []
+    except ValueError:
+        return 0
+    return len(parsed) if isinstance(parsed, list) else 0
+
+
+def serialize_events(session: Session, events: list[Event], user: Optional[User] = None, *, with_materials: bool = False) -> list[dict]:
+    """API representation of events, with status fields, member counts and (if signed in) is_joined.
+
+    Study materials are for members only. Lists never include them (they're large and lists are public);
+    single-event responses include them, and their count, when `with_materials` is set and the user is a member.
+    """
     now = datetime.now(timezone.utc)
     counts = member_counts(session, events)
     joined = joined_event_ids(session, events, user) if user else None
     result = []
     for evt in events:
-        data = evt.model_dump()
+        data = evt.model_dump(exclude={"study_materials"})
         data.update(event_status_fields(evt, now))
         data["attendee_count"] = counts.get(evt.id, 0)
+        data["study_materials"] = None
+        data["materials_count"] = None
+        if with_materials:
+            data["materials_count"] = materials_count(evt.study_materials)
+            if joined is not None and evt.id in joined:
+                data["study_materials"] = evt.study_materials
         if joined is not None:
             data["is_joined"] = evt.id in joined
         result.append(data)
@@ -118,7 +143,7 @@ def serialize_events(session: Session, events: list[Event], user: Optional[User]
 
 
 def serialize_event(session: Session, evt: Event, user: Optional[User] = None) -> dict:
-    return serialize_events(session, [evt], user)[0]
+    return serialize_events(session, [evt], user, with_materials=True)[0]
 
 
 def is_member(session: Session, evt: Event, user: User) -> bool:

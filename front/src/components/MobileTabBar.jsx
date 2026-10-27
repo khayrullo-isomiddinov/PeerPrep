@@ -1,12 +1,13 @@
 import { Link, useLocation } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { faHouse, faCalendarDays, faPlus, faUser } from "@fortawesome/free-solid-svg-icons"
+import { faHouse, faCalendarDays, faPlus, faUser, faStopwatch } from "@fortawesome/free-solid-svg-icons"
 
 const TABS = [
   { to: "/", label: "Home", icon: faHouse, match: (p) => p === "/" },
   // Event pages (/events/5, /events/5/edit) belong to Events; creating one has its own tab
   { to: "/events", label: "Events", icon: faCalendarDays, match: (p) => p.startsWith("/events") && p !== "/events/create" },
   { to: "/events/create", label: "Create", icon: faPlus, primary: true, match: (p) => p === "/events/create" },
+  { to: "/focus", label: "Focus", icon: faStopwatch, match: (p) => p === "/focus" },
   { to: "/profile", label: "Profile", icon: faUser, match: (p) => p.startsWith("/profile") },
 ]
 
@@ -18,7 +19,7 @@ export default function MobileTabBar() {
       aria-label="Primary"
       className="fixed inset-x-0 bottom-0 z-40 select-none border-t border-line bg-canvas/85 backdrop-blur-xl [-webkit-touch-callout:none] md:hidden pb-[env(safe-area-inset-bottom)]"
     >
-      <ul className="mx-auto grid h-[var(--tabbar-h)] max-w-md grid-cols-4">
+      <ul className="mx-auto grid h-[var(--tabbar-h)] max-w-md grid-cols-5">
         {TABS.map((tab) => {
           const active = tab.match(pathname)
           return (

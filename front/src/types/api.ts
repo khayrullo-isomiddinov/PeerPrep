@@ -42,7 +42,8 @@ export interface PeerEvent {
   capacity: number
   exam: string | null
   cover_image_url: string | null
-  study_materials: string | null // JSON array of StudyMaterial
+  // JSON array of StudyMaterial. Only sent to members, and only on single-event responses (never in lists)
+  study_materials: string | null
   created_by: number
   created_at: ISODateString
   status: EventStatus
@@ -52,6 +53,8 @@ export interface PeerEvent {
   // Present when the request is authenticated
   attendee_count?: number
   is_joined?: boolean
+  // How many files are attached; on single-event responses only, for members and non-members alike
+  materials_count?: number | null
 }
 
 export interface StudyMaterial {
@@ -78,6 +81,8 @@ export interface EventListParams {
   location?: string
   exam?: string
   status?: EventStatusFilter
+  // "soonest" orders upcoming/live events by start time; the API default is "newest" (most recently created)
+  sort?: "soonest" | "newest"
   limit?: number
   offset?: number
 }

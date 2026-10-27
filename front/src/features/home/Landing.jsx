@@ -24,13 +24,17 @@ const CHAPTERS = [
     text: "A shared whiteboard for the problem nobody can solve alone. Sketch, annotate, drop a sticky note, export it for later.",
   },
   {
+    title: "Focus",
+    text: "A focus timer with real breaks and a short plan for today, so the hours you sit down for become hours of work. It runs in your browser and needs no account.",
+  },
+  {
     title: "Keep going",
     text: "Attend, earn XP, keep your weekly streak. Five levels from Beginner to Master, counted from sessions you actually showed up to.",
   },
 ]
 
 function ThisWeek() {
-  const { data, isLoading } = useEvents({ status: "upcoming", limit: 20 })
+  const { data, isLoading } = useEvents({ status: "upcoming", sort: "soonest", limit: 6 })
   const events = useMemo(() => sortByStart(data || []).slice(0, 3), [data])
   if (isLoading) return <EventGridSkeleton count={3} />
   if (events.length === 0) {
@@ -53,12 +57,16 @@ export default function Landing() {
           </h1>
           <p className="mt-6 max-w-lg text-lg leading-relaxed text-fg-muted">
             PeerPrep is a quiet place to organize study sessions: find one, talk it through in the group chat,
-            then work the hard problems out together on a shared whiteboard.
+            work the hard problems out together on a shared whiteboard, and stay focused with a built-in timer.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-4">
             <Button as={Link} to="/register" size="lg">Create a free account</Button>
             <Link to="/events" className="group inline-flex items-center gap-2 text-[0.9375rem] font-medium text-fg">
               Browse sessions
+              <FontAwesomeIcon icon={faArrowRight} className="text-xs transition-transform group-hover:translate-x-0.5" />
+            </Link>
+            <Link to="/focus" className="group inline-flex items-center gap-2 text-[0.9375rem] font-medium text-fg-muted hover:text-fg">
+              Try the focus timer
               <FontAwesomeIcon icon={faArrowRight} className="text-xs transition-transform group-hover:translate-x-0.5" />
             </Link>
           </div>

@@ -9,6 +9,7 @@ const STORAGE = [
   { key: "access_token", where: "Local storage", purpose: "Keeps you signed in.", kept: `Until you sign out. The token inside stops working after ${LEGAL.sessionMinutes} minutes.` },
   { key: "peerprep-theme", where: "Local storage", purpose: "Remembers light or dark mode, if you picked one.", kept: "Until you switch back to the system setting." },
   { key: "peerprep-onboarding:…", where: "Local storage", purpose: "Remembers your getting-started checklist (hidden, whiteboard opened).", kept: "Until you clear your browser data." },
+  { key: "peerprep-focus:…", where: "Local storage", purpose: "Your focus timer: its settings, the timer that's running, today's plan and your focus minutes for the last 14 days. Kept per account (or “guest”) and never sent to PeerPrep.", kept: "Until you clear your browser data. Deleting your account in this browser removes it too." },
   { key: "auth_notice", where: "Session storage", purpose: "Shows a one-time message after your session expires.", kept: "Until it's shown, or the tab is closed." },
   { key: "peerprep-chunk-reload", where: "Session storage", purpose: "Reloads the page once after we release a new version.", kept: "Until the tab is closed." },
 ]
@@ -56,6 +57,7 @@ const sections = [
           <li><strong>Chat messages</strong> you send in an event, and which messages you've read. Deleting a message erases its text.</li>
           <li><strong>Whiteboard drawings</strong>, notes and shapes you add to an event's board.</li>
           <li>Who is online and who is typing, kept briefly in the server's memory only and never saved.</li>
+          <li>The <strong>focus timer and today's plan</strong> stay in your browser. We never receive them.</li>
         </ul>
 
         <h3>When you use an AI helper</h3>
@@ -86,7 +88,7 @@ const sections = [
         <ul>
           <li><strong>Anyone, including visitors who aren't signed in,</strong> can see events and their details, and the names and photos of the people attending them.</li>
           <li><strong>Anyone</strong> can open your public profile: name, photo, bio, level and the date you joined.</li>
-          <li><strong>Members of an event</strong> can read its chat (with each message's author and read count), see its whiteboard and download its study materials.</li>
+          <li><strong>Members of an event</strong> can read its chat (with each message's author and read count), see its whiteboard and download its study materials. Everyone else only sees how many files are attached.</li>
           <li><strong>Nobody else</strong> sees your email address.</li>
         </ul>
         <p>Please don't put personal details in event titles, descriptions or chats that you wouldn't want others to see.</p>
@@ -267,7 +269,7 @@ const sections = [
     title: "How we protect it",
     body: (
       <p>
-        All connections use HTTPS. Passwords are hashed with Argon2. Chats and whiteboards are only available to the
+        All connections use HTTPS. Passwords are hashed with Argon2. Chats, whiteboards and study materials are only available to the
         event's members. Repeated sign-in attempts are limited, and access to the database is restricted. No service
         can promise perfect security, but if we ever learn of a breach that puts your data at risk, we'll tell you and
         the authorities as the law requires.

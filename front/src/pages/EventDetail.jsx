@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useParams, useNavigate, Link } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faChevronRight, faComments, faLock, faCalendarXmark } from "@fortawesome/free-solid-svg-icons"
@@ -18,16 +18,8 @@ import Card from "../components/ui/Card"
 import ConfirmDialog from "../components/ui/ConfirmDialog"
 import { EmptyState, PageLoader } from "../components/ui/Feedback"
 import { usePageTitle } from "../hooks/usePageTitle"
-
-// Re-evaluate "upcoming / live / ended" every minute while the page is open
-function useNow(intervalMs = 60 * 1000) {
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), intervalMs)
-    return () => clearInterval(t)
-  }, [intervalMs])
-  return now
-}
+import { useNow } from "../hooks/useNow"
+import { FocusTimerCompact } from "../features/focus/FocusTimer"
 
 function ChatLocked({ timing, canJoin, onJoin, joinBusy }) {
   const copy = timing.isPast
@@ -51,7 +43,9 @@ export default function EventDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-  const now = useNow()
+  // Re-evaluate "upcoming / live / ended" every minute while the page is open
+  const nowMs = useNow()
+  const now = useMemo(() => new Date(nowMs), [nowMs])
   const toast = useToast()
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -125,6 +119,7 @@ export default function EventDetail() {
         isOwner={isOwner}
         isMember={isMember}
         timing={timing}
+        now={now}
         joinBusy={joinBusy}
         onJoinLeave={handleJoinLeave}
         onDelete={() => setConfirmDelete(true)}
@@ -144,6 +139,9 @@ export default function EventDetail() {
           )}
         </div>
         <aside className="space-y-6">
+          {isMember && timing.isOngoing && (
+            <FocusTimerCompact title="Focus while you study" hint="Your own timer. It keeps running if you open the whiteboard." />
+          )}
           <MembersList
             members={members}
             presence={chat.presence}
@@ -151,7 +149,7 @@ export default function EventDetail() {
             hostId={event.created_by}
             capacity={event.capacity}
           />
-          <StudyMaterials json={event.study_materials} />
+          <StudyMaterials json={event.study_materials} count={event.materials_count} isMember={isMember} canJoin={!timing.hasStarted} />
         </aside>
       </div>
 

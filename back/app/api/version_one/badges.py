@@ -7,6 +7,10 @@ from sqlmodel import Session, select, func
 
 from app.core.db import get_session
 from app.models import User, EventAttendee, Event
+from sqlalchemy.orm import defer
+
+# Stats only need event times; skip the large base64 columns
+_LIGHT_EVENT = (defer(Event.study_materials), defer(Event.cover_image_url))
 from app.api.version_one.auth import _get_user_from_token
 
 from app.services.gamification import (
@@ -48,13 +52,13 @@ def get_user_badge(
     now = datetime.now(timezone.utc)
 
     attendee_events = session.exec(
-        select(Event)
+        select(Event).options(*_LIGHT_EVENT)
         .join(EventAttendee, Event.id == EventAttendee.event_id)
         .where(EventAttendee.user_id == user_id)
     ).all()
     
     created_events = session.exec(
-        select(Event)
+        select(Event).options(*_LIGHT_EVENT)
         .where(Event.created_by == user_id)
     ).all()
     

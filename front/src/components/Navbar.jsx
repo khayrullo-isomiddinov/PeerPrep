@@ -9,6 +9,7 @@ import { usePrefetchEvents } from "../hooks/useEvents"
 import { usePrefetchProfile } from "../hooks/useProfile"
 import Logo from "./Logo"
 import ThemeToggle from "./ThemeToggle"
+import FocusPill from "../features/focus/FocusPill"
 import Avatar from "./ui/Avatar"
 import Button from "./ui/Button"
 import { Menu, MenuItem, MenuSeparator } from "./ui/Menu"
@@ -68,6 +69,7 @@ function GuestMobileMenu() {
         <div className="absolute inset-x-0 top-full border-b border-line bg-surface shadow-raised animate-pop-in">
           <nav className="page-container flex flex-col gap-1 py-3" aria-label="Main">
             <NavLink to="/events" className={navLinkClass}>Browse events</NavLink>
+            <NavLink to="/focus" className={navLinkClass}>Focus timer</NavLink>
             <NavLink to="/about" className={navLinkClass}>About</NavLink>
             <NavLink to="/contact" className={navLinkClass}>Contact</NavLink>
             <div className="mt-2 grid grid-cols-2 gap-2">
@@ -102,10 +104,12 @@ export default function Navbar() {
         <nav className="hidden items-center gap-1 md:flex" aria-label="Main">
           {isAuthenticated && <NavLink to="/" end className={navLinkClass}>Home</NavLink>}
           <NavLink to="/events" className={navLinkClass} onMouseEnter={() => prefetchEventList()}>Events</NavLink>
+          <NavLink to="/focus" className={navLinkClass}>Focus</NavLink>
           {!isAuthenticated && <NavLink to="/about" className={navLinkClass}>About</NavLink>}
         </nav>
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          <FocusPill />
           {/* Phones create from the tab bar; visibility lives on a wrapper so it can't clash with the button's display */}
           {isAuthenticated && (
             <div className="hidden md:block">

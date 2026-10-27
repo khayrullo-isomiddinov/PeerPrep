@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faEllipsis, faPen, faTrash } from "@fortawesome/free-solid-svg-icons"
 import { getErrorMessage } from "../../utils/api"
-import { formatEventWhen, getEventTiming } from "../../utils/dates"
+import { describeEventTiming, formatEventWhen, getEventTiming, parseUTCDate } from "../../utils/dates"
 import { useAuth } from "../auth/authContextValue"
 import { useJoinEvent, useLeaveEvent, useDeleteEvent, usePrefetchEvents } from "../../hooks/useEvents"
 import Badge from "../../components/ui/Badge"
@@ -14,15 +14,19 @@ import { useToast } from "../../components/ui/toastContext"
 import EventCover from "./EventCover"
 import SeatTicks from "./SeatTicks"
 
-function StatusBadge({ timing, isFull, mine }) {
+function StatusBadge({ timing, isFull, mine, joined }) {
   if (timing.isOngoing) return <Badge tone="highlight" dot>Live</Badge>
   if (timing.isPast) return <Badge tone="neutral" className="bg-surface">Ended</Badge>
   if (mine) return <Badge tone="accent" className="bg-surface">Hosting</Badge>
+  if (joined) return <Badge tone="accent" className="bg-surface">Going</Badge>
   if (isFull) return <Badge tone="warning" className="bg-surface">Full</Badge>
   return null
 }
 
-function EventCard({ event }) {
+const DAY_MS = 24 * 3600 * 1000
+
+// `now` comes from the list (one clock for every card) so countdowns stay current
+function EventCard({ event, now }) {
   const { user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
@@ -32,7 +36,9 @@ function EventCard({ event }) {
   const deleteMutation = useDeleteEvent()
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  const timing = getEventTiming(event)
+  const timing = getEventTiming(event, now)
+  const startsSoon = timing.isUpcoming && parseUTCDate(event.starts_at) - (now || new Date()) < DAY_MS
+  const countdown = timing.isOngoing || startsSoon ? describeEventTiming(event, now) : null
   const mine = !!user && event.created_by === user.id
   const joined = mine || !!event.is_joined
   const count = event.attendee_count ?? 0
@@ -72,7 +78,7 @@ function EventCard({ event }) {
       <div className="relative overflow-hidden border-b border-line">
         <EventCover event={event} className="h-28 w-full transition-transform duration-[900ms] ease-[var(--ease-out-soft)] group-hover:scale-[1.025]" />
         <div className="absolute right-3 top-3">
-          <StatusBadge timing={timing} isFull={isFull} mine={mine} />
+          <StatusBadge timing={timing} isFull={isFull} mine={mine} joined={joined} />
         </div>
       </div>
 
@@ -84,7 +90,11 @@ function EventCard({ event }) {
             {event.title}
           </Link>
         </h3>
-        <p className="mt-1 truncate text-sm text-fg-muted">{event.location}</p>
+        <p className="mt-1 truncate text-sm text-fg-muted">
+          {event.exam && event.cover_image_url && <span className="font-medium text-fg">{event.exam} · </span>}
+          {event.location}
+        </p>
+        {countdown && <p className={`mt-1.5 text-xs font-semibold ${timing.isOngoing ? "text-fg" : "text-fg-muted"}`}>{countdown}</p>}
 
         <div className="mt-auto flex items-center justify-between gap-3 pt-4">
           <SeatTicks taken={count} capacity={event.capacity} />

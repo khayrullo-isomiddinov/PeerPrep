@@ -91,3 +91,30 @@ export function formatEventWhen(value: DateInput, now: Date = new Date()): strin
 export function sortByStart<T extends { starts_at: string }>(events: T[]): T[] {
   return [...events].sort((a, b) => (parseUTCDate(a.starts_at)?.getTime() ?? 0) - (parseUTCDate(b.starts_at)?.getTime() ?? 0))
 }
+
+// "45m", "3h 20m", "2 days": a duration until (or since) a moment, for countdowns
+export function formatDuration(ms: number): string {
+  const minutes = Math.max(1, Math.round(Math.abs(ms) / 60_000))
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) return minutes % 60 ? `${hours}h ${minutes % 60}m` : `${hours}h`
+  return `${Math.round(hours / 24)} days`
+}
+
+// A short line about where an event is right now: "Starts in 3h 20m", "Ends in 40m", "Ended 2d ago".
+// Upcoming events more than a week away get null, since the date says more than a countdown.
+export function describeEventTiming(
+  event: Pick<PeerEvent, "starts_at" | "duration"> & Partial<Pick<PeerEvent, "ends_at">>,
+  now: Date = new Date()
+): string | null {
+  const start = parseUTCDate(event.starts_at)
+  if (!start) return null
+  const end = parseUTCDate(event.ends_at) || new Date(start.getTime() + (event.duration || 1) * 3600 * 1000)
+  const t = now.getTime()
+  if (t < start.getTime()) {
+    const until = start.getTime() - t
+    return until <= 7 * 24 * 3600 * 1000 ? `Starts in ${formatDuration(until)}` : null
+  }
+  if (t < end.getTime()) return `Ends in ${formatDuration(end.getTime() - t)}`
+  return `Ended ${formatRelativeTime(end.toISOString(), now).replace("Just now", "just now")}`
+}

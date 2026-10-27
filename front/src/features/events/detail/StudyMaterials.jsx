@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { faDownload } from "@fortawesome/free-solid-svg-icons"
+import { faDownload, faLock } from "@fortawesome/free-solid-svg-icons"
 import Card from "../../../components/ui/Card"
 import { fileIcon, formatFileSize } from "../../../utils/files"
 
@@ -15,9 +15,22 @@ function parseStudyMaterials(json) {
   }
 }
 
-// `json` is the event's study_materials field: a JSON array of { name, type, size, data }
-export default function StudyMaterials({ json }) {
+// `json` is the event's study_materials field: a JSON array of { name, type, size, data }. The API sends it
+// only to members; everyone else gets just `count`, so they know there's something to join for.
+export default function StudyMaterials({ json, count, isMember, canJoin }) {
   const materials = useMemo(() => parseStudyMaterials(json), [json])
+  if (!isMember && count > 0) {
+    return (
+      <Card>
+        <h2 className="font-semibold text-fg">Study materials <span className="font-normal text-fg-subtle">{count}</span></h2>
+        <p className="mt-2 flex items-start gap-2 text-sm text-fg-muted">
+          <FontAwesomeIcon icon={faLock} className="mt-1 text-xs text-fg-subtle" />
+          {count === 1 ? "One file is" : `${count} files are`} shared with members.
+          {canJoin ? ` Join the session to download ${count === 1 ? "it" : "them"}.` : ""}
+        </p>
+      </Card>
+    )
+  }
   if (materials.length === 0) return null
 
   return (

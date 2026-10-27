@@ -3,10 +3,8 @@
 Chat lives in event_chat.py and the whiteboard in whiteboard.py.
 """
 from datetime import datetime, timezone
-from typing import List, Optional
-
 import logging
-from typing import Literal
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -24,7 +22,7 @@ from app.services.cleanup import delete_event_data
 from app.services.users import public_user
 from app.services.event_queries import (
     as_utc, finish_status_filter, has_ended, has_started, is_member, member_counts, parse_status,
-    prefilter_by_status, serialize_event, serialize_events, user_event_ids_query,
+    prefilter_by_status, serialize_event, serialize_events, user_event_ids_query, without_materials,
 )
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -72,12 +70,15 @@ def list_events(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     status: str = Query("upcoming"),
+    sort: Literal["newest", "soonest"] = "newest",
     current_user: Optional[User] = Depends(_get_optional_user_from_token),
 ):
+    """Events matching the filters. `sort=soonest` orders upcoming/ongoing events by start time; past events
+    are always most recent first."""
     status = parse_status(status)
     now = datetime.now(timezone.utc)
 
-    query = select(Event)
+    query = without_materials(select(Event))
     if q:
         query = query.where(Event.title.ilike(f"%{q}%") | Event.description.ilike(f"%{q}%"))
     if location:
@@ -85,7 +86,12 @@ def list_events(
     if exam:
         query = query.where(Event.exam.ilike(f"%{exam}%"))
     query = prefilter_by_status(query, status, now)
-    query = query.order_by(Event.starts_at.desc() if status == "past" else Event.created_at.desc())
+    if status == "past":
+        query = query.order_by(Event.starts_at.desc())
+    elif sort == "soonest":
+        query = query.order_by(Event.starts_at.asc(), Event.id.asc())
+    else:
+        query = query.order_by(Event.created_at.desc())
 
     # Ongoing/past are finished in Python, so over-fetch to still fill the page
     fetch_limit = limit * 2 if status in ("ongoing", "past") else limit
@@ -95,7 +101,7 @@ def list_events(
 
 
 def _my_events(session: Session, user: User, status: str, now: datetime):
-    query = prefilter_by_status(user_event_ids_query(session, user), status, now)
+    query = prefilter_by_status(without_materials(user_event_ids_query(session, user)), status, now)
     return query.order_by(Event.starts_at.desc() if status == "past" else Event.starts_at.asc())
 
 
